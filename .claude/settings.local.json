@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(swift -parse:*)",
+      "Bash(swiftc:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: Unforgotten iOS app\n\n- SwiftUI app for managing information about loved ones with memory conditions\n- Features: Profiles, Medications, Appointments, Birthdays, Contacts, Mood tracking\n- Supabase backend integration\n- Fixed header button touch handling across all pages\n- Today card with medications, appointments, and birthdays\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
