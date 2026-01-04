@@ -189,6 +189,7 @@ struct PhotoPickerButton: View {
     let currentPhotoURL: String?
     let size: CGFloat
 
+    @Environment(\.appAccentColor) private var appAccentColor
     @State private var showImagePicker = false
     @State private var pickedImage: UIImage?
     @State private var showCropper = false
@@ -217,9 +218,9 @@ struct PhotoPickerButton: View {
                 // Edit badge
                 Image(systemName: "camera.fill")
                     .font(.system(size: 14))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .padding(8)
-                    .background(Color.accentYellow)
+                    .background(appAccentColor)
                     .clipShape(Circle())
                     .offset(x: 4, y: 4)
             }

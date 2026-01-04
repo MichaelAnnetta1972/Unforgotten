@@ -1,19 +1,18 @@
 import Foundation
+import SwiftUI
 
 // MARK: - Account
 struct Account: Codable, Identifiable, Equatable {
     let id: UUID
     let ownerUserId: UUID
     let displayName: String
-    let timezone: String?
     let createdAt: Date
     let updatedAt: Date
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case ownerUserId = "owner_user_id"
         case displayName = "display_name"
-        case timezone
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -55,7 +54,7 @@ enum MemberRole: String, Codable, CaseIterable {
         switch self {
         case .owner: return "Full access, manage members"
         case .admin: return "Full access to data"
-        case .helper: return "Can update medications & appointments"
+        case .helper: return "Can update medications, appointments, contacts, and sticky reminders."
         case .viewer: return "Read-only access"
         }
     }
@@ -81,6 +80,7 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
     let createdAt: Date
     let expiresAt: Date
     var acceptedAt: Date?
+    var acceptedBy: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -93,6 +93,7 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
         case createdAt = "created_at"
         case expiresAt = "expires_at"
         case acceptedAt = "accepted_at"
+        case acceptedBy = "accepted_by"
     }
 
     var isExpired: Bool {
@@ -112,14 +113,18 @@ enum InvitationStatus: String, Codable {
 }
 
 // MARK: - Profile
-struct Profile: Codable, Identifiable, Equatable {
+struct Profile: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let accountId: UUID
     let type: ProfileType
     var fullName: String
     var preferredName: String?
     var relationship: String?
+    var connectedToProfileId: UUID?  // Links to another profile for family tree relationships
+    var includeInFamilyTree: Bool  // Whether to show this profile in the family tree
     var birthday: Date?
+    var isDeceased: Bool  // Whether this person has passed away
+    var dateOfDeath: Date?  // Date of death if deceased
     var address: String?
     var phone: String?
     var email: String?
@@ -127,9 +132,10 @@ struct Profile: Codable, Identifiable, Equatable {
     var isFavourite: Bool
     var linkedUserId: UUID?
     var photoUrl: String?
+    var sortOrder: Int
     let createdAt: Date
     var updatedAt: Date
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
@@ -137,7 +143,11 @@ struct Profile: Codable, Identifiable, Equatable {
         case fullName = "full_name"
         case preferredName = "preferred_name"
         case relationship
+        case connectedToProfileId = "connected_to_profile_id"
+        case includeInFamilyTree = "include_in_family_tree"
         case birthday
+        case isDeceased = "is_deceased"
+        case dateOfDeath = "date_of_death"
         case address
         case phone
         case email
@@ -145,16 +155,98 @@ struct Profile: Codable, Identifiable, Equatable {
         case isFavourite = "is_favourite"
         case linkedUserId = "linked_user_id"
         case photoUrl = "photo_url"
+        case sortOrder = "sort_order"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
-    
+
+    // Memberwise initializer
+    init(
+        id: UUID,
+        accountId: UUID,
+        type: ProfileType,
+        fullName: String,
+        preferredName: String? = nil,
+        relationship: String? = nil,
+        connectedToProfileId: UUID? = nil,
+        includeInFamilyTree: Bool = true,
+        birthday: Date? = nil,
+        isDeceased: Bool = false,
+        dateOfDeath: Date? = nil,
+        address: String? = nil,
+        phone: String? = nil,
+        email: String? = nil,
+        notes: String? = nil,
+        isFavourite: Bool = false,
+        linkedUserId: UUID? = nil,
+        photoUrl: String? = nil,
+        sortOrder: Int = 0,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.type = type
+        self.fullName = fullName
+        self.preferredName = preferredName
+        self.relationship = relationship
+        self.connectedToProfileId = connectedToProfileId
+        self.includeInFamilyTree = includeInFamilyTree
+        self.birthday = birthday
+        self.isDeceased = isDeceased
+        self.dateOfDeath = dateOfDeath
+        self.address = address
+        self.phone = phone
+        self.email = email
+        self.notes = notes
+        self.isFavourite = isFavourite
+        self.linkedUserId = linkedUserId
+        self.photoUrl = photoUrl
+        self.sortOrder = sortOrder
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    // Custom decoder to provide default for sort_order, includeInFamilyTree, and isDeceased
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        type = try container.decode(ProfileType.self, forKey: .type)
+        fullName = try container.decode(String.self, forKey: .fullName)
+        preferredName = try container.decodeIfPresent(String.self, forKey: .preferredName)
+        relationship = try container.decodeIfPresent(String.self, forKey: .relationship)
+        connectedToProfileId = try container.decodeIfPresent(UUID.self, forKey: .connectedToProfileId)
+        includeInFamilyTree = try container.decodeIfPresent(Bool.self, forKey: .includeInFamilyTree) ?? true
+        birthday = try container.decodeIfPresent(Date.self, forKey: .birthday)
+        isDeceased = try container.decodeIfPresent(Bool.self, forKey: .isDeceased) ?? false
+        dateOfDeath = try container.decodeIfPresent(Date.self, forKey: .dateOfDeath)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        isFavourite = try container.decodeIfPresent(Bool.self, forKey: .isFavourite) ?? false
+        linkedUserId = try container.decodeIfPresent(UUID.self, forKey: .linkedUserId)
+        photoUrl = try container.decodeIfPresent(String.self, forKey: .photoUrl)
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
     var displayName: String {
         preferredName ?? fullName
     }
-    
+
     var age: Int? {
         birthday?.age()
+    }
+
+    /// Age at death if person is deceased and has both birthday and date of death
+    var ageAtDeath: Int? {
+        guard isDeceased, let birthday = birthday, let deathDate = dateOfDeath else { return nil }
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year], from: birthday, to: deathDate)
+        return components.year
     }
 }
 
@@ -242,7 +334,7 @@ enum DetailCategory: String, Codable, CaseIterable {
 }
 
 // MARK: - Medication
-struct Medication: Codable, Identifiable, Equatable {
+struct Medication: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let accountId: UUID
     let profileId: UUID
@@ -257,6 +349,7 @@ struct Medication: Codable, Identifiable, Equatable {
     var intakeInstruction: IntakeInstruction?
     var isPaused: Bool
     var pausedAt: Date?
+    var sortOrder: Int
     let createdAt: Date
     var updatedAt: Date
 
@@ -275,8 +368,48 @@ struct Medication: Codable, Identifiable, Equatable {
         case intakeInstruction = "intake_instruction"
         case isPaused = "is_paused"
         case pausedAt = "paused_at"
+        case sortOrder = "sort_order"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    // Memberwise initializer
+    init(
+        id: UUID,
+        accountId: UUID,
+        profileId: UUID,
+        name: String,
+        strength: String? = nil,
+        form: String? = nil,
+        reason: String? = nil,
+        prescribingDoctorId: UUID? = nil,
+        notes: String? = nil,
+        imageUrl: String? = nil,
+        localImagePath: String? = nil,
+        intakeInstruction: IntakeInstruction? = nil,
+        isPaused: Bool = false,
+        pausedAt: Date? = nil,
+        sortOrder: Int = 0,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.profileId = profileId
+        self.name = name
+        self.strength = strength
+        self.form = form
+        self.reason = reason
+        self.prescribingDoctorId = prescribingDoctorId
+        self.notes = notes
+        self.imageUrl = imageUrl
+        self.localImagePath = localImagePath
+        self.intakeInstruction = intakeInstruction
+        self.isPaused = isPaused
+        self.pausedAt = pausedAt
+        self.sortOrder = sortOrder
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 
     // Custom decoder to provide defaults for new fields
@@ -296,6 +429,7 @@ struct Medication: Codable, Identifiable, Equatable {
         intakeInstruction = try container.decodeIfPresent(IntakeInstruction.self, forKey: .intakeInstruction)
         isPaused = try container.decodeIfPresent(Bool.self, forKey: .isPaused) ?? false
         pausedAt = try container.decodeIfPresent(Date.self, forKey: .pausedAt)
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
@@ -546,36 +680,159 @@ enum MedicationLogStatus: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Appointment Type
+enum AppointmentType: String, Codable, CaseIterable {
+    case general
+    case doctor
+    case dentist
+    case hospital
+    case gym
+    case work
+    case school
+    case friends
+    case family
+    case shopping
+    case travel
+    case other
+
+    var displayName: String {
+        switch self {
+        case .general: return "General"
+        case .doctor: return "Doctor"
+        case .dentist: return "Dentist"
+        case .hospital: return "Hospital"
+        case .gym: return "Gym"
+        case .work: return "Work"
+        case .school: return "School"
+        case .friends: return "Friends"
+        case .family: return "Family"
+        case .shopping: return "Shopping"
+        case .travel: return "Travel"
+        case .other: return "Other"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: return "calendar"
+        case .doctor: return "stethoscope"
+        case .dentist: return "mouth.fill"
+        case .hospital: return "cross.case.fill"
+        case .gym: return "dumbbell.fill"
+        case .work: return "briefcase.fill"
+        case .school: return "graduationcap.fill"
+        case .friends: return "person.2.fill"
+        case .family: return "house.fill"
+        case .shopping: return "cart.fill"
+        case .travel: return "airplane"
+        case .other: return "ellipsis.circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .general: return .calendarBlue
+        case .doctor: return .medicalRed
+        case .dentist: return .cyan
+        case .hospital: return .medicalRed
+        case .gym: return .orange
+        case .work: return .blue
+        case .school: return .yellow
+        case .friends: return .green
+        case .family: return .pink
+        case .shopping: return .mint
+        case .travel: return .indigo
+        case .other: return .gray
+        }
+    }
+}
+
 // MARK: - Appointment
-struct Appointment: Codable, Identifiable, Equatable {
+struct Appointment: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let accountId: UUID
     let profileId: UUID
     var withProfileId: UUID?
+    var type: AppointmentType
     var title: String
     var date: Date
     var time: Date?
     var location: String?
     var notes: String?
     var reminderOffsetMinutes: Int?
+    var isCompleted: Bool
     let createdAt: Date
     var updatedAt: Date
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
         case profileId = "profile_id"
         case withProfileId = "with_profile_id"
+        case type
         case title
         case date
         case time
         case location
         case notes
         case reminderOffsetMinutes = "reminder_offset_minutes"
+        case isCompleted = "is_completed"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
-    
+
+    // Custom decoder to provide defaults for backwards compatibility
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        profileId = try container.decode(UUID.self, forKey: .profileId)
+        withProfileId = try container.decodeIfPresent(UUID.self, forKey: .withProfileId)
+        type = try container.decodeIfPresent(AppointmentType.self, forKey: .type) ?? .general
+        title = try container.decode(String.self, forKey: .title)
+        date = try container.decode(Date.self, forKey: .date)
+        time = try container.decodeIfPresent(Date.self, forKey: .time)
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        reminderOffsetMinutes = try container.decodeIfPresent(Int.self, forKey: .reminderOffsetMinutes)
+        isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    // Memberwise initializer
+    init(
+        id: UUID,
+        accountId: UUID,
+        profileId: UUID,
+        withProfileId: UUID? = nil,
+        type: AppointmentType = .general,
+        title: String,
+        date: Date,
+        time: Date? = nil,
+        location: String? = nil,
+        notes: String? = nil,
+        reminderOffsetMinutes: Int? = nil,
+        isCompleted: Bool = false,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.profileId = profileId
+        self.withProfileId = withProfileId
+        self.type = type
+        self.title = title
+        self.date = date
+        self.time = time
+        self.location = location
+        self.notes = notes
+        self.reminderOffsetMinutes = reminderOffsetMinutes
+        self.isCompleted = isCompleted
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
     var dateTime: Date {
         guard let time = time else { return date }
         let calendar = Calendar.current
@@ -606,9 +863,10 @@ struct UsefulContact: Codable, Identifiable, Equatable {
     var address: String?
     var notes: String?
     var isFavourite: Bool
+    var sortOrder: Int
     let createdAt: Date
     var updatedAt: Date
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
@@ -621,8 +879,61 @@ struct UsefulContact: Codable, Identifiable, Equatable {
         case address
         case notes
         case isFavourite = "is_favourite"
+        case sortOrder = "sort_order"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    // Memberwise initializer
+    init(
+        id: UUID,
+        accountId: UUID,
+        name: String,
+        category: ContactCategory,
+        companyName: String? = nil,
+        phone: String? = nil,
+        email: String? = nil,
+        website: String? = nil,
+        address: String? = nil,
+        notes: String? = nil,
+        isFavourite: Bool = false,
+        sortOrder: Int = 0,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.name = name
+        self.category = category
+        self.companyName = companyName
+        self.phone = phone
+        self.email = email
+        self.website = website
+        self.address = address
+        self.notes = notes
+        self.isFavourite = isFavourite
+        self.sortOrder = sortOrder
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    // Custom decoder to provide default for sort_order
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        name = try container.decode(String.self, forKey: .name)
+        category = try container.decode(ContactCategory.self, forKey: .category)
+        companyName = try container.decodeIfPresent(String.self, forKey: .companyName)
+        phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        website = try container.decodeIfPresent(String.self, forKey: .website)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        isFavourite = try container.decodeIfPresent(Bool.self, forKey: .isFavourite) ?? false
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 }
 
@@ -746,6 +1057,7 @@ struct ProfileConnection: Codable, Identifiable, Equatable {
 // MARK: - Connection Type
 enum ConnectionType: String, Codable, CaseIterable {
     // Family
+    case me
     case mother
     case father
     case son
@@ -763,6 +1075,8 @@ enum ConnectionType: String, Codable, CaseIterable {
     case cousin
     case spouse
     case partner
+    case exSpouse
+    case inlaw
 
     // Professional
     case doctor
@@ -781,6 +1095,7 @@ enum ConnectionType: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
+        case .me: return "Me"
         case .mother: return "Mother"
         case .father: return "Father"
         case .son: return "Son"
@@ -798,6 +1113,8 @@ enum ConnectionType: String, Codable, CaseIterable {
         case .cousin: return "Cousin"
         case .spouse: return "Spouse"
         case .partner: return "Partner"
+        case .exSpouse: return "Ex Spouse"
+        case .inlaw: return "In Law"
         case .doctor: return "Doctor"
         case .dentist: return "Dentist"
         case .lawyer: return "Lawyer"
@@ -812,9 +1129,9 @@ enum ConnectionType: String, Codable, CaseIterable {
 
     var category: ConnectionCategory {
         switch self {
-        case .mother, .father, .son, .daughter, .brother, .sister,
+        case .me, .mother, .father, .son, .daughter, .brother, .sister,
              .grandmother, .grandfather, .grandson, .granddaughter,
-             .aunt, .uncle, .nephew, .niece, .cousin, .spouse, .partner:
+             .aunt, .uncle, .nephew, .niece, .cousin, .spouse, .partner, .exSpouse, .inlaw:
             return .family
         case .doctor, .dentist, .lawyer, .accountant, .carer:
             return .professional
@@ -828,6 +1145,7 @@ enum ConnectionType: String, Codable, CaseIterable {
     /// Returns the inverse relationship type for bidirectional connections
     var inverse: ConnectionType {
         switch self {
+        case .me: return .me
         case .mother, .father: return .son // Will be adjusted based on context
         case .son: return .father // Will be adjusted based on context
         case .daughter: return .mother // Will be adjusted based on context
@@ -842,6 +1160,8 @@ enum ConnectionType: String, Codable, CaseIterable {
         case .niece: return .aunt
         case .cousin: return .cousin
         case .spouse: return .spouse
+        case .exSpouse: return .exSpouse
+        case .inlaw: return .inlaw
         case .partner: return .partner
         case .doctor: return .other // Patient (not in list)
         case .dentist: return .other
@@ -856,9 +1176,9 @@ enum ConnectionType: String, Codable, CaseIterable {
     }
 
     static var familyTypes: [ConnectionType] {
-        [.mother, .father, .son, .daughter, .brother, .sister,
+        [.me, .mother, .father, .son, .daughter, .brother, .sister,
          .grandmother, .grandfather, .grandson, .granddaughter,
-         .aunt, .uncle, .nephew, .niece, .cousin, .spouse, .partner]
+         .aunt, .uncle, .nephew, .niece, .cousin, .spouse, .partner, .exSpouse, .inlaw]
     }
 
     static var professionalTypes: [ConnectionType] {
@@ -883,4 +1203,377 @@ struct ConnectionWithProfile: Identifiable {
     let connectedProfile: Profile
 
     var id: UUID { connection.id }
+}
+
+// MARK: - Note Models
+// Note: Notes feature now uses SwiftData with LocalNote model
+// See Features/Notes/Storage/Note.swift and Features/Notes/Models/NoteTheme.swift
+
+// MARK: - Sticky Reminder
+/// A persistent reminder that keeps notifying until dismissed in-app
+struct StickyReminder: Codable, Identifiable, Equatable, Hashable {
+    let id: UUID
+    let accountId: UUID
+    var title: String
+    var message: String?
+    var triggerTime: Date
+    var repeatInterval: StickyReminderInterval
+    var isActive: Bool
+    var isDismissed: Bool
+    var lastNotifiedAt: Date?
+    var sortOrder: Int
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case title
+        case message
+        case triggerTime = "trigger_time"
+        case repeatInterval = "repeat_interval"
+        case isActive = "is_active"
+        case isDismissed = "is_dismissed"
+        case lastNotifiedAt = "last_notified_at"
+        case sortOrder = "sort_order"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    // Memberwise initializer
+    init(
+        id: UUID = UUID(),
+        accountId: UUID,
+        title: String,
+        message: String? = nil,
+        triggerTime: Date,
+        repeatInterval: StickyReminderInterval = .everyHour,
+        isActive: Bool = true,
+        isDismissed: Bool = false,
+        lastNotifiedAt: Date? = nil,
+        sortOrder: Int = 0,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.title = title
+        self.message = message
+        self.triggerTime = triggerTime
+        self.repeatInterval = repeatInterval
+        self.isActive = isActive
+        self.isDismissed = isDismissed
+        self.lastNotifiedAt = lastNotifiedAt
+        self.sortOrder = sortOrder
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    // Custom decoder to provide defaults for optional fields
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        title = try container.decode(String.self, forKey: .title)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        triggerTime = try container.decode(Date.self, forKey: .triggerTime)
+        repeatInterval = try container.decodeIfPresent(StickyReminderInterval.self, forKey: .repeatInterval) ?? .everyHour
+        isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
+        isDismissed = try container.decodeIfPresent(Bool.self, forKey: .isDismissed) ?? false
+        lastNotifiedAt = try container.decodeIfPresent(Date.self, forKey: .lastNotifiedAt)
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    /// Whether this reminder should currently be sending notifications
+    var shouldNotify: Bool {
+        isActive && !isDismissed && triggerTime <= Date()
+    }
+
+    /// Calculates the next notification time based on the repeat interval
+    var nextNotificationTime: Date? {
+        guard isActive && !isDismissed else { return nil }
+
+        let now = Date()
+
+        // If trigger time is in the future, that's the next notification
+        if triggerTime > now {
+            return triggerTime
+        }
+
+        // Calculate next notification based on last notified or trigger time
+        let baseTime = lastNotifiedAt ?? triggerTime
+        let intervalSeconds = repeatInterval.intervalInSeconds
+
+        // Calculate how many intervals have passed since base time
+        let timeSinceBase = now.timeIntervalSince(baseTime)
+        let intervalsPassed = Int(timeSinceBase / intervalSeconds)
+
+        // Next notification is base time + (intervals passed + 1) * interval
+        let nextTime = baseTime.addingTimeInterval(Double(intervalsPassed + 1) * intervalSeconds)
+
+        return nextTime
+    }
+}
+
+// MARK: - Sticky Reminder Time Unit
+enum StickyReminderTimeUnit: String, Codable, CaseIterable, Identifiable {
+    case minutes = "minutes"
+    case hours = "hours"
+    case days = "days"
+    case months = "months"
+    case years = "years"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .minutes: return "Minutes"
+        case .hours: return "Hours"
+        case .days: return "Days"
+        case .months: return "Months"
+        case .years: return "Years"
+        }
+    }
+
+    var singularName: String {
+        switch self {
+        case .minutes: return "Minute"
+        case .hours: return "Hour"
+        case .days: return "Day"
+        case .months: return "Month"
+        case .years: return "Year"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .minutes: return "clock.badge.exclamationmark"
+        case .hours: return "clock"
+        case .days: return "sun.max"
+        case .months: return "calendar"
+        case .years: return "calendar.badge.clock"
+        }
+    }
+
+    /// Seconds per unit (approximate for months/years)
+    var secondsPerUnit: TimeInterval {
+        switch self {
+        case .minutes: return 60
+        case .hours: return 60 * 60
+        case .days: return 24 * 60 * 60
+        case .months: return 30 * 24 * 60 * 60  // ~30 days
+        case .years: return 365 * 24 * 60 * 60  // ~365 days
+        }
+    }
+
+    /// Valid range of values for this unit
+    var validRange: ClosedRange<Int> {
+        switch self {
+        case .minutes: return 5...59
+        case .hours: return 1...23
+        case .days: return 1...30
+        case .months: return 1...12
+        case .years: return 1...10
+        }
+    }
+}
+
+// MARK: - Sticky Reminder Interval
+/// Dynamic interval supporting custom number + time unit combinations
+/// Stored in database as a string like "30_minutes" or "2_hours"
+struct StickyReminderInterval: Codable, Equatable, Hashable {
+    var value: Int
+    var unit: StickyReminderTimeUnit
+
+    /// Default interval of 1 hour
+    static let everyHour = StickyReminderInterval(value: 1, unit: .hours)
+
+    /// Common presets for quick selection
+    static let presets: [StickyReminderInterval] = [
+        StickyReminderInterval(value: 15, unit: .minutes),
+        StickyReminderInterval(value: 30, unit: .minutes),
+        StickyReminderInterval(value: 1, unit: .hours),
+        StickyReminderInterval(value: 2, unit: .hours),
+        StickyReminderInterval(value: 4, unit: .hours),
+        StickyReminderInterval(value: 1, unit: .days),
+        StickyReminderInterval(value: 1, unit: .months)
+    ]
+
+    init(value: Int, unit: StickyReminderTimeUnit) {
+        self.value = value
+        self.unit = unit
+    }
+
+    // Custom encoding to store as "value_unit" string
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode("\(value)_\(unit.rawValue)")
+    }
+
+    // Custom decoding from "value_unit" string
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let string = try container.decode(String.self)
+
+        // Parse "value_unit" format (e.g., "30_minutes", "2_hours")
+        let components = string.split(separator: "_", maxSplits: 1)
+
+        if components.count == 2,
+           let parsedValue = Int(components[0]),
+           let parsedUnit = StickyReminderTimeUnit(rawValue: String(components[1])) {
+            self.value = parsedValue
+            self.unit = parsedUnit
+        } else {
+            // Fallback: try to parse legacy format
+            self = Self.parseLegacyFormat(string) ?? .everyHour
+        }
+    }
+
+    /// Parse legacy enum-style formats for backwards compatibility
+    private static func parseLegacyFormat(_ string: String) -> StickyReminderInterval? {
+        switch string {
+        case "every_15_minutes": return StickyReminderInterval(value: 15, unit: .minutes)
+        case "every_30_minutes": return StickyReminderInterval(value: 30, unit: .minutes)
+        case "every_hour", "hourly": return StickyReminderInterval(value: 1, unit: .hours)
+        case "every_2_hours": return StickyReminderInterval(value: 2, unit: .hours)
+        case "every_4_hours": return StickyReminderInterval(value: 4, unit: .hours)
+        case "every_8_hours": return StickyReminderInterval(value: 8, unit: .hours)
+        case "daily": return StickyReminderInterval(value: 1, unit: .days)
+        default: return nil
+        }
+    }
+
+    var displayName: String {
+        if value == 1 {
+            return "Every \(unit.singularName.lowercased())"
+        } else {
+            return "Every \(value) \(unit.displayName.lowercased())"
+        }
+    }
+
+    var intervalInSeconds: TimeInterval {
+        TimeInterval(value) * unit.secondsPerUnit
+    }
+
+    var icon: String {
+        unit.icon
+    }
+}
+
+// MARK: - Important Account
+/// Model for storing online account references (NOT passwords)
+struct ImportantAccount: Codable, Identifiable, Equatable {
+    let id: UUID
+    let profileId: UUID
+    var accountName: String
+    var websiteURL: String?
+    var username: String?
+    var emailAddress: String?
+    var phoneNumber: String?
+    var securityQuestionHint: String?
+    var recoveryHint: String?
+    var notes: String?
+    var category: AccountCategory?
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case profileId = "profile_id"
+        case accountName = "account_name"
+        case websiteURL = "website_url"
+        case username
+        case emailAddress = "email_address"
+        case phoneNumber = "phone_number"
+        case securityQuestionHint = "security_question_hint"
+        case recoveryHint = "recovery_hint"
+        case notes
+        case category
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    // Memberwise initializer
+    init(
+        id: UUID = UUID(),
+        profileId: UUID,
+        accountName: String,
+        websiteURL: String? = nil,
+        username: String? = nil,
+        emailAddress: String? = nil,
+        phoneNumber: String? = nil,
+        securityQuestionHint: String? = nil,
+        recoveryHint: String? = nil,
+        notes: String? = nil,
+        category: AccountCategory? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.profileId = profileId
+        self.accountName = accountName
+        self.websiteURL = websiteURL
+        self.username = username
+        self.emailAddress = emailAddress
+        self.phoneNumber = phoneNumber
+        self.securityQuestionHint = securityQuestionHint
+        self.recoveryHint = recoveryHint
+        self.notes = notes
+        self.category = category
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+// MARK: - Account Category
+enum AccountCategory: String, Codable, CaseIterable {
+    case financial = "financial"
+    case social = "social"
+    case shopping = "shopping"
+    case entertainment = "entertainment"
+    case utilities = "utilities"
+    case healthcare = "healthcare"
+    case work = "work"
+    case other = "other"
+
+    var displayName: String {
+        switch self {
+        case .financial: return "Financial"
+        case .social: return "Social Media"
+        case .shopping: return "Shopping"
+        case .entertainment: return "Entertainment"
+        case .utilities: return "Utilities"
+        case .healthcare: return "Healthcare"
+        case .work: return "Work"
+        case .other: return "Other"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .financial: return "dollarsign.circle.fill"
+        case .social: return "person.2.fill"
+        case .shopping: return "cart.fill"
+        case .entertainment: return "tv.fill"
+        case .utilities: return "bolt.fill"
+        case .healthcare: return "heart.fill"
+        case .work: return "briefcase.fill"
+        case .other: return "folder.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .financial: return .green
+        case .social: return .blue
+        case .shopping: return .orange
+        case .entertainment: return .purple
+        case .utilities: return .yellow
+        case .healthcare: return .red
+        case .work: return .gray
+        case .other: return Color.textSecondary
+        }
+    }
 }

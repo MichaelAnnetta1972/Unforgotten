@@ -1,10 +1,17 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
-// MARK: - App Delegate for Orientation Lock
+// MARK: - App Delegate for Orientation Lock and Notifications
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         return .portrait  // Lock to portrait only
+    }
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // Set up notification center delegate early
+        UNUserNotificationCenter.current().delegate = NotificationService.shared
+        return true
     }
 }
 
@@ -12,14 +19,117 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct UnforgottenApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
+    @State private var userPreferences = UserPreferences()
+    @State private var headerOverrides = UserHeaderOverrides()
+    @State private var headerStyleManager = HeaderStyleManager()
+    @State private var featureVisibility = FeatureVisibilityManager()
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        // Configure the preferences sync service with manager references
+        // Note: Must be done after managers are initialized
+    }
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(appState)
-                .preferredColorScheme(.dark)
-                .statusBarHidden(true)  // Hide status bar globally
+            AppRootView(
+                userPreferences: userPreferences,
+                headerOverrides: headerOverrides,
+                headerStyleManager: headerStyleManager,
+                featureVisibility: featureVisibility
+            )
+            .environmentObject(appState)
+            .task {
+                // Configure sync service with manager references
+                await MainActor.run {
+                    PreferencesSyncService.shared.configure(
+                        userPreferences: userPreferences,
+                        headerStyleManager: headerStyleManager,
+                        featureVisibilityManager: featureVisibility
+                    )
+                }
+            }
+            .onChange(of: appState.currentAccount) { _, newAccount in
+                // When account changes, load preferences from Supabase
+                Task {
+                    await loadPreferencesForAccount(newAccount)
+                }
+            }
+            .onChange(of: appState.isAuthenticated) { _, isAuthenticated in
+                // Clear IDs when signing out
+                if !isAuthenticated {
+                    userPreferences.currentUserId = nil
+                    userPreferences.currentAccountId = nil
+                    headerStyleManager.currentUserId = nil
+                    headerStyleManager.currentAccountId = nil
+                    featureVisibility.currentUserId = nil
+                    featureVisibility.currentAccountId = nil
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    // App became active - check for pending notification navigation
+                    print("📱 App became active, checking pending notifications")
+
+                    // Re-sync sticky reminders to catch any changes while app was inactive
+                    // This ensures notifications are scheduled on this device even if it
+                    // wasn't running when a reminder was created on another device
+                    Task {
+                        await appState.syncStickyReminderNotifications()
+                    }
+                }
+            }
         }
+    }
+
+    /// Load preferences from Supabase when account changes
+    private func loadPreferencesForAccount(_ account: Account?) async {
+        guard let account = account,
+              let userId = await SupabaseManager.shared.currentUserId else {
+            return
+        }
+
+        // Set user/account IDs on managers for syncing
+        await MainActor.run {
+            userPreferences.currentUserId = userId
+            userPreferences.currentAccountId = account.id
+            headerStyleManager.currentUserId = userId
+            headerStyleManager.currentAccountId = account.id
+            featureVisibility.currentUserId = userId
+            featureVisibility.currentAccountId = account.id
+        }
+
+        // Load preferences from Supabase
+        await PreferencesSyncService.shared.loadFromRemote(userId: userId, accountId: account.id)
+    }
+}
+
+// MARK: - App Root View
+/// Wrapper view that observes UserPreferences and HeaderStyleManager to update tint color reactively
+struct AppRootView: View {
+    @Bindable var userPreferences: UserPreferences
+    var headerOverrides: UserHeaderOverrides
+    @Bindable var headerStyleManager: HeaderStyleManager
+    var featureVisibility: FeatureVisibilityManager
+
+    /// The effective accent color based on whether user has a custom color or uses style default
+    var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
+
+    var body: some View {
+        RootView()
+            .environment(userPreferences)
+            .environment(headerOverrides)
+            .environment(headerStyleManager)
+            .environment(featureVisibility)
+            .environment(\.appAccentColor, effectiveAccentColor)
+            .tint(effectiveAccentColor)
+            .preferredColorScheme(.dark)
     }
 }
 
@@ -34,9 +144,38 @@ final class AppState: ObservableObject {
     @Published var showMoodPrompt = false
     @Published var hasCompletedOnboarding = false
 
+    // MARK: - Multi-Account Support
+    @Published var allAccounts: [AccountWithRole] = []
+    @Published var isViewingOtherAccount: Bool = false
+
+    /// The user's own account (where they are the owner)
+    var ownedAccount: AccountWithRole? {
+        allAccounts.first { $0.isOwner }
+    }
+
+    /// Current account with role information
+    var currentAccountWithRole: AccountWithRole? {
+        guard let currentAccount = currentAccount else { return nil }
+        return allAccounts.first { $0.account.id == currentAccount.id }
+    }
+
+    /// Whether the current role has full access (owner or admin)
+    var hasFullAccess: Bool {
+        currentUserRole == .owner || currentUserRole == .admin
+    }
+
+    /// Whether the current role can edit data (owner, admin, or helper)
+    var canEdit: Bool {
+        currentUserRole?.canWrite ?? false
+    }
+
     // MARK: - Navigation State (for deep linking from notifications)
     @Published var pendingAppointmentId: UUID?
     @Published var pendingProfileId: UUID?
+    @Published var pendingStickyReminderId: UUID?
+
+    // MARK: - Post-Onboarding Navigation
+    @Published var pendingOnboardingAction: OnboardingFirstAction?
 
     // MARK: - Repositories
     let authRepository = AuthRepository()
@@ -47,6 +186,28 @@ final class AppState: ObservableObject {
     let appointmentRepository = AppointmentRepository()
     let usefulContactRepository = UsefulContactRepository()
     let moodRepository = MoodRepository()
+    let toDoRepository = ToDoRepository()
+    let importantAccountRepository = ImportantAccountRepository()
+    let stickyReminderRepository = StickyReminderRepository()
+    let appUserRepository = AppUserRepository()
+    // Note: Notes feature now uses SwiftData (see Features/Notes/)
+
+    // MARK: - App Admin State
+    @Published var isAppAdmin = false
+    @Published var currentAppUser: AppUser?
+
+    /// Whether the current user has premium access (either paid subscription or complimentary)
+    var hasPremiumAccess: Bool {
+        // Check for paid subscription
+        if UserDefaults.standard.bool(forKey: "user_has_premium") {
+            return true
+        }
+        // Check for complimentary access
+        return currentAppUser?.hasComplimentaryAccess ?? false
+    }
+
+    // MARK: - UserDefaults Keys
+    private let selectedAccountIdKey = "selectedAccountId"
 
     // MARK: - Initialization
     init() {
@@ -60,6 +221,12 @@ final class AppState: ObservableObject {
             _ = await NotificationService.shared.requestPermission()
             // Re-schedule notifications on app launch
             await rescheduleNotifications()
+            // Process any pending notifications after app is fully loaded
+            // Small delay to ensure views are mounted and ready to observe changes
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            await MainActor.run {
+                NotificationService.shared.processPendingNotifications()
+            }
         }
     }
     
@@ -67,42 +234,166 @@ final class AppState: ObservableObject {
     func checkAuthState() async {
         isLoading = true
 
-        if await authRepository.getCurrentUser() != nil {
+        if let user = await authRepository.getCurrentUser() {
             isAuthenticated = true
+            await syncAppUser(userId: user.id, email: user.email ?? "")
             await loadAccountData()
             await checkMoodPrompt()
         } else {
             isAuthenticated = false
+            isAppAdmin = false
+            currentAppUser = nil
         }
-        
+
         isLoading = false
+    }
+
+    // MARK: - Sync App User
+    /// Ensures the current user exists in app_users table and updates admin status
+    private func syncAppUser(userId: UUID, email: String) async {
+        // Always check hardcoded admins first as a baseline
+        let isHardcodedAdmin = AppAdminService.shared.isAppAdmin(email: email)
+        print("🔐 Checking admin status for: \(email), hardcoded admin: \(isHardcodedAdmin)")
+
+        do {
+            // First ensure the user exists (creates if needed)
+            _ = try await appUserRepository.ensureUserExists(userId: userId, email: email)
+            // Then always fetch fresh data to get latest complimentary access status
+            if let freshUser = try await appUserRepository.getUser(id: userId) {
+                currentAppUser = freshUser
+                // User is admin if either hardcoded OR set in database
+                isAppAdmin = freshUser.isAppAdmin || isHardcodedAdmin
+                print("🔐 App user synced, isAppAdmin: \(isAppAdmin), hasComplimentaryAccess: \(freshUser.hasComplimentaryAccess)")
+            }
+        } catch {
+            print("🔐 Error syncing app user (table may not exist yet): \(error)")
+            // Fall back to checking hardcoded admins only
+            isAppAdmin = isHardcodedAdmin
+            print("🔐 Using fallback, isAppAdmin: \(isAppAdmin)")
+        }
+    }
+
+    // MARK: - Refresh App User Status
+    /// Refreshes the current user's app_user record to get latest complimentary access status
+    func refreshAppUserStatus() async {
+        guard let userId = await SupabaseManager.shared.currentUserId else { return }
+
+        do {
+            if let freshUser = try await appUserRepository.getUser(id: userId) {
+                currentAppUser = freshUser
+                isAppAdmin = freshUser.isAppAdmin || AppAdminService.shared.isAppAdmin(email: freshUser.email)
+                print("🔐 App user refreshed, hasComplimentaryAccess: \(freshUser.hasComplimentaryAccess)")
+            }
+        } catch {
+            print("🔐 Error refreshing app user: \(error)")
+        }
     }
     
     // MARK: - Load Account Data
     func loadAccountData() async {
         do {
-            currentAccount = try await accountRepository.getCurrentUserAccount()
-            
-            if let account = currentAccount {
+            // Fetch all accounts the user has access to
+            allAccounts = try await accountRepository.getAllUserAccounts()
+
+            // Determine which account to load
+            var accountToLoad: Account?
+
+            // Check if there's a previously selected account
+            if let savedAccountIdString = UserDefaults.standard.string(forKey: selectedAccountIdKey),
+               let savedAccountId = UUID(uuidString: savedAccountIdString),
+               let savedAccount = allAccounts.first(where: { $0.account.id == savedAccountId }) {
+                accountToLoad = savedAccount.account
+            }
+            // Otherwise, default to owned account first
+            else if let owned = ownedAccount {
+                accountToLoad = owned.account
+            }
+            // Fall back to first available account
+            else if let first = allAccounts.first {
+                accountToLoad = first.account
+            }
+
+            if let account = accountToLoad {
+                currentAccount = account
                 currentUserRole = try await accountRepository.getCurrentUserRole(accountId: account.id)
+                isViewingOtherAccount = !(ownedAccount?.account.id == account.id)
                 hasCompletedOnboarding = true
+
+                // Save the selected account
+                UserDefaults.standard.set(account.id.uuidString, forKey: selectedAccountIdKey)
+
+                // Start realtime sync for cross-device updates
+                await RealtimeSyncService.shared.startListening(accountId: account.id)
             } else {
+                currentAccount = nil
+                currentUserRole = nil
+                isViewingOtherAccount = false
                 hasCompletedOnboarding = false
             }
         } catch {
             print("Error loading account: \(error)")
             currentAccount = nil
+            currentUserRole = nil
+            allAccounts = []
+            isViewingOtherAccount = false
             hasCompletedOnboarding = false
+        }
+    }
+
+    // MARK: - Switch Account
+    /// Switch to a different account
+    func switchAccount(to accountWithRole: AccountWithRole) async {
+        // Cancel all pending notifications from the previous account before switching
+        NotificationService.shared.removeAllPendingNotifications()
+        print("📱 Cancelled notifications from previous account before switching")
+
+        currentAccount = accountWithRole.account
+        currentUserRole = accountWithRole.role
+        isViewingOtherAccount = !accountWithRole.isOwner
+
+        // Persist selection
+        UserDefaults.standard.set(accountWithRole.account.id.uuidString, forKey: selectedAccountIdKey)
+
+        // Start realtime sync for the new account
+        await RealtimeSyncService.shared.startListening(accountId: accountWithRole.account.id)
+
+        // Reload notifications for the new account
+        await rescheduleNotifications()
+
+        // Check mood prompt for new account
+        await checkMoodPrompt()
+    }
+
+    // MARK: - Switch to Own Account
+    /// Convenience method to switch back to user's own account
+    func switchToOwnAccount() async {
+        guard let owned = ownedAccount else { return }
+        await switchAccount(to: owned)
+    }
+
+    // MARK: - Refresh Accounts List
+    /// Refresh the list of accounts (e.g., after accepting an invitation)
+    func refreshAccountsList() async {
+        do {
+            allAccounts = try await accountRepository.getAllUserAccounts()
+        } catch {
+            print("Error refreshing accounts: \(error)")
         }
     }
     
     // MARK: - Check Mood Prompt
     func checkMoodPrompt() async {
+        // Don't show mood prompt when viewing another account (helpers shouldn't fill it out)
+        guard !isViewingOtherAccount else {
+            showMoodPrompt = false
+            return
+        }
+
         guard let account = currentAccount,
               let userId = await SupabaseManager.shared.currentUserId else {
             return
         }
-        
+
         do {
             let todaysMood = try await moodRepository.getTodaysEntry(
                 accountId: account.id,
@@ -117,27 +408,47 @@ final class AppState: ObservableObject {
     // MARK: - Sign Out
     func signOut() async {
         do {
+            // Stop realtime sync
+            await RealtimeSyncService.shared.stopListening()
+
+            // Cancel all pending notifications from the previous account
+            // This prevents notifications from firing after signing out
+            NotificationService.shared.removeAllPendingNotifications()
+            print("📱 Cancelled all pending notifications on sign out")
+
             try await authRepository.signOut()
             isAuthenticated = false
             currentAccount = nil
             currentUserRole = nil
+            allAccounts = []
+            isViewingOtherAccount = false
             hasCompletedOnboarding = false
+            isAppAdmin = false
+            currentAppUser = nil
+            // Clear saved account selection
+            UserDefaults.standard.removeObject(forKey: selectedAccountIdKey)
         } catch {
             print("Error signing out: \(error)")
         }
     }
     
     // MARK: - Complete Onboarding
-    func completeOnboarding(accountName: String, primaryProfileName: String, birthday: Date?) async throws {
+    func completeOnboarding(accountName: String, primaryProfileName: String, birthday: Date?, firstAction: OnboardingFirstAction? = nil) async throws {
         print("🔵 Starting onboarding...")
         print("🔵 Account name: \(accountName)")
         print("🔵 Profile name: \(primaryProfileName)")
 
+        // Verify we have a valid authenticated user before proceeding
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            print("❌ No authenticated user found during onboarding")
+            throw SupabaseError.notAuthenticated
+        }
+        print("🔵 Authenticated user ID: \(userId)")
+
         // Create account
         print("🔵 Creating account...")
         let account = try await accountRepository.createAccount(
-            displayName: accountName,
-            timezone: TimeZone.current.identifier
+            displayName: accountName
         )
         print("✅ Account created: \(account.id)")
 
@@ -156,7 +467,16 @@ final class AppState: ObservableObject {
         currentAccount = account
         currentUserRole = .owner
         hasCompletedOnboarding = true
-        print("✅ Onboarding state updated")
+
+        // Store the selected first action for navigation after onboarding completes
+        pendingOnboardingAction = firstAction
+        print("✅ Onboarding state updated with action: \(String(describing: firstAction))")
+
+        // Start realtime sync for the new account
+        await RealtimeSyncService.shared.startListening(accountId: account.id)
+
+        // Refresh accounts list to include the new account
+        await refreshAccountsList()
 
         // Check mood prompt
         await checkMoodPrompt()
@@ -244,6 +564,10 @@ final class AppState: ObservableObject {
                 schedules[medication.id] = medicationSchedules
             }
 
+            // Fetch all sticky reminders (including dismissed) to properly cancel dismissed ones
+            let allStickyReminders = try await stickyReminderRepository.getReminders(accountId: account.id)
+            let activeStickyReminders = allStickyReminders.filter { $0.isActive && !$0.isDismissed }
+
             // Re-schedule all notifications
             await NotificationService.shared.rescheduleAllNotifications(
                 appointments: appointments,
@@ -251,8 +575,42 @@ final class AppState: ObservableObject {
                 medications: medications,
                 schedules: schedules
             )
+
+            // Re-schedule sticky reminder notifications (pass all reminders to cancel dismissed ones)
+            await NotificationService.shared.rescheduleAllStickyReminders(
+                activeReminders: activeStickyReminders,
+                allReminders: allStickyReminders
+            )
         } catch {
             print("Error re-scheduling notifications: \(error)")
+        }
+    }
+
+    // MARK: - Sync Sticky Reminder Notifications
+    /// Syncs sticky reminders from Supabase and schedules local notifications.
+    /// Called when app comes to foreground to catch any changes made while inactive.
+    func syncStickyReminderNotifications() async {
+        guard let account = currentAccount else {
+            print("📱 No account, skipping sticky reminder sync")
+            return
+        }
+
+        print("📱 Syncing sticky reminder notifications for account: \(account.id)")
+
+        do {
+            // Fetch all sticky reminders from Supabase
+            let allStickyReminders = try await stickyReminderRepository.getReminders(accountId: account.id)
+            let activeStickyReminders = allStickyReminders.filter { $0.isActive && !$0.isDismissed }
+
+            // Reschedule all sticky reminder notifications
+            await NotificationService.shared.rescheduleAllStickyReminders(
+                activeReminders: activeStickyReminders,
+                allReminders: allStickyReminders
+            )
+
+            print("📱 Synced \(activeStickyReminders.count) active sticky reminders")
+        } catch {
+            print("Error syncing sticky reminder notifications: \(error)")
         }
     }
 
@@ -338,6 +696,25 @@ extension AppState: NotificationHandlerDelegate {
     nonisolated func handleBirthdayView(profileId: UUID) {
         Task { @MainActor in
             pendingProfileId = profileId
+        }
+    }
+
+    /// Handle "Dismiss" action from sticky reminder notification
+    func handleStickyReminderDismiss(reminderId: UUID) async {
+        do {
+            _ = try await stickyReminderRepository.dismissReminder(id: reminderId)
+            await NotificationService.shared.cancelStickyReminder(reminderId: reminderId)
+            NotificationCenter.default.post(name: .stickyRemindersDidChange, object: nil)
+            print("📱 Dismissed sticky reminder: \(reminderId)")
+        } catch {
+            print("📱 Error dismissing sticky reminder: \(error)")
+        }
+    }
+
+    /// Handle tap on sticky reminder notification
+    nonisolated func handleStickyReminderTapped(reminderId: UUID) {
+        Task { @MainActor in
+            pendingStickyReminderId = reminderId
         }
     }
 }

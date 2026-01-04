@@ -4,8 +4,18 @@ import SwiftUI
 struct AddUsefulContactView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
+    var onDismiss: (() -> Void)? = nil
     let onSave: (UsefulContact) -> Void
+
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
 
     @State private var name = ""
     @State private var category: ContactCategory = .other
@@ -21,8 +31,46 @@ struct AddUsefulContactView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
+
+                    Spacer()
+
+                    Text("Add Contact")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await saveContact() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(name.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -44,7 +92,7 @@ struct AddUsefulContactView: View {
                                             .foregroundColor(category == cat ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(category == cat ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(category == cat ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -67,24 +115,13 @@ struct AddUsefulContactView: View {
                     .padding(AppDimensions.screenPadding)
                 }
             }
-            .navigationTitle("Add Contact")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveContact() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(name.isBlank || isLoading)
-                }
-            }
+            .background(Color.clear)
+            .navigationBarHidden(true)
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .toolbarBackground(.clear, for: .navigationBar)
+        .containerBackground(.clear, for: .navigation)
     }
 
     private func saveContact() async {
@@ -108,7 +145,7 @@ struct AddUsefulContactView: View {
         do {
             let contact = try await appState.usefulContactRepository.createContact(insert)
             onSave(contact)
-            dismiss()
+            dismissView()
         } catch {
             errorMessage = "Failed to save contact"
         }

@@ -8,6 +8,7 @@ protocol MedicationRepositoryProtocol {
     func createMedication(_ medication: MedicationInsert) async throws -> Medication
     func updateMedication(_ medication: Medication) async throws -> Medication
     func deleteMedication(id: UUID) async throws
+    func updateMedicationSortOrders(_ updates: [SortOrderUpdate]) async throws
 
     // Schedules
     func getSchedules(medicationId: UUID) async throws -> [MedicationSchedule]
@@ -36,10 +37,11 @@ final class MedicationRepository: MedicationRepositoryProtocol {
             .from(TableName.medications)
             .select()
             .eq("account_id", value: accountId)
+            .order("sort_order")
             .order("name")
             .execute()
             .value
-        
+
         return medications
     }
     
@@ -105,7 +107,18 @@ final class MedicationRepository: MedicationRepositoryProtocol {
             .eq("id", value: id)
             .execute()
     }
-    
+
+    // MARK: - Update Medication Sort Orders
+    func updateMedicationSortOrders(_ updates: [SortOrderUpdate]) async throws {
+        for update in updates {
+            try await supabase
+                .from(TableName.medications)
+                .update(["sort_order": update.sortOrder])
+                .eq("id", value: update.id)
+                .execute()
+        }
+    }
+
     // MARK: - Get Schedules
     func getSchedules(medicationId: UUID) async throws -> [MedicationSchedule] {
         let schedules: [MedicationSchedule] = try await supabase
@@ -250,19 +263,41 @@ final class MedicationRepository: MedicationRepositoryProtocol {
         let calendar = Calendar.current
         let dayOfWeek = calendar.component(.weekday, from: date) - 1 // 0-6 (Sun-Sat)
 
+        print("💊 generateDailyLogs: Starting for date \(date), dayOfWeek: \(dayOfWeek)")
+
         // Get all medications for this account
         let medications = try await getMedications(accountId: accountId)
+        print("💊 generateDailyLogs: Found \(medications.count) medications")
 
         for medication in medications {
+            print("💊 Processing medication: \(medication.name), isPaused: \(medication.isPaused)")
             // Skip paused medications
-            guard !medication.isPaused else { continue }
+            guard !medication.isPaused else {
+                print("💊 Skipping paused medication: \(medication.name)")
+                continue
+            }
 
             let schedules = try await getSchedules(medicationId: medication.id)
+            print("💊 Found \(schedules.count) schedules for \(medication.name)")
 
             for schedule in schedules {
+                print("💊 Schedule startDate: \(schedule.startDate), endDate: \(String(describing: schedule.endDate))")
+                print("💊 Schedule entries: \(String(describing: schedule.scheduleEntries)), legacyTimes: \(String(describing: schedule.legacyTimes))")
+
                 // Check if schedule is active for this date
-                guard schedule.startDate <= date else { continue }
-                if let endDate = schedule.endDate, endDate < date { continue }
+                let scheduleStartDay = calendar.startOfDay(for: schedule.startDate)
+                let targetDay = calendar.startOfDay(for: date)
+                guard scheduleStartDay <= targetDay else {
+                    print("💊 Skipping schedule - startDate \(scheduleStartDay) is after target date \(targetDay)")
+                    continue
+                }
+                if let endDate = schedule.endDate {
+                    let endDay = calendar.startOfDay(for: endDate)
+                    if endDay < targetDay {
+                        print("💊 Skipping schedule - endDate \(endDay) is before target date \(targetDay)")
+                        continue
+                    }
+                }
 
                 // Get active entries for this date
                 let activeEntries = getActiveEntriesForDate(
@@ -274,6 +309,11 @@ final class MedicationRepository: MedicationRepositoryProtocol {
                     legacyDaysOfWeek: schedule.daysOfWeek,
                     doseDescription: schedule.doseDescription
                 )
+
+                print("💊 Active entries for this schedule: \(activeEntries.count)")
+                for entry in activeEntries {
+                    print("💊   - time: \(entry.time), dosage: \(entry.dosage ?? "nil")")
+                }
 
                 for (timeString, _) in activeEntries {
                     // Parse time string (HH:mm format)
@@ -303,10 +343,14 @@ final class MedicationRepository: MedicationRepositoryProtocol {
                             status: .scheduled
                         )
                         _ = try await createLog(log)
+                        print("💊 Created log for \(medication.name) at \(scheduledAt)")
+                    } else {
+                        print("💊 Log already exists for \(medication.name) at \(scheduledAt)")
                     }
                 }
             }
         }
+        print("💊 generateDailyLogs: Complete")
     }
 
     /// Gets active schedule entries for a specific date, handling sequential durations
@@ -413,8 +457,12 @@ final class MedicationRepository: MedicationRepositoryProtocol {
         let dayOfWeek = calendar.component(.weekday, from: today) - 1
 
         for schedule in schedules {
-            guard schedule.startDate <= today else { continue }
-            if let endDate = schedule.endDate, endDate < today { continue }
+            let scheduleStartDay = calendar.startOfDay(for: schedule.startDate)
+            guard scheduleStartDay <= today else { continue }
+            if let endDate = schedule.endDate {
+                let endDay = calendar.startOfDay(for: endDate)
+                if endDay < today { continue }
+            }
 
             // Get active entries for today using sequential duration logic
             let activeEntries = getActiveEntriesForDate(

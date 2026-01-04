@@ -5,92 +5,89 @@ struct MoodDashboardView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @Environment(\.navigateToRoot) var navigateToRoot
+    @Environment(\.iPadHomeAction) private var iPadHomeAction
     @StateObject private var viewModel = MoodDashboardViewModel()
     @State private var showMoodPrompt = false
-    @State private var showSettings = false
 
     private let moodEmojis = ["", "😢", "😕", "😐", "🙂", "😊"]
     private let moodLabels = ["", "Sad", "Not Great", "Okay", "Good", "Great"]
 
     var body: some View {
         ZStack {
-            Color.appBackground.ignoresSafeArea()
+            Color.appBackgroundLight.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header at the top - fully interactive
-                HeaderImageView(
-                    imageName: "header-mood",
-                    title: "Mood Tracker",
-                    showBackButton: true,
-                    backAction: { dismiss() },
-                    showSettingsButton: true,
-                    settingsAction: { showSettings = true }
-                )
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Header scrolls with content - uses style-based assets from HeaderStyleManager
+                    CustomizableHeaderView(
+                        pageIdentifier: .mood,
+                        title: "Mood Tracker",
+                        showBackButton: iPadHomeAction == nil,
+                        backAction: { dismiss() },
+                        showHomeButton: iPadHomeAction != nil,
+                        homeAction: iPadHomeAction
+                    )
 
-                // Content scrolls below header
-                ScrollView {
+                    // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
-                        // Today's mood or prompt to record
-                        if let todayMood = viewModel.todaysMood {
-                            TodayMoodCard(entry: todayMood, moodEmojis: moodEmojis, moodLabels: moodLabels)
-                        } else {
-                            RecordMoodCard {
-                                showMoodPrompt = true
-                            }
-                        }
-
-                        // 30-Day Summary
-                        if !viewModel.entries.isEmpty {
-                            MoodSummaryCard(viewModel: viewModel, moodEmojis: moodEmojis)
-
-                            // Weekly trend
-                            WeeklyTrendCard(viewModel: viewModel, moodEmojis: moodEmojis)
-                        }
-
-                        // History section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("HISTORY")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            if viewModel.entries.isEmpty && !viewModel.isLoading {
-                                EmptyStateView(
-                                    icon: "face.smiling",
-                                    title: "No mood entries yet",
-                                    message: "Start tracking your mood to see patterns over time",
-                                    buttonTitle: "Record Mood",
-                                    buttonAction: { showMoodPrompt = true }
-                                )
-                                .padding(.top, 20)
+                            // Today's mood or prompt to record
+                            if let todayMood = viewModel.todaysMood {
+                                TodayMoodCard(entry: todayMood, moodEmojis: moodEmojis, moodLabels: moodLabels)
                             } else {
-                                LazyVStack(spacing: AppDimensions.cardSpacing) {
-                                    ForEach(viewModel.entries) { entry in
-                                        MoodEntryCard(entry: entry, moodEmojis: moodEmojis)
+                                RecordMoodCard {
+                                    showMoodPrompt = true
+                                }
+                            }
+
+                            // 30-Day Summary
+                            if !viewModel.entries.isEmpty {
+                                MoodSummaryCard(viewModel: viewModel, moodEmojis: moodEmojis)
+
+                                // Weekly trend
+                                WeeklyTrendCard(viewModel: viewModel, moodEmojis: moodEmojis)
+                            }
+
+                            // History section
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("HISTORY")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+
+                                if viewModel.entries.isEmpty && !viewModel.isLoading {
+                                    EmptyStateView(
+                                        icon: "face.smiling",
+                                        title: "No mood entries yet",
+                                        message: "Start tracking your mood to see patterns over time",
+                                        buttonTitle: "Record Mood",
+                                        buttonAction: { showMoodPrompt = true }
+                                    )
+                                    .padding(.top, 20)
+                                } else {
+                                    LazyVStack(spacing: AppDimensions.cardSpacing) {
+                                        ForEach(viewModel.entries) { entry in
+                                            MoodEntryCard(entry: entry, moodEmojis: moodEmojis)
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        // Loading state
-                        if viewModel.isLoading {
-                            LoadingView(message: "Loading mood data...")
-                                .padding(.top, 40)
-                        }
+                            // Loading state
+                            if viewModel.isLoading {
+                                LoadingView(message: "Loading mood data...")
+                                    .padding(.top, 40)
+                            }
 
-                        Spacer()
-                            .frame(height: 140)
+                            // Bottom spacing for nav bar
+                            Spacer()
+                                .frame(height: 120)
                     }
                     .padding(.horizontal, AppDimensions.screenPadding)
                     .padding(.top, AppDimensions.cardSpacing)
                 }
             }
+            .ignoresSafeArea(edges: .top)
         }
         .navigationBarHidden(true)
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView()
-            }
-        }
         .sheet(isPresented: $showMoodPrompt, onDismiss: {
             // Refresh data when mood prompt is dismissed
             Task {
@@ -106,6 +103,11 @@ struct MoodDashboardView: View {
         .refreshable {
             await viewModel.loadData(appState: appState)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
+            Task {
+                await viewModel.loadData(appState: appState)
+            }
+        }
     }
 }
 
@@ -114,6 +116,8 @@ struct TodayMoodCard: View {
     let entry: MoodEntry
     let moodEmojis: [String]
     let moodLabels: [String]
+
+    @Environment(\.appAccentColor) private var appAccentColor
 
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -128,7 +132,7 @@ struct TodayMoodCard: View {
                 Text("TODAY")
                     .font(.appCaption)
                     .fontWeight(.bold)
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
 
                 Spacer()
 
@@ -158,11 +162,11 @@ struct TodayMoodCard: View {
             }
         }
         .padding(AppDimensions.cardPadding)
-        .background(Color.accentYellow.opacity(0.15))
+        .background(appAccentColor.opacity(0.15))
         .cornerRadius(AppDimensions.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                .stroke(Color.accentYellow.opacity(0.3), lineWidth: 1)
+                .stroke(appAccentColor.opacity(0.3), lineWidth: 1)
         )
     }
 }
@@ -204,6 +208,7 @@ struct RecordMoodCard: View {
 struct MoodSummaryCard: View {
     @ObservedObject var viewModel: MoodDashboardViewModel
     let moodEmojis: [String]
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         VStack(spacing: 16) {
@@ -241,11 +246,11 @@ struct MoodSummaryCard: View {
                 VStack(spacing: 8) {
                     Text("\(viewModel.entries.count)")
                         .font(.appLargeTitle)
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(Color.white)
 
                     Text("Entries")
                         .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                        .foregroundColor(Color.white)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -314,6 +319,7 @@ struct WeeklyTrendCard: View {
 struct MoodEntryCard: View {
     let entry: MoodEntry
     let moodEmojis: [String]
+    @Environment(\.appAccentColor) private var appAccentColor
 
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -345,7 +351,7 @@ struct MoodEntryCard: View {
                 ForEach(1...5, id: \.self) { rating in
                     Image(systemName: rating <= entry.rating ? "star.fill" : "star")
                         .font(.caption2)
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(appAccentColor)
                 }
             }
         }

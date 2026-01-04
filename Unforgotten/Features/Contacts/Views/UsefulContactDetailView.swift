@@ -5,30 +5,37 @@ struct UsefulContactDetailView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @Environment(\.navigateToRoot) var navigateToRoot
+    @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.iPadEditUsefulContactAction) private var iPadEditUsefulContactAction
 
     @State var contact: UsefulContact
     @State private var showEditContact = false
     @State private var showSettings = false
 
     var body: some View {
-        ZStack {
-            Color.appBackground.ignoresSafeArea()
-
+        ScrollView {
             VStack(spacing: 0) {
-                // Header at the top - fully interactive
-                HeaderImageView(
-                    imageName: "header-contacts-detail",
+                // Header scrolls with content
+                CustomizableHeaderView(
+                    pageIdentifier: .contactDetail,
                     title: contact.name,
                     subtitle: contact.category.displayName,
                     showBackButton: true,
                     backAction: { dismiss() },
                     showEditButton: true,
-                    editAction: { showEditContact = true }
+                    editAction: {
+                        // Use full-screen overlay action if available
+                        if let editAction = iPadEditUsefulContactAction {
+                            editAction(contact)
+                        } else {
+                            showEditContact = true
+                        }
+                    },
+                    editButtonPosition: .bottomRight
                 )
 
-                // Content scrolls below header
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
+                // Content
+                VStack(spacing: AppDimensions.cardSpacing) {
                         // Action buttons
                         HStack(spacing: 12) {
                             if let phone = contact.phone {
@@ -74,69 +81,70 @@ struct UsefulContactDetailView: View {
                         }
 
                     // Details
-                    VStack(spacing: AppDimensions.cardSpacing) {
-                        if let company = contact.companyName {
-                            DetailItemCard(label: "Company", value: company)
-                        }
+                    if let company = contact.companyName {
+                        DetailItemCard(label: "Company", value: company)
+                    }
 
-                        if let phone = contact.phone {
-                            DetailItemCard(label: "Phone", value: phone)
-                        }
+                    if let phone = contact.phone {
+                        DetailItemCard(label: "Phone", value: phone)
+                    }
 
-                        if let email = contact.email {
-                            DetailItemCard(label: "Email", value: email)
-                        }
+                    if let email = contact.email {
+                        DetailItemCard(label: "Email", value: email)
+                    }
 
-                        if let address = contact.address {
-                            Button {
-                                let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                                if let url = URL(string: "maps://?q=\(encoded)") {
-                                    UIApplication.shared.open(url)
-                                }
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Address")
-                                            .font(.appCaption)
-                                            .foregroundColor(.textSecondary)
-
-                                        Text(address)
-                                            .font(.appCardTitle)
-                                            .foregroundColor(.textPrimary)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "map")
-                                        .foregroundColor(.accentYellow)
-                                }
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
+                    if let address = contact.address {
+                        Button {
+                            let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                            if let url = URL(string: "maps://?q=\(encoded)") {
+                                UIApplication.shared.open(url)
                             }
-                        }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Address")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textSecondary)
 
-                        if let notes = contact.notes {
-                            DetailItemCard(label: "Notes", value: notes)
+                                    Text(address)
+                                        .font(.appCardTitle)
+                                        .foregroundColor(.textPrimary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "map")
+                                    .foregroundColor(appAccentColor)
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
                         }
                     }
 
-                        Spacer()
-                            .frame(height: 140)
+                    if let notes = contact.notes {
+                        DetailItemCard(label: "Notes", value: notes)
                     }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.top, AppDimensions.cardSpacing)
+
+                    // Bottom spacing for nav bar
+                    Spacer()
+                        .frame(height: 120)
                 }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.top, AppDimensions.cardSpacing)
             }
         }
+        .ignoresSafeArea(edges: .top)
+        .background(Color.appBackground)
         .navigationBarHidden(true)
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView()
-            }
+        .sidePanel(isPresented: $showSettings) {
+            SettingsPanelView(onDismiss: { showSettings = false })
         }
-        .sheet(isPresented: $showEditContact) {
-            EditUsefulContactView(contact: contact) { updatedContact in
+        .sidePanel(isPresented: $showEditContact) {
+            EditUsefulContactView(
+                contact: contact,
+                onDismiss: { showEditContact = false }
+            ) { updatedContact in
                 contact = updatedContact
             }
         }

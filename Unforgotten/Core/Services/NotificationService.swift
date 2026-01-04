@@ -6,6 +6,7 @@ enum NotificationAction: String {
     case takeMedication = "TAKE_MEDICATION"
     case snoozeMedication = "SNOOZE_MEDICATION"
     case viewAppointment = "VIEW_APPOINTMENT"
+    case dismissStickyReminder = "DISMISS_STICKY_REMINDER"
 }
 
 // MARK: - Notification Category Identifiers
@@ -13,6 +14,7 @@ enum NotificationCategory: String {
     case medicationReminder = "MEDICATION_REMINDER"
     case appointmentReminder = "APPOINTMENT_REMINDER"
     case birthdayReminder = "BIRTHDAY_REMINDER"
+    case stickyReminder = "STICKY_REMINDER"
 }
 
 // MARK: - Notification Handler Protocol
@@ -21,6 +23,8 @@ protocol NotificationHandlerDelegate: AnyObject {
     func handleMedicationSnooze(medicationId: UUID, medicationName: String, doseDescription: String?) async
     func handleAppointmentView(appointmentId: UUID)
     func handleBirthdayView(profileId: UUID)
+    func handleStickyReminderDismiss(reminderId: UUID) async
+    func handleStickyReminderTapped(reminderId: UUID)
 }
 
 // MARK: - Notification Service
@@ -30,9 +34,34 @@ final class NotificationService: NSObject {
     private let notificationCenter = UNUserNotificationCenter.current()
     weak var delegate: NotificationHandlerDelegate?
 
+    // Store pending notification data when delegate isn't ready yet
+    var pendingAppointmentId: UUID?
+    var pendingProfileId: UUID?
+    var pendingStickyReminderId: UUID?
+
     private override init() {
         super.init()
         notificationCenter.delegate = self
+    }
+
+    /// Check and transfer any pending notification IDs to the delegate
+    func processPendingNotifications() {
+        guard let delegate = delegate else { return }
+
+        if let appointmentId = pendingAppointmentId {
+            pendingAppointmentId = nil
+            delegate.handleAppointmentView(appointmentId: appointmentId)
+        }
+
+        if let profileId = pendingProfileId {
+            pendingProfileId = nil
+            delegate.handleBirthdayView(profileId: profileId)
+        }
+
+        if let reminderId = pendingStickyReminderId {
+            pendingStickyReminderId = nil
+            delegate.handleStickyReminderTapped(reminderId: reminderId)
+        }
     }
 
     // MARK: - Permission
@@ -260,6 +289,157 @@ final class NotificationService: NSObject {
         notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
     }
 
+    // MARK: - Sticky Reminders
+
+    /// Schedule a sticky reminder notification
+    func scheduleStickyReminder(reminder: StickyReminder) async {
+        // Check permission first
+        let status = await checkPermissionStatus()
+        guard status == .authorized else {
+            print("📱 Notifications not authorized, skipping sticky reminder")
+            return
+        }
+
+        // Don't schedule if dismissed or inactive
+        guard reminder.isActive && !reminder.isDismissed else {
+            print("📱 Sticky reminder is dismissed or inactive, skipping")
+            return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = reminder.title
+        content.body = reminder.message ?? "Tap to open the app and dismiss this reminder"
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.stickyReminder.rawValue
+        content.userInfo = [
+            "reminderId": reminder.id.uuidString,
+            "title": reminder.title,
+            "repeatInterval": "\(reminder.repeatInterval.value)_\(reminder.repeatInterval.unit.rawValue)"
+        ]
+
+        // Calculate trigger time
+        let triggerDate: Date
+        if reminder.triggerTime > Date() {
+            // Future trigger - schedule for that time
+            triggerDate = reminder.triggerTime
+        } else {
+            // Already triggered - schedule next occurrence based on repeat interval
+            triggerDate = Date().addingTimeInterval(reminder.repeatInterval.intervalInSeconds)
+        }
+
+        // Only schedule if in the future
+        guard triggerDate > Date() else {
+            // Schedule immediately for next interval
+            let trigger = UNTimeIntervalNotificationTrigger(
+                timeInterval: reminder.repeatInterval.intervalInSeconds,
+                repeats: true
+            )
+
+            let identifier = "sticky-\(reminder.id.uuidString)"
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+            do {
+                try await notificationCenter.add(request)
+                print("📱 Scheduled repeating sticky reminder '\(reminder.title)' every \(reminder.repeatInterval.displayName)")
+            } catch {
+                print("Failed to schedule sticky reminder: \(error)")
+            }
+            return
+        }
+
+        // Schedule for specific future time, then repeat
+        let timeInterval = triggerDate.timeIntervalSinceNow
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: max(timeInterval, 1), // At least 1 second in future
+            repeats: false
+        )
+
+        let identifier = "sticky-\(reminder.id.uuidString)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        do {
+            try await notificationCenter.add(request)
+            print("📱 Scheduled sticky reminder '\(reminder.title)' for \(triggerDate)")
+
+            // Schedule the repeating notification to start after the initial trigger
+            await scheduleRepeatingStickReminder(reminder: reminder, startAfter: triggerDate)
+        } catch {
+            print("Failed to schedule sticky reminder: \(error)")
+        }
+    }
+
+    /// Schedule the repeating part of a sticky reminder
+    private func scheduleRepeatingStickReminder(reminder: StickyReminder, startAfter: Date) async {
+        let content = UNMutableNotificationContent()
+        content.title = reminder.title
+        content.body = reminder.message ?? "Tap to open the app and dismiss this reminder"
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.stickyReminder.rawValue
+        content.userInfo = [
+            "reminderId": reminder.id.uuidString,
+            "title": reminder.title,
+            "repeatInterval": "\(reminder.repeatInterval.value)_\(reminder.repeatInterval.unit.rawValue)"
+        ]
+
+        // Calculate time until first repeat after initial trigger
+        let delay = startAfter.timeIntervalSinceNow + reminder.repeatInterval.intervalInSeconds
+
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: max(delay, 60), // At least 1 minute
+            repeats: true
+        )
+
+        let identifier = "sticky-repeat-\(reminder.id.uuidString)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        do {
+            try await notificationCenter.add(request)
+            print("📱 Scheduled repeating sticky reminder after initial trigger")
+        } catch {
+            print("Failed to schedule repeating sticky reminder: \(error)")
+        }
+    }
+
+    /// Cancel sticky reminder notifications
+    func cancelStickyReminder(reminderId: UUID) async {
+        let identifiers = [
+            "sticky-\(reminderId.uuidString)",
+            "sticky-repeat-\(reminderId.uuidString)"
+        ]
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
+        notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
+        print("📱 Cancelled sticky reminder notifications for \(reminderId)")
+    }
+
+    /// Reschedule all sticky reminders
+    /// - Parameters:
+    ///   - activeReminders: Active reminders to schedule
+    ///   - allReminders: All reminders (including dismissed) to ensure cancelled ones stay cancelled
+    func rescheduleAllStickyReminders(activeReminders: [StickyReminder], allReminders: [StickyReminder]) async {
+        // First, cancel notifications for all dismissed/inactive reminders
+        for reminder in allReminders {
+            if !reminder.isActive || reminder.isDismissed {
+                await cancelStickyReminder(reminderId: reminder.id)
+            }
+        }
+
+        // Then schedule active reminders
+        for reminder in activeReminders {
+            await scheduleStickyReminder(reminder: reminder)
+        }
+    }
+
+    /// Reschedule all sticky reminders (legacy - schedules only what's passed)
+    func rescheduleAllStickyReminders(reminders: [StickyReminder]) async {
+        for reminder in reminders {
+            if reminder.isActive && !reminder.isDismissed {
+                await scheduleStickyReminder(reminder: reminder)
+            } else {
+                await cancelStickyReminder(reminderId: reminder.id)
+            }
+        }
+    }
+
     // MARK: - Utility
 
     /// Remove all pending notifications
@@ -314,10 +494,24 @@ final class NotificationService: NSObject {
             options: []
         )
 
+        // Sticky reminder actions
+        let dismissStickyAction = UNNotificationAction(
+            identifier: "DISMISS_STICKY_REMINDER",
+            title: "Dismiss",
+            options: []
+        )
+        let stickyCategory = UNNotificationCategory(
+            identifier: "STICKY_REMINDER",
+            actions: [dismissStickyAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         notificationCenter.setNotificationCategories([
             medicationCategory,
             appointmentCategory,
-            birthdayCategory
+            birthdayCategory,
+            stickyCategory
         ])
     }
 
@@ -377,8 +571,15 @@ final class NotificationService: NSObject {
 
         // Schedule appointment reminders
         for appointment in appointments {
+            // Skip completed appointments
+            guard !appointment.isCompleted else {
+                // Cancel any existing notification for completed appointment
+                cancelAppointmentReminder(appointmentId: appointment.id)
+                continue
+            }
+
             // Only schedule future appointments
-            let appointmentDateTime = appointment.dateTime ?? appointment.date
+            let appointmentDateTime = appointment.dateTime
             guard appointmentDateTime > Date() else { continue }
 
             await scheduleAppointmentReminder(
@@ -481,25 +682,29 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         print("📱 Notification response: category=\(categoryIdentifier), action=\(actionIdentifier)")
 
-        Task {
-            await handleNotificationResponse(
-                categoryIdentifier: categoryIdentifier,
-                actionIdentifier: actionIdentifier,
-                userInfo: userInfo
-            )
-            completionHandler()
-        }
+        // Handle navigation synchronously to ensure it works from locked screen
+        handleNotificationResponseSync(
+            categoryIdentifier: categoryIdentifier,
+            actionIdentifier: actionIdentifier,
+            userInfo: userInfo
+        )
+
+        // Call completion handler immediately
+        completionHandler()
     }
 
-    /// Process notification response
-    private func handleNotificationResponse(
+    /// Process notification response synchronously (for navigation)
+    private func handleNotificationResponseSync(
         categoryIdentifier: String,
         actionIdentifier: String,
         userInfo: [AnyHashable: Any]
-    ) async {
+    ) {
         switch categoryIdentifier {
         case NotificationCategory.medicationReminder.rawValue:
-            await handleMedicationNotification(actionIdentifier: actionIdentifier, userInfo: userInfo)
+            // Medication actions need async handling - fire and forget
+            Task {
+                await handleMedicationNotification(actionIdentifier: actionIdentifier, userInfo: userInfo)
+            }
 
         case NotificationCategory.appointmentReminder.rawValue:
             handleAppointmentNotification(actionIdentifier: actionIdentifier, userInfo: userInfo)
@@ -507,8 +712,43 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         case NotificationCategory.birthdayReminder.rawValue:
             handleBirthdayNotification(userInfo: userInfo)
 
+        case NotificationCategory.stickyReminder.rawValue:
+            handleStickyReminderNotificationSync(actionIdentifier: actionIdentifier, userInfo: userInfo)
+
         default:
             print("📱 Unknown notification category: \(categoryIdentifier)")
+        }
+    }
+
+    /// Handle sticky reminder notification actions (sync version for navigation)
+    private func handleStickyReminderNotificationSync(actionIdentifier: String, userInfo: [AnyHashable: Any]) {
+        guard let reminderIdString = userInfo["reminderId"] as? String,
+              let reminderId = UUID(uuidString: reminderIdString) else {
+            print("📱 Missing reminderId in notification")
+            return
+        }
+
+        switch actionIdentifier {
+        case NotificationAction.dismissStickyReminder.rawValue:
+            print("📱 User dismissed sticky reminder: \(reminderId)")
+            // Dismiss action needs async - fire and forget
+            Task {
+                await delegate?.handleStickyReminderDismiss(reminderId: reminderId)
+            }
+
+        case UNNotificationDefaultActionIdentifier:
+            // User tapped the notification - open the app to sticky reminders
+            print("📱 User tapped sticky reminder: \(reminderId)")
+            if let delegate = delegate {
+                delegate.handleStickyReminderTapped(reminderId: reminderId)
+            } else {
+                // Store for later when delegate becomes available
+                pendingStickyReminderId = reminderId
+                print("📱 Stored pending sticky reminder ID (delegate not ready)")
+            }
+
+        default:
+            break
         }
     }
 
@@ -565,7 +805,13 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         case NotificationAction.viewAppointment.rawValue,
              UNNotificationDefaultActionIdentifier:
             print("📱 User wants to view appointment: \(appointmentId)")
-            delegate?.handleAppointmentView(appointmentId: appointmentId)
+            if let delegate = delegate {
+                delegate.handleAppointmentView(appointmentId: appointmentId)
+            } else {
+                // Store for later when delegate becomes available
+                pendingAppointmentId = appointmentId
+                print("📱 Stored pending appointment ID (delegate not ready)")
+            }
 
         default:
             break
@@ -581,6 +827,12 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         }
 
         print("📱 User tapped birthday notification: \(profileId)")
-        delegate?.handleBirthdayView(profileId: profileId)
+        if let delegate = delegate {
+            delegate.handleBirthdayView(profileId: profileId)
+        } else {
+            // Store for later when delegate becomes available
+            pendingProfileId = profileId
+            print("📱 Stored pending profile ID (delegate not ready)")
+        }
     }
 }

@@ -63,13 +63,8 @@ final class SupabaseManager {
             }
 
             // Format 5: Time-only (e.g., "04:00:00" from PostgreSQL time column)
-            // Convert to today's date with the specified time
-            let timeOnlyFormatter = DateFormatter()
-            timeOnlyFormatter.dateFormat = "HH:mm:ss"
-            timeOnlyFormatter.locale = Locale(identifier: "en_US_POSIX")
-            timeOnlyFormatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-            // Parse time and combine with today's date
+            // Convert to today's date with the specified time using local timezone
+            // This ensures the time displayed matches what the user originally entered
             if dateString.range(of: "^\\d{2}:\\d{2}:\\d{2}$", options: .regularExpression) != nil {
                 let calendar = Calendar.current
                 let today = calendar.startOfDay(for: Date())
@@ -80,7 +75,8 @@ final class SupabaseManager {
                     dateComponents.hour = components[0]
                     dateComponents.minute = components[1]
                     dateComponents.second = components[2]
-                    dateComponents.timeZone = TimeZone(secondsFromGMT: 0)
+                    // Use local timezone for time-only values so display matches what user entered
+                    dateComponents.timeZone = TimeZone.current
 
                     if let date = calendar.date(from: dateComponents) {
                         return date
@@ -113,10 +109,17 @@ final class SupabaseManager {
     // MARK: - Auth Helpers
     var currentUser: User? {
         get async {
-            try? await client.auth.session.user
+            do {
+                let session = try await client.auth.session
+                print("🔐 Session found for user: \(session.user.id)")
+                return session.user
+            } catch {
+                print("🔐 No session found: \(error)")
+                return nil
+            }
         }
     }
-    
+
     var currentUserId: UUID? {
         get async {
             await currentUser?.id
@@ -153,6 +156,14 @@ enum TableName {
     static let appointments = "appointments"
     static let usefulContacts = "useful_contacts"
     static let moodEntries = "mood_entries"
+    static let notes = "notes"
+    static let todoLists = "todo_lists"
+    static let todoItems = "todo_items"
+    static let todoListTypes = "todo_list_types"
+    static let importantAccounts = "important_accounts"
+    static let stickyReminders = "sticky_reminders"
+    static let appUsers = "app_users"
+    static let userPreferences = "user_preferences"
 }
 
 // MARK: - Supabase Error

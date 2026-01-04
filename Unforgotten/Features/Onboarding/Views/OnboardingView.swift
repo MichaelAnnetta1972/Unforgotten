@@ -3,8 +3,9 @@ import SwiftUI
 // MARK: - Onboarding View
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.appAccentColor) private var appAccentColor
     @State private var currentStep = 0
-    
+
     // Form data
     @State private var accountName = ""
     @State private var primaryName = ""
@@ -23,7 +24,7 @@ struct OnboardingView: View {
                 HStack(spacing: 8) {
                     ForEach(0..<3) { index in
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(index <= currentStep ? Color.accentYellow : Color.cardBackgroundSoft)
+                            .fill(index <= currentStep ? appAccentColor : Color.cardBackgroundSoft)
                             .frame(height: 4)
                     }
                 }
@@ -85,16 +86,17 @@ struct OnboardingView: View {
 
 // MARK: - Welcome Step
 struct WelcomeStep: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     let onContinue: () -> Void
-    
-    var body: some View {
+
+    var body: some View{
         VStack(spacing: 32) {
             Spacer()
             
             // Icon
             Image(systemName: "brain.head.profile")
                 .font(.system(size: 100))
-                .foregroundColor(.accentYellow)
+                .foregroundColor(appAccentColor)
             
             VStack(spacing: 16) {
                 Text("Welcome to\nUnforgotten")
@@ -130,15 +132,16 @@ struct WelcomeStep: View {
 
 // MARK: - Feature Row
 struct FeatureRow: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     let icon: String
     let title: String
     let description: String
-    
+
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundColor(.accentYellow)
+                .foregroundColor(appAccentColor)
                 .frame(width: 40)
             
             VStack(alignment: .leading, spacing: 2) {
@@ -161,9 +164,10 @@ struct FeatureRow: View {
 
 // MARK: - Account Setup Step
 struct AccountSetupStep: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     @Binding var accountName: String
     let onContinue: () -> Void
-    
+
     var body: some View {
         VStack(spacing: 32) {
             Spacer()
@@ -171,7 +175,7 @@ struct AccountSetupStep: View {
             VStack(spacing: 16) {
                 Image(systemName: "person.crop.circle.badge.plus")
                     .font(.system(size: 60))
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
                 
                 Text("Who is this account for?")
                     .font(.appTitle)
@@ -206,13 +210,14 @@ struct AccountSetupStep: View {
 
 // MARK: - Profile Setup Step
 struct ProfileSetupStep: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     @Binding var primaryName: String
     @Binding var birthday: Date?
     @Binding var showDatePicker: Bool
     let isLoading: Bool
     let errorMessage: String?
     let onComplete: () -> Void
-    
+
     var body: some View {
         VStack(spacing: 32) {
             Spacer()
@@ -220,7 +225,7 @@ struct ProfileSetupStep: View {
             VStack(spacing: 16) {
                 Image(systemName: "person.circle.fill")
                     .font(.system(size: 60))
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
                 
                 Text("Create the primary profile")
                     .font(.appTitle)
@@ -282,28 +287,36 @@ struct ProfileSetupStep: View {
 
 // MARK: - Date Picker Sheet
 struct DatePickerSheet: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var selectedDate: Date?
     @Binding var isPresented: Bool
-    
+    var title: String = "Birthday"
+
     @State private var tempDate = Date()
-    
+
+    /// Custom height for date picker - taller on iPad to fit the full calendar
+    private var datePickerHeight: PresentationDetent {
+        horizontalSizeClass == .regular ? .fraction(0.7) : .height(480)
+    }
+
     var body: some View {
         NavigationStack {
             VStack {
                 DatePicker(
-                    "Birthday",
+                    title,
                     selection: $tempDate,
                     in: ...Date(),
                     displayedComponents: .date
                 )
                 .datePickerStyle(.graphical)
-                .tint(.accentYellow)
+                .tint(appAccentColor)
                 .padding()
-                
+
                 Spacer()
             }
             .background(Color.appBackground)
-            .navigationTitle("Select Birthday")
+            .navigationTitle("Select \(title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -311,17 +324,18 @@ struct DatePickerSheet: View {
                         isPresented = false
                     }
                 }
-                
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         selectedDate = tempDate
                         isPresented = false
                     }
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([datePickerHeight, .large])
+        .presentationDragIndicator(.visible)
         .onAppear {
             if let date = selectedDate {
                 tempDate = date

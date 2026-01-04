@@ -9,17 +9,24 @@ protocol ProfileRepositoryProtocol {
     func createProfile(_ profile: ProfileInsert) async throws -> Profile
     func updateProfile(_ profile: Profile) async throws -> Profile
     func deleteProfile(id: UUID) async throws
-    
+    func updateSortOrders(_ updates: [SortOrderUpdate]) async throws
+
     // Profile Details
     func getProfileDetails(profileId: UUID) async throws -> [ProfileDetail]
     func getProfileDetails(profileId: UUID, category: DetailCategory) async throws -> [ProfileDetail]
     func createProfileDetail(_ detail: ProfileDetailInsert) async throws -> ProfileDetail
     func updateProfileDetail(_ detail: ProfileDetail) async throws -> ProfileDetail
     func deleteProfileDetail(id: UUID) async throws
-    
+
     // Birthdays
     func getUpcomingBirthdays(accountId: UUID, days: Int) async throws -> [Profile]
     func getTodaysBirthdays(accountId: UUID) async throws -> [Profile]
+}
+
+// MARK: - Sort Order Update
+struct SortOrderUpdate {
+    let id: UUID
+    let sortOrder: Int
 }
 
 // MARK: - Profile Repository Implementation
@@ -32,10 +39,11 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             .from(TableName.profiles)
             .select()
             .eq("account_id", value: accountId)
+            .order("sort_order")
             .order("full_name")
             .execute()
             .value
-        
+
         return profiles
     }
     
@@ -85,7 +93,11 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             fullName: profile.fullName,
             preferredName: profile.preferredName,
             relationship: profile.relationship,
+            connectedToProfileId: profile.connectedToProfileId,
+            includeInFamilyTree: profile.includeInFamilyTree,
             birthday: profile.birthday,
+            isDeceased: profile.isDeceased,
+            dateOfDeath: profile.dateOfDeath,
             address: profile.address,
             phone: profile.phone,
             email: profile.email,
@@ -114,7 +126,18 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             .eq("id", value: id)
             .execute()
     }
-    
+
+    // MARK: - Update Sort Orders
+    func updateSortOrders(_ updates: [SortOrderUpdate]) async throws {
+        for update in updates {
+            try await supabase
+                .from(TableName.profiles)
+                .update(["sort_order": update.sortOrder])
+                .eq("id", value: update.id)
+                .execute()
+        }
+    }
+
     // MARK: - Get Profile Details
     func getProfileDetails(profileId: UUID) async throws -> [ProfileDetail] {
         let details: [ProfileDetail] = try await supabase
@@ -251,7 +274,11 @@ struct ProfileInsert: Encodable {
     let fullName: String
     let preferredName: String?
     let relationship: String?
+    let connectedToProfileId: UUID?
+    let includeInFamilyTree: Bool
     let birthday: Date?
+    let isDeceased: Bool
+    let dateOfDeath: Date?
     let address: String?
     let phone: String?
     let email: String?
@@ -259,14 +286,18 @@ struct ProfileInsert: Encodable {
     let isFavourite: Bool
     let linkedUserId: UUID?
     let photoUrl: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case accountId = "account_id"
         case type
         case fullName = "full_name"
         case preferredName = "preferred_name"
         case relationship
+        case connectedToProfileId = "connected_to_profile_id"
+        case includeInFamilyTree = "include_in_family_tree"
         case birthday
+        case isDeceased = "is_deceased"
+        case dateOfDeath = "date_of_death"
         case address
         case phone
         case email
@@ -275,14 +306,18 @@ struct ProfileInsert: Encodable {
         case linkedUserId = "linked_user_id"
         case photoUrl = "photo_url"
     }
-    
+
     init(
         accountId: UUID,
         type: ProfileType = .relative,
         fullName: String,
         preferredName: String? = nil,
         relationship: String? = nil,
+        connectedToProfileId: UUID? = nil,
+        includeInFamilyTree: Bool = true,
         birthday: Date? = nil,
+        isDeceased: Bool = false,
+        dateOfDeath: Date? = nil,
         address: String? = nil,
         phone: String? = nil,
         email: String? = nil,
@@ -296,7 +331,11 @@ struct ProfileInsert: Encodable {
         self.fullName = fullName
         self.preferredName = preferredName
         self.relationship = relationship
+        self.connectedToProfileId = connectedToProfileId
+        self.includeInFamilyTree = includeInFamilyTree
         self.birthday = birthday
+        self.isDeceased = isDeceased
+        self.dateOfDeath = dateOfDeath
         self.address = address
         self.phone = phone
         self.email = email
@@ -311,25 +350,52 @@ private struct ProfileUpdate: Encodable {
     let fullName: String
     let preferredName: String?
     let relationship: String?
+    let connectedToProfileId: UUID?
+    let includeInFamilyTree: Bool
     let birthday: Date?
+    let isDeceased: Bool
+    let dateOfDeath: Date?
     let address: String?
     let phone: String?
     let email: String?
     let notes: String?
     let isFavourite: Bool
     let photoUrl: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case fullName = "full_name"
         case preferredName = "preferred_name"
         case relationship
+        case connectedToProfileId = "connected_to_profile_id"
+        case includeInFamilyTree = "include_in_family_tree"
         case birthday
+        case isDeceased = "is_deceased"
+        case dateOfDeath = "date_of_death"
         case address
         case phone
         case email
         case notes
         case isFavourite = "is_favourite"
         case photoUrl = "photo_url"
+    }
+
+    // Custom encoder to explicitly send null for nil values (required by Supabase to clear fields)
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(fullName, forKey: .fullName)
+        try container.encode(preferredName, forKey: .preferredName)
+        try container.encode(relationship, forKey: .relationship)
+        try container.encode(connectedToProfileId, forKey: .connectedToProfileId)
+        try container.encode(includeInFamilyTree, forKey: .includeInFamilyTree)
+        try container.encode(birthday, forKey: .birthday)
+        try container.encode(isDeceased, forKey: .isDeceased)
+        try container.encode(dateOfDeath, forKey: .dateOfDeath)
+        try container.encode(address, forKey: .address)
+        try container.encode(phone, forKey: .phone)
+        try container.encode(email, forKey: .email)
+        try container.encode(notes, forKey: .notes)
+        try container.encode(isFavourite, forKey: .isFavourite)
+        try container.encode(photoUrl, forKey: .photoUrl)
     }
 }
 

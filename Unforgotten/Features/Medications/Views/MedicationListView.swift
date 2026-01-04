@@ -5,104 +5,40 @@ struct MedicationListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @Environment(\.navigateToRoot) var navigateToRoot
+    @Environment(\.iPadHomeAction) private var iPadHomeAction
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = MedicationListViewModel()
     @State private var showAddMedication = false
-    @State private var showSettings = false
+    @State private var showUpgradePrompt = false
     @State private var medicationToDelete: Medication?
     @State private var showDeleteConfirmation = false
 
+    /// Check if user can add more medications
+    private var canAddMedication: Bool {
+        PremiumLimitsManager.shared.canCreateMedication(
+            appState: appState,
+            currentCount: viewModel.medications.count
+        )
+    }
+
     var body: some View {
         ZStack {
-            Color.appBackground.ignoresSafeArea()
+            Color.appBackgroundLight.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header at the top - fully interactive
-                HeaderImageView(
-                    imageName: "header-medications",
-                    title: "Medicines",
-                    showSettingsButton: true,
-                    settingsAction: { showSettings = true }
-                )
-
-                // Content scrolls below header
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
-                        // Calendar button
-                        NavigationLink(destination: MedicationCalendarView()) {
-                            HStack {
-                                Image(systemName: "calendar")
-                                    .font(.appCardTitle)
-                                    .foregroundColor(.white)
-
-                                Text("Calendar")
-                                    .font(.appCardTitle)
-                                    .foregroundColor(.white)
-
-                                Spacer()
-
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(.white.opacity(0.7))
-                            }
-                            .padding(AppDimensions.cardPadding)
-                            .background(Color.medicalRed.opacity(0.8))
-                            .cornerRadius(AppDimensions.cardCornerRadius)
-                        }
-
-                        // Medications list
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
-                            ForEach(viewModel.medications) { medication in
-                                MedicationListRow(
-                                    medication: medication,
-                                    onDelete: {
-                                        medicationToDelete = medication
-                                        showDeleteConfirmation = true
-                                    },
-                                    onTogglePause: {
-                                        Task {
-                                            await viewModel.togglePause(medication: medication, appState: appState)
-                                        }
-                                    }
-                                )
-                            }
-                        }
-
-                        // Loading state
-                        if viewModel.isLoading && viewModel.medications.isEmpty {
-                            LoadingView(message: "Loading medications...")
-                                .padding(.top, 40)
-                        }
-
-                        // Empty state
-                        if viewModel.medications.isEmpty && !viewModel.isLoading {
-                            EmptyStateView(
-                                icon: "pills.fill",
-                                title: "No medications yet",
-                                message: "Add medications to track schedules and reminders",
-                                buttonTitle: "Add Medication",
-                                buttonAction: { showAddMedication = true }
-                            )
-                            .padding(.top, 40)
-                        }
-
-                        Spacer()
-                            .frame(height: 140)
-                    }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.top, AppDimensions.cardSpacing)
-                }
-            }
+            mainScrollView
+                .ignoresSafeArea(edges: .top)
         }
         .navigationBarHidden(true)
-        .sheet(isPresented: $showAddMedication) {
-            AddMedicationView { _ in
+        .sheet(isPresented: $showUpgradePrompt) {
+            UpgradeView()
+        }
+        .sidePanel(isPresented: $showAddMedication) {
+            AddMedicationView(
+                onDismiss: { showAddMedication = false }
+            ) { _ in
                 Task {
                     await viewModel.loadMedications(appState: appState)
                 }
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView()
             }
         }
         .task {
@@ -110,6 +46,16 @@ struct MedicationListView: View {
         }
         .refreshable {
             await viewModel.loadMedications(appState: appState)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .medicationsDidChange)) { _ in
+            Task {
+                await viewModel.loadMedications(appState: appState)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
+            Task {
+                await viewModel.loadMedications(appState: appState)
+            }
         }
         .alert("Error", isPresented: .init(
             get: { viewModel.error != nil },
@@ -139,6 +85,115 @@ struct MedicationListView: View {
             }
         }
     }
+
+    // MARK: - View Components
+
+    /// Whether the current user can add/edit medications
+    private var canEdit: Bool {
+        appState.canEdit
+    }
+
+    @ViewBuilder
+    private var mainScrollView: some View {
+        ScrollView {
+                VStack(spacing: 0) {
+                    // Header scrolls with content - uses style-based assets from HeaderStyleManager
+                    CustomizableHeaderView(
+                        pageIdentifier: .medications,
+                        title: "Medicines",
+                        showHomeButton: iPadHomeAction != nil,
+                        homeAction: iPadHomeAction,
+                        showAddButton: canEdit,
+                        addAction: canEdit ? {
+                            if canAddMedication {
+                                showAddMedication = true
+                            } else {
+                                showUpgradePrompt = true
+                            }
+                        } : nil
+                    )
+
+                // Viewing As Bar (shown when viewing another account)
+                ViewingAsBar()
+
+                // Content
+                VStack(spacing: AppDimensions.cardSpacing) {
+                    // Calendar button
+                    NavigationLink(destination: MedicationCalendarView()) {
+                        HStack {
+                            Image(systemName: "calendar")
+                                .font(.appCardTitle)
+                                .foregroundColor(.white)
+
+                            Text("Calendar")
+                                .font(.appCardTitle)
+                                .foregroundColor(.white)
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                        .padding(AppDimensions.cardPaddingLarge)
+                        .background(Color.cardBackgroundLight.opacity(0.8))
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                    }
+
+                    // Medications list
+                    LazyVStack(spacing: AppDimensions.cardSpacing) {
+                        ForEach(viewModel.medications) { medication in
+                            MedicationListRow(
+                                medication: medication,
+                                onDelete: {
+                                    medicationToDelete = medication
+                                    showDeleteConfirmation = true
+                                }
+                            )
+                        }
+                    }
+
+                    // Loading state
+                    if viewModel.isLoading && viewModel.medications.isEmpty {
+                        LoadingView(message: "Loading medications...")
+                            .padding(.top, 40)
+                    }
+
+                    // Empty state
+                    if viewModel.medications.isEmpty && !viewModel.isLoading {
+                        EmptyStateView(
+                            icon: "pills.fill",
+                            title: "No medications yet",
+                            message: "Add medications to track schedules and reminders",
+                            buttonTitle: "Add Medication",
+                            buttonAction: {
+                                if canAddMedication {
+                                    showAddMedication = true
+                                } else {
+                                    showUpgradePrompt = true
+                                }
+                            }
+                        )
+                        .padding(.top, 40)
+                    }
+
+                    // Premium limit reached banner
+                    if !viewModel.medications.isEmpty && !canAddMedication {
+                        PremiumFeatureLockBanner(
+                            feature: .medications,
+                            onUpgrade: { showUpgradePrompt = true }
+                        )
+                    }
+
+                    // Bottom spacing for nav bar
+                    Spacer()
+                        .frame(height: 120)
+                }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.top, AppDimensions.cardSpacing)
+            }
+        }
+    }
+
 }
 
 // MARK: - Medication Header View
@@ -204,96 +259,99 @@ struct MedicationHeaderView: View {
 struct MedicationListRow: View {
     let medication: Medication
     let onDelete: () -> Void
-    let onTogglePause: () -> Void
 
-    @State private var showOptions = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    init(medication: Medication, onDelete: @escaping () -> Void, onTogglePause: @escaping () -> Void = {}) {
-        self.medication = medication
-        self.onDelete = onDelete
-        self.onTogglePause = onTogglePause
+    /// Adaptive padding: larger on iPad for better touch targets
+    private var cardPadding: CGFloat {
+        horizontalSizeClass == .regular ? 20 : 16
+    }
+
+    /// Adaptive thumbnail size: larger on iPad
+    private var thumbnailSize: CGFloat {
+        horizontalSizeClass == .regular ? 60 : 50
+    }
+
+    /// Minimum row height for better touch targets on iPad
+    private var minRowHeight: CGFloat {
+        horizontalSizeClass == .regular ? 80 : 60
     }
 
     var body: some View {
-        NavigationLink(destination: MedicationDetailView(medication: medication)) {
-            HStack {
-                // Photo thumbnail
-                if let localPath = medication.localImagePath,
-                   let image = LocalImageService.shared.loadMedicationPhoto(fileName: localPath) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 50, height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    Image(systemName: "pills.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.medicalRed)
-                        .frame(width: 50, height: 50)
-                        .background(Color.cardBackgroundSoft)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
+        HStack {
+            NavigationLink(destination: MedicationDetailView(medication: medication)) {
+                HStack {
+                    // Photo thumbnail
+                    if let localPath = medication.localImagePath,
+                       let image = LocalImageService.shared.loadMedicationPhoto(fileName: localPath) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: thumbnailSize, height: thumbnailSize)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        Image(systemName: "pills.fill")
+                            .font(.system(size: horizontalSizeClass == .regular ? 28 : 24))
+                            .foregroundColor(.medicalRed)
+                            .frame(width: thumbnailSize, height: thumbnailSize)
+                            .background(Color.cardBackgroundSoft)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(medication.displayName)
-                            .font(.appCardTitle)
-                            .foregroundColor(medication.isPaused ? .textSecondary : .textPrimary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(medication.displayName)
+                                .font(.appCardTitle)
+                                .foregroundColor(medication.isPaused ? .textSecondary : .textPrimary)
 
-                        if medication.isPaused {
-                            Text("PAUSED")
+                            if medication.isPaused {
+                                Text("PAUSED")
+                                    .font(.appCaptionSmall)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(Color.badgeGrey)
+                                    .cornerRadius(4)
+                            }
+                        }
+
+                        if let reason = medication.reason {
+                            Text(reason)
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+
+                        if let instruction = medication.intakeInstruction {
+                            Text(instruction.displayName)
                                 .font(.appCaptionSmall)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Color.badgeGrey)
-                                .cornerRadius(4)
+                                .foregroundColor(.accentYellow)
                         }
                     }
 
-                    if let reason = medication.reason {
-                        Text(reason)
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-                    }
-
-                    if let instruction = medication.intakeInstruction {
-                        Text(instruction.displayName)
-                            .font(.appCaptionSmall)
-                            .foregroundColor(.accentYellow)
-                    }
+                    Spacer()
                 }
-
-                Spacer()
-
-                // Options button (vertical dots)
-                Button {
-                    showOptions = true
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .rotationEffect(.degrees(90))
-                        .font(.system(size: 16))
-                        .foregroundColor(.textSecondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
+                .frame(minHeight: minRowHeight)
+                .contentShape(Rectangle())
             }
-            .padding(AppDimensions.cardPadding)
-            .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.cardCornerRadius)
-            .opacity(medication.isPaused ? 0.7 : 1.0)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button(medication.isPaused ? "Resume medication" : "Pause medication") {
-                onTogglePause()
-            }
-            Button("Delete item", role: .destructive) {
+            .buttonStyle(PlainButtonStyle())
+
+            // Delete button
+            Button {
                 onDelete()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: horizontalSizeClass == .regular ? 18 : 16))
+                    .foregroundColor(.red.opacity(0.8))
+                    .frame(width: horizontalSizeClass == .regular ? 52 : 44, height: horizontalSizeClass == .regular ? 52 : 44)
+                    .contentShape(Rectangle())
             }
-            Button("Cancel", role: .cancel) { }
+            .buttonStyle(PlainButtonStyle())
         }
+        .padding(cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .contentShape(Rectangle())
+        .opacity(medication.isPaused ? 0.7 : 1.0)
     }
 }
 
@@ -358,6 +416,122 @@ class MedicationListViewModel: ObservableObject {
             self.error = "Failed to update medication: \(error.localizedDescription)"
         }
     }
+
+    func moveMedication(from source: IndexSet, to destination: Int) {
+        medications.move(fromOffsets: source, toOffset: destination)
+    }
+
+    func saveSortOrder(appState: AppState) async {
+        let updates = medications.enumerated().map { index, medication in
+            SortOrderUpdate(id: medication.id, sortOrder: index)
+        }
+
+        do {
+            try await appState.medicationRepository.updateMedicationSortOrders(updates)
+        } catch {
+            self.error = "Failed to save order: \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - Reorderable Medication List
+struct ReorderableMedicationList: View {
+    @Binding var medications: [Medication]
+    let onReorder: (IndexSet, Int) -> Void
+
+    var body: some View {
+        VStack(spacing: AppDimensions.cardSpacing) {
+            ForEach(medications) { medication in
+                ReorderableMedicationRow(
+                    medication: medication,
+                    onMoveUp: {
+                        if let index = medications.firstIndex(where: { $0.id == medication.id }), index > 0 {
+                            onReorder(IndexSet(integer: index), index - 1)
+                        }
+                    },
+                    onMoveDown: {
+                        if let index = medications.firstIndex(where: { $0.id == medication.id }), index < medications.count - 1 {
+                            onReorder(IndexSet(integer: index), index + 2)
+                        }
+                    },
+                    isFirst: medications.first?.id == medication.id,
+                    isLast: medications.last?.id == medication.id
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Reorderable Medication Row
+struct ReorderableMedicationRow: View {
+    let medication: Medication
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let isFirst: Bool
+    let isLast: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Reorder buttons
+            VStack(spacing: 4) {
+                Button(action: onMoveUp) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isFirst ? .textSecondary.opacity(0.3) : .accentYellow)
+                        .frame(width: 32, height: 28)
+                }
+                .disabled(isFirst)
+
+                Button(action: onMoveDown) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isLast ? .textSecondary.opacity(0.3) : .accentYellow)
+                        .frame(width: 32, height: 28)
+                }
+                .disabled(isLast)
+            }
+            .padding(.leading, 4)
+
+            // Medication icon
+            Image(systemName: "pills.fill")
+                .font(.title3)
+                .foregroundColor(medication.isPaused ? .textSecondary : .medicalRed)
+                .frame(width: 40)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(medication.displayName)
+                    .font(.appCardTitle)
+                    .foregroundColor(medication.isPaused ? .textSecondary : .textPrimary)
+
+                if let form = medication.form {
+                    Text(form.capitalized)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            Spacer()
+
+            if medication.isPaused {
+                Text("Paused")
+                    .font(.appCaption)
+                    .foregroundColor(.badgeGrey)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.badgeGrey.opacity(0.2))
+                    .cornerRadius(8)
+            }
+
+            // Drag handle indicator
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 16))
+                .foregroundColor(.textSecondary)
+                .frame(width: 44, height: 44)
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+    }
 }
 
 // MARK: - Medication Detail View
@@ -365,6 +539,7 @@ struct MedicationDetailView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @Environment(\.navigateToRoot) var navigateToRoot
+    @Environment(\.iPadEditMedicationAction) private var iPadEditMedicationAction
 
     @State var medication: Medication
     @StateObject private var viewModel = MedicationDetailViewModel()
@@ -374,20 +549,24 @@ struct MedicationDetailView: View {
     @State private var showFullscreenImage = false
 
     var body: some View {
-        ZStack {
-            Color.appBackground.ignoresSafeArea()
-
+        ScrollView {
             VStack(spacing: 0) {
-                // Header at the top - fully interactive
+                // Header scrolls with content
                 MedicationDetailHeaderView(
                     medication: medication,
                     onBack: { dismiss() },
-                    onEdit: { showEditMedication = true }
+                    onEdit: {
+                        // Use full-screen overlay action if available
+                        if let editAction = iPadEditMedicationAction {
+                            editAction(medication)
+                        } else {
+                            showEditMedication = true
+                        }
+                    }
                 )
 
-                // Content scrolls below header
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
+                // Content
+                VStack(spacing: AppDimensions.cardSpacing) {
                         // Photo (if available) - tap to view fullscreen
                         if let localPath = medication.localImagePath,
                            let image = LocalImageService.shared.loadMedicationPhoto(fileName: localPath) {
@@ -487,20 +666,25 @@ struct MedicationDetailView: View {
                             }
                         }
 
+                        // Bottom spacing for nav bar
                         Spacer()
-                            .frame(height: 140)
-                    }
+                            .frame(height: 120)
                 }
+                .padding(.top, AppDimensions.cardSpacing)
             }
         }
+        .ignoresSafeArea(edges: .top)
+        .background(Color.appBackground)
         .navigationBarHidden(true)
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView()
-            }
+        .toolbar(.hidden, for: .navigationBar)
+        .sidePanel(isPresented: $showSettings) {
+            SettingsPanelView(onDismiss: { showSettings = false })
         }
-        .sheet(isPresented: $showEditMedication) {
-            EditMedicationView(medication: medication) { updatedMedication in
+        .sidePanel(isPresented: $showEditMedication) {
+            EditMedicationView(
+                medication: medication,
+                onDismiss: { showEditMedication = false }
+            ) { updatedMedication in
                 medication = updatedMedication
                 Task {
                     await viewModel.loadSchedules(medicationId: medication.id, appState: appState)
@@ -570,13 +754,14 @@ struct MedicationDetailHeaderView: View {
     }
 
     var body: some View {
-        HeaderImageView(
-            imageName: "header-medication-detail",
+        CustomizableHeaderView(
+            pageIdentifier: .medicationDetail,
             title: medication.displayName,
             showBackButton: true,
             backAction: onBack,
             showEditButton: onEdit != nil,
-            editAction: onEdit
+            editAction: onEdit,
+            editButtonPosition: .bottomRight
         )
     }
 }
@@ -736,11 +921,9 @@ struct MedicationCalendarView: View {
     @State private var showDayDetail = false
 
     var body: some View {
-        ZStack {
-            Color.appBackground.ignoresSafeArea()
-
+        ScrollView {
             VStack(spacing: 0) {
-                // Header at the top - fully interactive
+                // Header scrolls with content
                 HeaderImageView(
                     imageName: "header-medications",
                     title: "Medicine Calendar",
@@ -748,9 +931,8 @@ struct MedicationCalendarView: View {
                     backAction: { dismiss() }
                 )
 
-                // Content scrolls below header
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
+                // Content
+                VStack(spacing: AppDimensions.cardSpacing) {
                         // Streak Counter
                         if viewModel.currentStreak > 0 {
                             StreakBanner(streak: viewModel.currentStreak)
@@ -797,12 +979,15 @@ struct MedicationCalendarView: View {
                                 .padding(.horizontal, AppDimensions.screenPadding)
                         }
 
+                        // Bottom spacing for nav bar
                         Spacer()
-                            .frame(height: 40)
-                    }
+                            .frame(height: 120)
                 }
+                .padding(.top, AppDimensions.cardSpacing)
             }
         }
+        .ignoresSafeArea(edges: .top)
+        .background(Color.appBackground)
         .navigationBarHidden(true)
         .task {
             await viewModel.loadData(appState: appState)
@@ -2002,7 +2187,9 @@ class MedicationCalendarViewModel: ObservableObject {
 struct AddMedicationView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
+    var onDismiss: (() -> Void)? = nil
     let onSave: (Medication) -> Void
 
     @State private var name = ""
@@ -2021,19 +2208,59 @@ struct AddMedicationView: View {
 
     private let forms = ["Tablet", "Capsule", "Liquid", "Injection", "Inhaler", "Patch", "Cream", "Drops", "Spray", "Other"]
 
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
+
+                    Spacer()
+
+                    Text("Add Medication")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await saveMedication() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(name.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Header
-                        HeaderImageView(
-                            imageName: "header-add-medication",
-                            title: "Add Medication"
-                        )
-                        .padding(.horizontal, AppDimensions.screenPadding)
 
                         // Photo picker
                         HStack {
@@ -2068,7 +2295,7 @@ struct AddMedicationView: View {
                                                     .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
                                                     .padding(.horizontal, 16)
                                                     .padding(.vertical, 10)
-                                                    .background(form == formOption.lowercased() ? Color.accentYellow : Color.cardBackgroundSoft)
+                                                    .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
                                                     .cornerRadius(20)
                                             }
                                         }
@@ -2095,7 +2322,7 @@ struct AddMedicationView: View {
                                                 .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(intakeInstruction == nil ? Color.accentYellow : Color.cardBackgroundSoft)
+                                                .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
                                                 .cornerRadius(20)
                                         }
 
@@ -2108,7 +2335,7 @@ struct AddMedicationView: View {
                                                     .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
                                                     .padding(.horizontal, 16)
                                                     .padding(.vertical, 10)
-                                                    .background(intakeInstruction == instruction ? Color.accentYellow : Color.cardBackgroundSoft)
+                                                    .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
                                                     .cornerRadius(20)
                                             }
                                         }
@@ -2132,7 +2359,7 @@ struct AddMedicationView: View {
                                             .foregroundColor(scheduleType == type ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(scheduleType == type ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -2157,24 +2384,13 @@ struct AddMedicationView: View {
                     .padding(AppDimensions.screenPadding)
                 }
             }
-            .navigationTitle("Add Medication")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveMedication() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(name.isBlank || isLoading)
-                }
-            }
+            .background(Color.clear)
+            .navigationBarHidden(true)
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .toolbarBackground(.clear, for: .navigationBar)
+        .containerBackground(.clear, for: .navigation)
     }
 
     private func saveMedication() async {
@@ -2259,7 +2475,7 @@ struct AddMedicationView: View {
             )
 
             onSave(medication)
-            dismiss()
+            dismissView()
         } catch {
             errorMessage = "Failed to save medication: \(error.localizedDescription)"
         }
@@ -2284,8 +2500,10 @@ struct AddMedicationView: View {
 struct EditMedicationView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
     let medication: Medication
+    var onDismiss: (() -> Void)? = nil
     let onSave: (Medication) -> Void
 
     @State private var name: String
@@ -2306,8 +2524,9 @@ struct EditMedicationView: View {
 
     private let forms = ["Tablet", "Capsule", "Liquid", "Injection", "Inhaler", "Patch", "Cream", "Drops", "Spray", "Other"]
 
-    init(medication: Medication, onSave: @escaping (Medication) -> Void) {
+    init(medication: Medication, onDismiss: (() -> Void)? = nil, onSave: @escaping (Medication) -> Void) {
         self.medication = medication
+        self.onDismiss = onDismiss
         self.onSave = onSave
         _name = State(initialValue: medication.name)
         _strength = State(initialValue: medication.strength ?? "")
@@ -2317,20 +2536,59 @@ struct EditMedicationView: View {
         _intakeInstruction = State(initialValue: medication.intakeInstruction)
     }
 
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
+
+                    Spacer()
+
+                    Text("Edit Medication")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await saveMedication() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(name.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Header
-                        HeaderImageView(
-                            imageName: "header-medication-detail",
-                            title: "Edit Medication"
-                        )
-                        .padding(.horizontal, AppDimensions.screenPadding)
-
                         // Photo picker
                         HStack {
                             Spacer()
@@ -2364,7 +2622,7 @@ struct EditMedicationView: View {
                                                     .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
                                                     .padding(.horizontal, 16)
                                                     .padding(.vertical, 10)
-                                                    .background(form == formOption.lowercased() ? Color.accentYellow : Color.cardBackgroundSoft)
+                                                    .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
                                                     .cornerRadius(20)
                                             }
                                         }
@@ -2390,7 +2648,7 @@ struct EditMedicationView: View {
                                                 .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(intakeInstruction == nil ? Color.accentYellow : Color.cardBackgroundSoft)
+                                                .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
                                                 .cornerRadius(20)
                                         }
 
@@ -2403,7 +2661,7 @@ struct EditMedicationView: View {
                                                     .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
                                                     .padding(.horizontal, 16)
                                                     .padding(.vertical, 10)
-                                                    .background(intakeInstruction == instruction ? Color.accentYellow : Color.cardBackgroundSoft)
+                                                    .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
                                                     .cornerRadius(20)
                                             }
                                         }
@@ -2427,7 +2685,7 @@ struct EditMedicationView: View {
                                             .foregroundColor(scheduleType == type ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(scheduleType == type ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -2468,23 +2726,8 @@ struct EditMedicationView: View {
                     .padding(AppDimensions.screenPadding)
                 }
             }
-            .navigationTitle("Edit Medication")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveMedication() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(name.isBlank || isLoading)
-                }
-            }
+            .background(Color.clear)
+            .navigationBarHidden(true)
             .task {
                 await loadSchedule()
             }
@@ -2497,6 +2740,10 @@ struct EditMedicationView: View {
                 Text("Are you sure you want to delete this medication? This action cannot be undone.")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .toolbarBackground(.clear, for: .navigationBar)
+        .containerBackground(.clear, for: .navigation)
     }
 
     private func loadSchedule() async {
@@ -2594,7 +2841,7 @@ struct EditMedicationView: View {
             )
 
             onSave(savedMedication)
-            dismiss()
+            dismissView()
         } catch {
             errorMessage = "Failed to save medication: \(error.localizedDescription)"
         }
@@ -2612,7 +2859,7 @@ struct EditMedicationView: View {
             }
 
             try await appState.medicationRepository.deleteMedication(id: medication.id)
-            dismiss()
+            dismissView()
         } catch {
             errorMessage = "Failed to delete medication: \(error.localizedDescription)"
         }

@@ -10,6 +10,7 @@ protocol AppointmentRepositoryProtocol {
     func getAppointment(id: UUID) async throws -> Appointment
     func createAppointment(_ appointment: AppointmentInsert) async throws -> Appointment
     func updateAppointment(_ appointment: Appointment) async throws -> Appointment
+    func toggleAppointmentCompletion(id: UUID, isCompleted: Bool) async throws -> Appointment
     func deleteAppointment(id: UUID) async throws
 }
 
@@ -126,14 +127,16 @@ final class AppointmentRepository: AppointmentRepositoryProtocol {
     func updateAppointment(_ appointment: Appointment) async throws -> Appointment {
         let update = AppointmentUpdate(
             withProfileId: appointment.withProfileId,
+            type: appointment.type,
             title: appointment.title,
             date: appointment.date,
             time: appointment.time,
             location: appointment.location,
             notes: appointment.notes,
-            reminderOffsetMinutes: appointment.reminderOffsetMinutes
+            reminderOffsetMinutes: appointment.reminderOffsetMinutes,
+            isCompleted: appointment.isCompleted
         )
-        
+
         let updated: Appointment = try await supabase
             .from(TableName.appointments)
             .update(update)
@@ -142,10 +145,26 @@ final class AppointmentRepository: AppointmentRepositoryProtocol {
             .single()
             .execute()
             .value
-        
+
         return updated
     }
-    
+
+    // MARK: - Toggle Appointment Completion
+    func toggleAppointmentCompletion(id: UUID, isCompleted: Bool) async throws -> Appointment {
+        let update = AppointmentCompletionUpdate(isCompleted: isCompleted)
+
+        let updated: Appointment = try await supabase
+            .from(TableName.appointments)
+            .update(update)
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
+
+        return updated
+    }
+
     // MARK: - Delete Appointment
     func deleteAppointment(id: UUID) async throws {
         try await supabase
@@ -161,6 +180,7 @@ struct AppointmentInsert: Encodable {
     let accountId: UUID
     let profileId: UUID
     let withProfileId: UUID?
+    let type: AppointmentType
     let title: String
     let date: Date
     let time: Date?
@@ -172,6 +192,7 @@ struct AppointmentInsert: Encodable {
         case accountId = "account_id"
         case profileId = "profile_id"
         case withProfileId = "with_profile_id"
+        case type
         case title
         case date
         case time
@@ -186,6 +207,7 @@ struct AppointmentInsert: Encodable {
         title: String,
         date: Date,
         withProfileId: UUID? = nil,
+        type: AppointmentType = .general,
         time: Date? = nil,
         location: String? = nil,
         notes: String? = nil,
@@ -194,6 +216,7 @@ struct AppointmentInsert: Encodable {
         self.accountId = accountId
         self.profileId = profileId
         self.withProfileId = withProfileId
+        self.type = type
         self.title = title
         self.date = date
         self.time = time
@@ -202,20 +225,30 @@ struct AppointmentInsert: Encodable {
         self.reminderOffsetMinutes = reminderOffsetMinutes
     }
 
-    // Custom encoding to handle time field as time-only string
+    // Custom encoding to handle date and time fields for PostgreSQL
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(accountId, forKey: .accountId)
         try container.encode(profileId, forKey: .profileId)
         try container.encodeIfPresent(withProfileId, forKey: .withProfileId)
+        try container.encode(type, forKey: .type)
         try container.encode(title, forKey: .title)
-        try container.encode(date, forKey: .date)
+
+        // Encode date as yyyy-MM-dd string for PostgreSQL date column
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let dateString = dateFormatter.string(from: date)
+        try container.encode(dateString, forKey: .date)
 
         // Encode time as HH:mm:ss string for PostgreSQL time column
+        // Use local timezone for encoding since the time picker operates in local time
+        // and we want to store the time as the user sees it
         if let time = time {
             let timeFormatter = DateFormatter()
             timeFormatter.dateFormat = "HH:mm:ss"
-            timeFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+            timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+            timeFormatter.timeZone = TimeZone.current
             let timeString = timeFormatter.string(from: time)
             try container.encode(timeString, forKey: .time)
         } else {
@@ -230,35 +263,49 @@ struct AppointmentInsert: Encodable {
 
 private struct AppointmentUpdate: Encodable {
     let withProfileId: UUID?
+    let type: AppointmentType
     let title: String
     let date: Date
     let time: Date?
     let location: String?
     let notes: String?
     let reminderOffsetMinutes: Int?
+    let isCompleted: Bool
 
     enum CodingKeys: String, CodingKey {
         case withProfileId = "with_profile_id"
+        case type
         case title
         case date
         case time
         case location
         case notes
         case reminderOffsetMinutes = "reminder_offset_minutes"
+        case isCompleted = "is_completed"
     }
 
-    // Custom encoding to handle time field as time-only string
+    // Custom encoding to handle date and time fields for PostgreSQL
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(withProfileId, forKey: .withProfileId)
+        try container.encode(type, forKey: .type)
         try container.encode(title, forKey: .title)
-        try container.encode(date, forKey: .date)
+
+        // Encode date as yyyy-MM-dd string for PostgreSQL date column
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let dateString = dateFormatter.string(from: date)
+        try container.encode(dateString, forKey: .date)
 
         // Encode time as HH:mm:ss string for PostgreSQL time column
+        // Use local timezone for encoding since the time picker operates in local time
+        // and we want to store the time as the user sees it
         if let time = time {
             let timeFormatter = DateFormatter()
             timeFormatter.dateFormat = "HH:mm:ss"
-            timeFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+            timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+            timeFormatter.timeZone = TimeZone.current
             let timeString = timeFormatter.string(from: time)
             try container.encode(timeString, forKey: .time)
         } else {
@@ -268,6 +315,15 @@ private struct AppointmentUpdate: Encodable {
         try container.encodeIfPresent(location, forKey: .location)
         try container.encodeIfPresent(notes, forKey: .notes)
         try container.encodeIfPresent(reminderOffsetMinutes, forKey: .reminderOffsetMinutes)
+        try container.encode(isCompleted, forKey: .isCompleted)
+    }
+}
+
+private struct AppointmentCompletionUpdate: Encodable {
+    let isCompleted: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isCompleted = "is_completed"
     }
 }
 
@@ -279,6 +335,7 @@ protocol UsefulContactRepositoryProtocol {
     func createContact(_ contact: UsefulContactInsert) async throws -> UsefulContact
     func updateContact(_ contact: UsefulContact) async throws -> UsefulContact
     func deleteContact(id: UUID) async throws
+    func updateContactSortOrders(_ updates: [SortOrderUpdate]) async throws
 }
 
 // MARK: - Useful Contact Repository Implementation
@@ -291,13 +348,14 @@ final class UsefulContactRepository: UsefulContactRepositoryProtocol {
             .from(TableName.usefulContacts)
             .select()
             .eq("account_id", value: accountId)
+            .order("sort_order")
             .order("name")
             .execute()
             .value
-        
+
         return contacts
     }
-    
+
     // MARK: - Get Contacts by Category
     func getContacts(accountId: UUID, category: ContactCategory) async throws -> [UsefulContact] {
         let contacts: [UsefulContact] = try await supabase
@@ -305,10 +363,11 @@ final class UsefulContactRepository: UsefulContactRepositoryProtocol {
             .select()
             .eq("account_id", value: accountId)
             .eq("category", value: category.rawValue)
+            .order("sort_order")
             .order("name")
             .execute()
             .value
-        
+
         return contacts
     }
     
@@ -371,6 +430,17 @@ final class UsefulContactRepository: UsefulContactRepositoryProtocol {
             .delete()
             .eq("id", value: id)
             .execute()
+    }
+
+    // MARK: - Update Contact Sort Orders
+    func updateContactSortOrders(_ updates: [SortOrderUpdate]) async throws {
+        for update in updates {
+            try await supabase
+                .from(TableName.usefulContacts)
+                .update(["sort_order": update.sortOrder])
+                .eq("id", value: update.id)
+                .execute()
+        }
     }
 }
 

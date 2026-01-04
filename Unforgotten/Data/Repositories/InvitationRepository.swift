@@ -91,7 +91,24 @@ final class InvitationRepository: InvitationRepositoryProtocol {
 
     // MARK: - Accept Invitation
     /// Accepts an invitation and adds the user as an account member
+    /// Uses an RPC function to bypass RLS restrictions
     func acceptInvitation(invitation: AccountInvitation, userId: UUID) async throws {
+        // Try using the RPC function first (preferred - handles everything atomically)
+        do {
+            try await supabase.rpc(
+                "accept_invitation",
+                params: [
+                    "p_invitation_id": invitation.id.uuidString,
+                    "p_user_id": userId.uuidString
+                ]
+            ).execute()
+            return
+        } catch {
+            // RPC not available, fall back to direct database operations
+            print("RPC accept_invitation failed: \(error). Falling back to direct operations.")
+        }
+
+        // Fallback: Direct database operations (may fail due to RLS)
         // First, add the user as an account member
         let memberInsert = AccountMemberInsert(
             accountId: invitation.accountId,
@@ -104,17 +121,35 @@ final class InvitationRepository: InvitationRepositoryProtocol {
             .insert(memberInsert)
             .execute()
 
-        // Then mark the invitation as accepted
-        let update = InvitationAcceptUpdate(
-            status: .accepted,
-            acceptedAt: Date()
-        )
+        // Then mark the invitation as accepted with the user who accepted it
+        // Try with acceptedBy first, fall back to without if column doesn't exist
+        do {
+            let update = InvitationAcceptUpdate(
+                status: .accepted,
+                acceptedAt: Date(),
+                acceptedBy: userId
+            )
 
-        try await supabase
-            .from(TableName.accountInvitations)
-            .update(update)
-            .eq("id", value: invitation.id)
-            .execute()
+            try await supabase
+                .from(TableName.accountInvitations)
+                .update(update)
+                .eq("id", value: invitation.id)
+                .execute()
+        } catch {
+            // If the full update fails (possibly due to missing accepted_by column),
+            // try updating just the status and acceptedAt
+            print("Full invitation update failed: \(error). Trying fallback update.")
+            let fallbackUpdate = InvitationStatusUpdateWithDate(
+                status: .accepted,
+                acceptedAt: Date()
+            )
+
+            try await supabase
+                .from(TableName.accountInvitations)
+                .update(fallbackUpdate)
+                .eq("id", value: invitation.id)
+                .execute()
+        }
     }
 
     // MARK: - Generate Invite Code
@@ -146,13 +181,25 @@ private struct InvitationStatusUpdate: Encodable {
     let status: InvitationStatus
 }
 
-private struct InvitationAcceptUpdate: Encodable {
+private struct InvitationStatusUpdateWithDate: Encodable {
     let status: InvitationStatus
     let acceptedAt: Date
 
     enum CodingKeys: String, CodingKey {
         case status
         case acceptedAt = "accepted_at"
+    }
+}
+
+private struct InvitationAcceptUpdate: Encodable {
+    let status: InvitationStatus
+    let acceptedAt: Date
+    let acceptedBy: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case acceptedAt = "accepted_at"
+        case acceptedBy = "accepted_by"
     }
 }
 

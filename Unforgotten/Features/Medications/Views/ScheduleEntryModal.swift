@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Schedule Entry Modal
 struct ScheduleEntryModal: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
     @Binding var entry: ScheduleEntry
     let isEditing: Bool
@@ -91,7 +92,7 @@ struct ScheduleEntryModal: View {
                                             .font(.appCaptionSmall)
                                             .foregroundColor(selectedDays.contains(day) ? .black : .textPrimary)
                                             .frame(width: 40, height: 40)
-                                            .background(selectedDays.contains(day) ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(selectedDays.contains(day) ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -103,19 +104,19 @@ struct ScheduleEntryModal: View {
                                     selectedDays = [0, 1, 2, 3, 4, 5, 6]
                                 }
                                 .font(.appCaption)
-                                .foregroundColor(.accentYellow)
+                                .foregroundColor(appAccentColor)
 
                                 Button("Weekdays") {
                                     selectedDays = [1, 2, 3, 4, 5]
                                 }
                                 .font(.appCaption)
-                                .foregroundColor(.accentYellow)
+                                .foregroundColor(appAccentColor)
 
                                 Button("Weekends") {
                                     selectedDays = [0, 6]
                                 }
                                 .font(.appCaption)
-                                .foregroundColor(.accentYellow)
+                                .foregroundColor(appAccentColor)
                             }
                             .padding(.top, 8)
                         }
@@ -127,7 +128,7 @@ struct ScheduleEntryModal: View {
                                 .foregroundColor(.textSecondary)
 
                             Toggle("Limit duration", isOn: $hasDuration)
-                                .tint(.accentYellow)
+                                .tint(appAccentColor)
                                 .padding()
                                 .background(Color.cardBackgroundSoft)
                                 .cornerRadius(AppDimensions.buttonCornerRadius)
@@ -200,7 +201,7 @@ struct ScheduleEntryModal: View {
                     Button("Save") {
                         saveEntry()
                     }
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
                     .disabled(selectedDays.isEmpty)
                 }
             }
@@ -258,6 +259,7 @@ struct ScheduleEntryModal: View {
 
 // MARK: - Schedule Entries List View
 struct ScheduleEntriesListView: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     @Binding var entries: [ScheduleEntry]
 
     @State private var showAddModal = false
@@ -290,7 +292,7 @@ struct ScheduleEntriesListView: View {
                     Text("Add Schedule")
                 }
                 .font(.appCaption)
-                .foregroundColor(.accentYellow)
+                .foregroundColor(appAccentColor)
                 .frame(maxWidth: .infinity)
                 .padding()
                 .background(Color.cardBackgroundSoft)
@@ -327,6 +329,7 @@ struct ScheduleEntriesListView: View {
 
 // MARK: - Schedule Entry Row
 struct ScheduleEntryRow: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     let entry: ScheduleEntry
     let onTap: () -> Void
 
@@ -336,7 +339,7 @@ struct ScheduleEntryRow: View {
                 // Time with clock icon
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(appAccentColor)
                         .font(.system(size: 12))
                     Text(entry.time)
                         .font(.appBody)
@@ -365,7 +368,7 @@ struct ScheduleEntryRow: View {
                         .foregroundColor(.textMuted)
                     Text(duration)
                         .font(.appCaption)
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(appAccentColor)
                 }
 
                 Spacer()

@@ -44,6 +44,11 @@ struct ProfileCategoryListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @Environment(\.navigateToRoot) var navigateToRoot
+    @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.iPadAddMedicalConditionAction) private var iPadAddMedicalConditionAction
+    @Environment(\.iPadAddGiftIdeaAction) private var iPadAddGiftIdeaAction
+    @Environment(\.iPadAddClothingSizeAction) private var iPadAddClothingSizeAction
 
     let profile: Profile
     let category: ProfileCategoryType
@@ -54,6 +59,41 @@ struct ProfileCategoryListView: View {
     @State private var currentDetails: [ProfileDetail]
     @State private var editingDetail: ProfileDetail?
 
+    // Gift card overlay state
+    @State private var activeGiftOptionsMenuItemId: UUID?
+    @State private var giftCardFrames: [UUID: CGRect] = [:]
+
+    // Clothing card overlay state
+    @State private var activeClothingOptionsMenuItemId: UUID?
+    @State private var clothingCardFrames: [UUID: CGRect] = [:]
+
+    // Gift card computed properties
+    private var activeGiftDetail: ProfileDetail? {
+        guard let activeId = activeGiftOptionsMenuItemId else { return nil }
+        return currentDetails.first(where: { $0.id == activeId })
+    }
+
+    private var activeGiftFrame: CGRect? {
+        guard let activeId = activeGiftOptionsMenuItemId else { return nil }
+        return giftCardFrames[activeId]
+    }
+
+    // Clothing card computed properties
+    private var activeClothingDetail: ProfileDetail? {
+        guard let activeId = activeClothingOptionsMenuItemId else { return nil }
+        return currentDetails.first(where: { $0.id == activeId })
+    }
+
+    private var activeClothingFrame: CGRect? {
+        guard let activeId = activeClothingOptionsMenuItemId else { return nil }
+        return clothingCardFrames[activeId]
+    }
+
+    /// Whether to use side panel presentation (iPad full-screen)
+    private var useSidePanel: Bool {
+        horizontalSizeClass == .regular
+    }
+
     init(profile: Profile, category: ProfileCategoryType, details: [ProfileDetail]) {
         self.profile = profile
         self.category = category
@@ -61,26 +101,57 @@ struct ProfileCategoryListView: View {
         self._currentDetails = State(initialValue: details)
     }
 
+    private var emptyStateTitle: String {
+        switch category {
+        case .clothing:
+            return "No clothing sizes yet"
+        case .gifts:
+            return "No gift ideas yet"
+        case .medical:
+            return "No medical conditions yet"
+        }
+    }
+
     var body: some View {
         ZStack {
-            Color.appBackground.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Header scrolls with content
+                    CategoryHeaderView(
+                        profile: profile,
+                        category: category,
+                        onBack: { dismiss() },
+                        onAdd: {
+                            // Use full-screen overlay action if available based on category
+                            switch category {
+                            case .medical:
+                                if let addAction = iPadAddMedicalConditionAction {
+                                    addAction(profile)
+                                } else {
+                                    showAddDetail = true
+                                }
+                            case .gifts:
+                                if let addAction = iPadAddGiftIdeaAction {
+                                    addAction(profile)
+                                } else {
+                                    showAddDetail = true
+                                }
+                            case .clothing:
+                                if let addAction = iPadAddClothingSizeAction {
+                                    addAction(profile)
+                                } else {
+                                    showAddDetail = true
+                                }
+                            }
+                        }
+                    )
 
-            VStack(spacing: 0) {
-                // Header at the top - fully interactive
-                CategoryHeaderView(
-                    profile: profile,
-                    category: category,
-                    onBack: { dismiss() }
-                )
-
-                // Content scrolls below header
-                ScrollView {
+                    // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
                         // Section header card
                         SectionHeaderCard(
                             title: category.title,
-                            icon: category.icon,
-                            backgroundColor: category.color
+                            icon: category.icon
                         )
 
                         // Details list
@@ -88,33 +159,48 @@ struct ProfileCategoryListView: View {
                             ForEach(currentDetails) { detail in
                                 switch category {
                                 case .clothing:
-                                    ValuePillCard(
-                                        category: "Clothing",
-                                        label: detail.label,
-                                        value: detail.value,
-                                        onEdit: {
-                                            editingDetail = detail
-                                        },
-                                        onDelete: {
-                                            Task {
-                                                await deleteDetail(detail: detail)
+                                    ClothingCardWithOverlay(
+                                        detail: detail,
+                                        isActive: activeClothingOptionsMenuItemId == detail.id,
+                                        onOptionsPressed: {
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                                activeClothingOptionsMenuItemId = detail.id
                                             }
+                                        }
+                                    )
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear
+                                                .preference(
+                                                    key: ClothingCardFramePreferenceKey.self,
+                                                    value: [detail.id: geo.frame(in: .global)]
+                                                )
                                         }
                                     )
 
                                 case .gifts:
-                                    GiftItemCard(
-                                        label: detail.label,
+                                    GiftCardWithOverlay(
+                                        detail: detail,
                                         status: giftStatus(from: detail.status),
+                                        isActive: activeGiftOptionsMenuItemId == detail.id,
                                         onStatusChange: { newStatus in
                                             Task {
                                                 await updateGiftStatus(detail: detail, newStatus: newStatus)
                                             }
                                         },
-                                        onDelete: {
-                                            Task {
-                                                await deleteDetail(detail: detail)
+                                        onOptionsPressed: {
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                                activeGiftOptionsMenuItemId = detail.id
                                             }
+                                        }
+                                    )
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear
+                                                .preference(
+                                                    key: GiftCardFramePreferenceKey.self,
+                                                    value: [detail.id: geo.frame(in: .global)]
+                                                )
                                         }
                                     )
 
@@ -130,7 +216,7 @@ struct ProfileCategoryListView: View {
                         // Empty state
                         if currentDetails.isEmpty {
                             VStack(spacing: 12) {
-                                Text("No medical conditions yet")
+                                Text(emptyStateTitle)
                                     .font(.appCardTitle)
                                     .foregroundColor(.textPrimary)
 
@@ -142,24 +228,81 @@ struct ProfileCategoryListView: View {
                             .padding(.top, 40)
                         }
 
+                        // Bottom spacing for nav bar
                         Spacer()
-                            .frame(height: 140)
+                            .frame(height: 120)
                     }
-                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.horizontal, AppDimensions.screenPadding(for: horizontalSizeClass))
                     .padding(.top, AppDimensions.cardSpacing)
                 }
             }
-        }
-        .navigationBarHidden(true)
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView()
+            .onPreferenceChange(GiftCardFramePreferenceKey.self) { frames in
+                giftCardFrames = frames
+            }
+            .onPreferenceChange(ClothingCardFramePreferenceKey.self) { frames in
+                clothingCardFrames = frames
+            }
+
+            // Overlay for gift cards
+            if category == .gifts,
+               let detail = activeGiftDetail,
+               let frame = activeGiftFrame {
+                HighlightedGiftOverlay(
+                    detail: detail,
+                    frame: frame,
+                    status: giftStatus(from: detail.status),
+                    onStatusChange: { newStatus in
+                        Task {
+                            await updateGiftStatus(detail: detail, newStatus: newStatus)
+                        }
+                        dismissGiftOverlay()
+                    },
+                    onDelete: {
+                        Task {
+                            await deleteDetail(detail: detail)
+                        }
+                        dismissGiftOverlay()
+                    },
+                    onDismiss: { dismissGiftOverlay() }
+                )
+                .zIndex(100)
+                .transition(.opacity)
+            }
+
+            // Overlay for clothing cards
+            if category == .clothing,
+               let detail = activeClothingDetail,
+               let frame = activeClothingFrame {
+                HighlightedClothingOverlay(
+                    detail: detail,
+                    frame: frame,
+                    onEdit: {
+                        editingDetail = detail
+                        dismissClothingOverlay()
+                    },
+                    onDelete: {
+                        Task {
+                            await deleteDetail(detail: detail)
+                        }
+                        dismissClothingOverlay()
+                    },
+                    onDismiss: { dismissClothingOverlay() }
+                )
+                .zIndex(100)
+                .transition(.opacity)
             }
         }
-        .sheet(isPresented: $showAddDetail) {
+        .ignoresSafeArea(edges: .top)
+        .background(Color.appBackground)
+        .navigationBarHidden(true)
+        .sidePanel(isPresented: $showSettings) {
+            SettingsPanelView(onDismiss: { showSettings = false })
+        }
+        .sidePanel(isPresented: $showAddDetail) {
             AddProfileDetailView(
                 profile: profile,
-                category: category
+                category: category,
+                onDismiss: { showAddDetail = false }
             ) { newDetail in
                 currentDetails.append(newDetail)
             }
@@ -176,6 +319,18 @@ struct ProfileCategoryListView: View {
         }
     }
     
+    private func dismissGiftOverlay() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            activeGiftOptionsMenuItemId = nil
+        }
+    }
+
+    private func dismissClothingOverlay() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            activeClothingOptionsMenuItemId = nil
+        }
+    }
+
     private func giftStatus(from status: String?) -> GiftItemCard.GiftStatus {
         switch status {
         case "bought": return .bought
@@ -193,6 +348,7 @@ struct ProfileCategoryListView: View {
             if let index = currentDetails.firstIndex(where: { $0.id == detail.id }) {
                 currentDetails[index] = saved
             }
+            NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
         } catch {
             print("Failed to update gift status: \(error)")
         }
@@ -202,6 +358,7 @@ struct ProfileCategoryListView: View {
         do {
             try await appState.profileRepository.deleteProfileDetail(id: detail.id)
             currentDetails.removeAll { $0.id == detail.id }
+            NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
         } catch {
             print("Failed to delete detail: \(error)")
         }
@@ -213,28 +370,24 @@ struct CategoryHeaderView: View {
     let profile: Profile
     let category: ProfileCategoryType
     let onBack: () -> Void
+    let onAdd: (() -> Void)?
 
-    init(profile: Profile, category: ProfileCategoryType, onBack: @escaping () -> Void) {
+    init(profile: Profile, category: ProfileCategoryType, onBack: @escaping () -> Void, onAdd: (() -> Void)? = nil) {
         self.profile = profile
         self.category = category
         self.onBack = onBack
-    }
-
-    private var headerImageName: String {
-        switch category {
-        case .clothing: return "header-clothing"
-        case .gifts: return "header-gifts"
-        case .medical: return "header-medical"
-        }
+        self.onAdd = onAdd
     }
 
     var body: some View {
-        HeaderImageView(
-            imageName: headerImageName,
+        CustomizableHeaderView(
+            pageIdentifier: .profileDetail,
             title: profile.fullName,
             subtitle: category.title,
             showBackButton: true,
-            backAction: onBack
+            backAction: onBack,
+            showAddButton: onAdd != nil,
+            addAction: onAdd
         )
     }
 }
@@ -243,11 +396,13 @@ struct CategoryHeaderView: View {
 struct AddProfileDetailView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
-    
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let profile: Profile
     let category: ProfileCategoryType
+    var onDismiss: (() -> Void)? = nil
     let onSave: (ProfileDetail) -> Void
-    
+
     @State private var label = ""
     @State private var value = ""
     @State private var status = "idea"
@@ -257,50 +412,86 @@ struct AddProfileDetailView: View {
 
     // Preset options for clothing
     private let clothingTypes = ["Jacket", "Pants", "Shoes", "T-Shirt", "Dress Shirt", "Belt", "Hat", "Gloves", "Socks", "Underwear", "Other"]
+
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
     
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Category-specific form
-                        switch category {
-                        case .clothing:
-                            clothingForm
-                        case .gifts:
-                            giftForm
-                        case .medical:
-                            medicalForm
-                        }
-                        
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                        }
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
                     }
-                    .padding(AppDimensions.screenPadding)
-                }
-            }
-            .navigationTitle("Add \(category.title)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+
+                    Spacer()
+
+                    Text("Add \(category.title)")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
                         Task { await saveDetail() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
                     }
-                    .foregroundColor(.accentYellow)
                     .disabled(label.isBlank || isLoading)
                 }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
+                .background(Color.appBackground)
+
+                ZStack {
+                    Color.appBackground.ignoresSafeArea()
+
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Category-specific form
+                            switch category {
+                            case .clothing:
+                                clothingForm
+                            case .gifts:
+                                giftForm
+                            case .medical:
+                                medicalForm
+                            }
+
+                            if let error = errorMessage {
+                                Text(error)
+                                    .font(.appCaption)
+                                    .foregroundColor(.medicalRed)
+                            }
+                        }
+                        .padding(AppDimensions.screenPadding)
+                    }
+                }
             }
+            .background(Color.appBackground)
+            .navigationBarHidden(true)
         }
     }
     
@@ -323,7 +514,7 @@ struct AddProfileDetailView: View {
                                 .foregroundColor(label == type ? .black : .textPrimary)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
-                                .background(label == type ? Color.accentYellow : Color.cardBackgroundSoft)
+                                .background(label == type ? appAccentColor : Color.cardBackgroundSoft)
                                 .cornerRadius(20)
                         }
                     }
@@ -412,7 +603,7 @@ struct AddProfileDetailView: View {
                                 .foregroundColor(label == item ? .black : .textPrimary)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
-                                .background(label == item ? Color.accentYellow : Color.cardBackgroundSoft)
+                                .background(label == item ? appAccentColor : Color.cardBackgroundSoft)
                                 .cornerRadius(20)
                         }
                     }
@@ -456,11 +647,13 @@ struct AddProfileDetailView: View {
         do {
             let newDetail = try await appState.profileRepository.createProfileDetail(insert)
             onSave(newDetail)
-            dismiss()
+            // Post notification so ProfileDetailView can reload its data
+            NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
+            dismissView()
         } catch {
             errorMessage = "Failed to save. Please try again."
         }
-        
+
         isLoading = false
     }
 }
@@ -469,6 +662,7 @@ struct AddProfileDetailView: View {
 struct EditClothingDetailView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
     let detail: ProfileDetail
     let onSave: (ProfileDetail) -> Void
@@ -490,72 +684,100 @@ struct EditClothingDetailView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Type picker with flow layout
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Clothing Type")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                    Spacer()
 
-                            FlowLayout(spacing: 8) {
-                                ForEach(clothingTypes, id: \.self) { type in
-                                    Button {
-                                        label = type
-                                    } label: {
-                                        Text(type)
-                                            .font(.appCaption)
-                                            .foregroundColor(label == type ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(label == type ? Color.accentYellow : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
+                    Text("Edit Clothing")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await saveChanges() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(label.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
+                .background(Color.appBackground)
+
+                ZStack {
+                    Color.appBackground.ignoresSafeArea()
+
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            // Type picker with flow layout
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Clothing Type")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+
+                                FlowLayout(spacing: 8) {
+                                    ForEach(clothingTypes, id: \.self) { type in
+                                        Button {
+                                            label = type
+                                        } label: {
+                                            Text(type)
+                                                .font(.appCaption)
+                                                .foregroundColor(label == type ? .black : .textPrimary)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 10)
+                                                .background(label == type ? appAccentColor : Color.cardBackgroundSoft)
+                                                .cornerRadius(20)
+                                        }
                                     }
                                 }
                             }
+
+                            // Custom type
+                            AppTextField(placeholder: "Or enter custom type", text: $label)
+
+                            // Size value with picker button
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Size")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+
+                                SizeFieldWithPicker(size: $value, showPicker: $showSizePicker)
+                            }
+
+                            if let error = errorMessage {
+                                Text(error)
+                                    .font(.appCaption)
+                                    .foregroundColor(.medicalRed)
+                            }
                         }
-
-                        // Custom type
-                        AppTextField(placeholder: "Or enter custom type", text: $label)
-
-                        // Size value with picker button
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Size")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            SizeFieldWithPicker(size: $value, showPicker: $showSizePicker)
-                        }
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                        }
+                        .padding(AppDimensions.screenPadding)
                     }
-                    .padding(AppDimensions.screenPadding)
                 }
             }
-            .navigationTitle("Edit Clothing")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveChanges() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(label.isBlank || isLoading)
-                }
-            }
+            .background(Color.appBackground)
+            .navigationBarHidden(true)
             .sheet(isPresented: $showSizePicker) {
                 SizePickerSheet(selectedSize: $value, isPresented: $showSizePicker)
             }
@@ -578,6 +800,7 @@ struct EditClothingDetailView: View {
         do {
             let saved = try await appState.profileRepository.updateProfileDetail(updatedDetail)
             onSave(saved)
+            NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": detail.profileId])
             dismiss()
         } catch {
             errorMessage = "Failed to save. Please try again."
@@ -592,7 +815,8 @@ struct StatusButton: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
-    
+    @Environment(\.appAccentColor) private var appAccentColor
+
     var body: some View {
         Button(action: action) {
             Text(title)
@@ -600,7 +824,7 @@ struct StatusButton: View {
                 .foregroundColor(isSelected ? .black : .textPrimary)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
-                .background(isSelected ? Color.accentYellow : Color.cardBackgroundSoft)
+                .background(isSelected ? appAccentColor : Color.cardBackgroundSoft)
                 .cornerRadius(AppDimensions.buttonCornerRadius)
         }
     }
@@ -677,34 +901,82 @@ struct ProfileDetailRowView: View {
 struct AddProfileView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
-    
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var onDismiss: (() -> Void)? = nil
     let onSave: (Profile) -> Void
-    
+
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     @State private var fullName = ""
     @State private var preferredName = ""
     @State private var relationship = ""
+    @State private var connectedToProfileId: UUID? = nil
+    @State private var includeInFamilyTree = true
     @State private var phone = ""
     @State private var email = ""
     @State private var address = ""
     @State private var birthday: Date? = nil
+    @State private var isDeceased = false
+    @State private var dateOfDeath: Date? = nil
     @State private var showDatePicker = false
+    @State private var showDeathDatePicker = false
     @State private var showRelationshipPicker = false
     @State private var isLoading = false
     @State private var errorMessage: String?
-    
+    @State private var allProfiles: [Profile] = []
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
+
+                    Spacer()
+
+                    Text("Add Person")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await saveProfile() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(fullName.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(fullName.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Header
-                        HeaderImageView(
-                            imageName: "header-add-profile",
-                            title: "Add Person"
-                        )
-                        .padding(.horizontal, AppDimensions.screenPadding)
 
                         AppTextField(placeholder: "Full Name *", text: $fullName)
                         AppTextField(placeholder: "Preferred Name (optional)", text: $preferredName)
@@ -715,10 +987,35 @@ struct AddProfileView: View {
                             showPicker: $showRelationshipPicker
                         )
 
+                        // Connected To picker for family tree
+                        if !allProfiles.isEmpty {
+                            ConnectedToPickerField(
+                                selectedProfileId: $connectedToProfileId,
+                                profiles: allProfiles,
+                                currentProfileId: nil  // New profile has no ID yet
+                            )
+                        }
+
+                        // Include in Family Tree toggle
+                        HStack {
+                            Text("Include in Family Tree")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Toggle("", isOn: $includeInFamilyTree)
+                                .tint(appAccentColor)
+                                .labelsHidden()
+                        }
+                        .padding()
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+
                         AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
                         AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
                         AppTextField(placeholder: "Address", text: $address)
-                        
+
                         // Birthday picker
                         Button {
                             showDatePicker = true
@@ -726,9 +1023,9 @@ struct AddProfileView: View {
                             HStack {
                                 Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday (optional)")
                                     .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
-                                
+
                                 Spacer()
-                                
+
                                 Image(systemName: "calendar")
                                     .foregroundColor(.textSecondary)
                             }
@@ -737,7 +1034,66 @@ struct AddProfileView: View {
                             .background(Color.cardBackgroundSoft)
                             .cornerRadius(AppDimensions.buttonCornerRadius)
                         }
-                        
+
+                        // MARK: - Memorial Status Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Memorial Status")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                                .padding(.horizontal, 4)
+
+                            // Deceased toggle
+                            HStack {
+                                Image(systemName: "heart.fill")
+                                    .foregroundColor(.textSecondary)
+                                    .frame(width: 24)
+
+                                Text("Person has passed away")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Spacer()
+
+                                Toggle("", isOn: $isDeceased)
+                                    .tint(appAccentColor)
+                                    .labelsHidden()
+                            }
+                            .padding()
+                            .background(Color.cardBackgroundSoft)
+                            .cornerRadius(AppDimensions.buttonCornerRadius)
+
+                            // Date of death picker (only shown when deceased is true)
+                            if isDeceased {
+                                Button {
+                                    showDeathDatePicker = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "calendar")
+                                            .foregroundColor(.textSecondary)
+                                            .frame(width: 24)
+
+                                        Text(dateOfDeath != nil ? dateOfDeath!.formatted(date: .long, time: .omitted) : "Date of Death (optional)")
+                                            .foregroundColor(dateOfDeath != nil ? .textPrimary : .textSecondary)
+
+                                        Spacer()
+
+                                        if dateOfDeath != nil {
+                                            Button {
+                                                dateOfDeath = nil
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.textSecondary)
+                                            }
+                                        }
+                                    }
+                                    .padding()
+                                    .frame(height: AppDimensions.textFieldHeight)
+                                    .background(Color.cardBackgroundSoft)
+                                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                                }
+                            }
+                        }
+
                         if let error = errorMessage {
                             Text(error)
                                 .font(.appCaption)
@@ -747,29 +1103,33 @@ struct AddProfileView: View {
                     .padding(AppDimensions.screenPadding)
                 }
             }
-            .navigationTitle("Add Person")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveProfile() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(fullName.isBlank || isLoading)
-                }
-            }
+            .background(Color.clear)
+            .navigationBarHidden(true)
             .sheet(isPresented: $showDatePicker) {
                 DatePickerSheet(selectedDate: $birthday, isPresented: $showDatePicker)
+            }
+            .sheet(isPresented: $showDeathDatePicker) {
+                DatePickerSheet(selectedDate: $dateOfDeath, isPresented: $showDeathDatePicker, title: "Date of Death")
             }
             .sheet(isPresented: $showRelationshipPicker) {
                 RelationshipPickerSheet(selectedRelationship: $relationship, isPresented: $showRelationshipPicker)
             }
+            .task {
+                await loadProfiles()
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .toolbarBackground(.clear, for: .navigationBar)
+        .containerBackground(.clear, for: .navigation)
+    }
+
+    private func loadProfiles() async {
+        guard let accountId = appState.currentAccount?.id else { return }
+        do {
+            allProfiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+        } catch {
+            print("Failed to load profiles: \(error)")
         }
     }
 
@@ -789,17 +1149,21 @@ struct AddProfileView: View {
             fullName: fullName,
             preferredName: preferredName.isBlank ? nil : preferredName,
             relationship: relationship.isBlank ? nil : relationship,
+            connectedToProfileId: connectedToProfileId,
+            includeInFamilyTree: includeInFamilyTree,
             birthday: birthday,
+            isDeceased: isDeceased,
+            dateOfDeath: isDeceased ? dateOfDeath : nil,
             address: address.isBlank ? nil : address,
             phone: phone.isBlank ? nil : phone,
             email: email.isBlank ? nil : email
         )
-        
+
         do {
             let newProfile = try await appState.profileRepository.createProfile(insert)
 
-            // Schedule birthday reminder if birthday was set
-            if newProfile.birthday != nil {
+            // Schedule birthday reminder if birthday was set (skip for deceased profiles)
+            if newProfile.birthday != nil && !newProfile.isDeceased {
                 await appState.scheduleBirthdayReminder(for: newProfile)
             }
 
@@ -819,148 +1183,307 @@ struct AddProfileView: View {
 struct EditProfileView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
     let profile: Profile
     let onSave: (Profile) -> Void
+    var onDismiss: (() -> Void)?
 
     @State private var fullName: String
     @State private var preferredName: String
     @State private var relationship: String
+    @State private var connectedToProfileId: UUID?
+    @State private var includeInFamilyTree: Bool
     @State private var phone: String
     @State private var email: String
     @State private var address: String
     @State private var birthday: Date?
+    @State private var isDeceased: Bool
+    @State private var dateOfDeath: Date?
     @State private var selectedImage: UIImage?
     @State private var showDatePicker = false
+    @State private var showDeathDatePicker = false
     @State private var showRelationshipPicker = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showAddCustomField = false
     @State private var customFields: [ProfileDetail] = []
+    @State private var allProfiles: [Profile] = []
 
-    init(profile: Profile, onSave: @escaping (Profile) -> Void) {
+    init(profile: Profile, onDismiss: (() -> Void)? = nil, onSave: @escaping (Profile) -> Void) {
         self.profile = profile
+        self.onDismiss = onDismiss
         self.onSave = onSave
         self._fullName = State(initialValue: profile.fullName)
         self._preferredName = State(initialValue: profile.preferredName ?? "")
         self._relationship = State(initialValue: profile.relationship ?? "")
+        self._connectedToProfileId = State(initialValue: profile.connectedToProfileId)
+        self._includeInFamilyTree = State(initialValue: profile.includeInFamilyTree)
         self._phone = State(initialValue: profile.phone ?? "")
         self._email = State(initialValue: profile.email ?? "")
         self._address = State(initialValue: profile.address ?? "")
         self._birthday = State(initialValue: profile.birthday)
+        self._isDeceased = State(initialValue: profile.isDeceased)
+        self._dateOfDeath = State(initialValue: profile.dateOfDeath)
+    }
+
+    /// Dismisses the view using the onDismiss callback if provided, otherwise uses the environment dismiss
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
+
+                Spacer()
+
+                Text("Edit Profile")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                Button {
+                    Task { await updateProfile() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(fullName.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(fullName.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackgroundLight)
+
             ZStack {
-                Color.appBackground.ignoresSafeArea()
+                Color.appBackgroundLight
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Profile Photo
-                        PhotoPickerButton(
-                            selectedImage: $selectedImage,
-                            currentPhotoURL: profile.photoUrl,
-                            size: 120
-                        )
-                        .padding(.bottom, 8)
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Profile Photo
+                            PhotoPickerButton(
+                                selectedImage: $selectedImage,
+                                currentPhotoURL: profile.photoUrl,
+                                size: 120
+                            )
+                            .padding(.bottom, 8)
 
-                        AppTextField(placeholder: "Full Name *", text: $fullName)
-                        AppTextField(placeholder: "Preferred Name", text: $preferredName)
+                            AppTextField(placeholder: "Full Name *", text: $fullName)
+                            AppTextField(placeholder: "Preferred Name", text: $preferredName)
 
-                        // Relationship field with quick-add button
-                        RelationshipFieldWithPicker(
-                            relationship: $relationship,
-                            showPicker: $showRelationshipPicker
-                        )
+                            // Relationship field with quick-add button
+                            RelationshipFieldWithPicker(
+                                relationship: $relationship,
+                                showPicker: $showRelationshipPicker
+                            )
 
-                        AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
-                        AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
-                        AppTextField(placeholder: "Address", text: $address)
+                            // Connected To picker for family tree
+                            if !allProfiles.isEmpty {
+                                ConnectedToPickerField(
+                                    selectedProfileId: $connectedToProfileId,
+                                    profiles: allProfiles,
+                                    currentProfileId: profile.id
+                                )
+                            }
 
-                        Button {
-                            showDatePicker = true
-                        } label: {
+                            // Include in Family Tree toggle
                             HStack {
-                                Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday")
-                                    .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
+                                Text("Include in Family Tree")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
 
                                 Spacer()
 
-                                Image(systemName: "calendar")
-                                    .foregroundColor(.textSecondary)
+                                Toggle("", isOn: $includeInFamilyTree)
+                                    .tint(appAccentColor)
+                                    .labelsHidden()
                             }
                             .padding()
-                            .frame(height: AppDimensions.textFieldHeight)
                             .background(Color.cardBackgroundSoft)
                             .cornerRadius(AppDimensions.buttonCornerRadius)
-                        }
 
-                        // Custom Fields Section
-                        if !customFields.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("ADDITIONAL INFORMATION")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                            AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
+                            AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+                            AppTextField(placeholder: "Address", text: $address)
 
-                                ForEach(customFields) { field in
-                                    CustomFieldRowView(detail: field)
+                            Button {
+                                showDatePicker = true
+                            } label: {
+                                HStack {
+                                    Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday")
+                                        .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
+
+                                    Spacer()
+
+                                    Image(systemName: "calendar")
+                                        .foregroundColor(.textSecondary)
                                 }
+                                .padding()
+                                .frame(height: AppDimensions.textFieldHeight)
+                                .background(Color.cardBackgroundSoft)
+                                .cornerRadius(AppDimensions.buttonCornerRadius)
+                            }
+
+                            // Deceased Section (only show for non-primary profiles)
+                            if profile.type != .primary {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text("MEMORIAL STATUS")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textSecondary)
+
+                                    // Deceased toggle
+                                    HStack {
+                                        Text("Deceased")
+                                            .font(.appBody)
+                                            .foregroundColor(.textPrimary)
+
+                                        Spacer()
+
+                                        Toggle("", isOn: $isDeceased)
+                                            .tint(appAccentColor)
+                                            .labelsHidden()
+                                            .onChange(of: isDeceased) { _, newValue in
+                                                if !newValue {
+                                                    // Clear date of death when unchecking
+                                                    dateOfDeath = nil
+                                                }
+                                            }
+                                    }
+                                    .padding()
+                                    .background(Color.cardBackgroundSoft)
+                                    .cornerRadius(AppDimensions.buttonCornerRadius)
+
+                                    // Date of Death picker (only shown if deceased)
+                                    if isDeceased {
+                                        Button {
+                                            showDeathDatePicker = true
+                                        } label: {
+                                            HStack {
+                                                Text(dateOfDeath != nil ? dateOfDeath!.formattedBirthday() : "Date of Passing")
+                                                    .foregroundColor(dateOfDeath != nil ? .textPrimary : .textSecondary)
+
+                                                Spacer()
+
+                                                Image(systemName: "calendar")
+                                                    .foregroundColor(.textSecondary)
+                                            }
+                                            .padding()
+                                            .frame(height: AppDimensions.textFieldHeight)
+                                            .background(Color.cardBackgroundSoft)
+                                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                                        }
+
+                                        Text("Deceased profiles show a simplified memorial view with essential information only.")
+                                            .font(.appCaption)
+                                            .foregroundColor(.textSecondary)
+                                    }
+                                }
+                                .padding(.top, 8)
+                            }
+
+                            // Custom Fields Section
+                            if !customFields.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text("ADDITIONAL INFORMATION")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textSecondary)
+
+                                    ForEach(customFields) { field in
+                                        CustomFieldRowView(
+                                            detail: field,
+                                            onDelete: {
+                                                Task {
+                                                    await deleteCustomField(field)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                                .padding(.top, 8)
+                            }
+
+                            // Add new information button
+                            Button {
+                                showAddCustomField = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 20))
+                                    Text("Add new information")
+                                        .font(.appButtonText)
+                                }
+                                .foregroundColor(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(appAccentColor)
+                                .cornerRadius(AppDimensions.buttonCornerRadius)
                             }
                             .padding(.top, 8)
+
+                            if let error = errorMessage {
+                                Text(error)
+                                    .font(.appCaption)
+                                    .foregroundColor(.medicalRed)
+                            }
+
+                            // Bottom spacing
+                            Spacer()
+                                .frame(height: 40)
                         }
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                        }
-
-                        // Extra space for floating button
-                        Spacer()
-                            .frame(height: 80)
+                        .padding(AppDimensions.screenPadding)
                     }
-                    .padding(AppDimensions.screenPadding)
-                }
+            }
+        }
+        .sheet(isPresented: $showDatePicker) {
+            DatePickerSheet(selectedDate: $birthday, isPresented: $showDatePicker)
+        }
+        .sheet(isPresented: $showDeathDatePicker) {
+            DatePickerSheet(selectedDate: $dateOfDeath, isPresented: $showDeathDatePicker)
+        }
+        .sheet(isPresented: $showRelationshipPicker) {
+            RelationshipPickerSheet(selectedRelationship: $relationship, isPresented: $showRelationshipPicker)
+        }
+        .sheet(isPresented: $showAddCustomField) {
+            AddCustomFieldView(profile: profile) { newField in
+                customFields.append(newField)
+            }
+        }
+        .task {
+            await loadCustomFields()
+            await loadProfiles()
+        }
+    }
 
-                // Floating add button with fade
-                FloatingButtonContainer {
-                    FloatingAddButton {
-                        showAddCustomField = true
-                    }
-                }
-            }
-            .navigationTitle("Edit Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await updateProfile() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(fullName.isBlank || isLoading)
-                }
-            }
-            .sheet(isPresented: $showDatePicker) {
-                DatePickerSheet(selectedDate: $birthday, isPresented: $showDatePicker)
-            }
-            .sheet(isPresented: $showRelationshipPicker) {
-                RelationshipPickerSheet(selectedRelationship: $relationship, isPresented: $showRelationshipPicker)
-            }
-            .sheet(isPresented: $showAddCustomField) {
-                AddCustomFieldView(profile: profile) { newField in
-                    customFields.append(newField)
-                }
-            }
-            .task {
-                await loadCustomFields()
-            }
+    private func loadProfiles() async {
+        guard let accountId = appState.currentAccount?.id else { return }
+        do {
+            allProfiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+        } catch {
+            print("Failed to load profiles: \(error)")
         }
     }
 
@@ -971,6 +1494,15 @@ struct EditProfileView: View {
             customFields = allDetails.filter { $0.category == .note }
         } catch {
             print("Failed to load custom fields: \(error)")
+        }
+    }
+
+    private func deleteCustomField(_ field: ProfileDetail) async {
+        do {
+            try await appState.profileRepository.deleteProfileDetail(id: field.id)
+            customFields.removeAll { $0.id == field.id }
+        } catch {
+            errorMessage = "Failed to delete field: \(error.localizedDescription)"
         }
     }
     
@@ -987,10 +1519,14 @@ struct EditProfileView: View {
         updatedProfile.fullName = fullName
         updatedProfile.preferredName = preferredName.isBlank ? nil : preferredName
         updatedProfile.relationship = relationship.isBlank ? nil : relationship
+        updatedProfile.connectedToProfileId = connectedToProfileId
+        updatedProfile.includeInFamilyTree = includeInFamilyTree
         updatedProfile.phone = phone.isBlank ? nil : phone
         updatedProfile.email = email.isBlank ? nil : email
         updatedProfile.address = address.isBlank ? nil : address
         updatedProfile.birthday = birthday
+        updatedProfile.isDeceased = isDeceased
+        updatedProfile.dateOfDeath = isDeceased ? dateOfDeath : nil
 
         do {
             // Upload photo if selected (skip if storage not configured)
@@ -1009,8 +1545,8 @@ struct EditProfileView: View {
 
             let saved = try await appState.profileRepository.updateProfile(updatedProfile)
 
-            // Update birthday reminder
-            if saved.birthday != nil {
+            // Update birthday reminder - skip for deceased profiles
+            if saved.birthday != nil && !saved.isDeceased {
                 await appState.scheduleBirthdayReminder(for: saved)
             } else {
                 // Cancel if birthday was removed
@@ -1030,6 +1566,7 @@ struct EditProfileView: View {
 // MARK: - Custom Field Row View
 struct CustomFieldRowView: View {
     let detail: ProfileDetail
+    let onDelete: () -> Void
 
     var body: some View {
         HStack {
@@ -1044,6 +1581,13 @@ struct CustomFieldRowView: View {
             }
 
             Spacer()
+
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.system(size: 16))
+                    .foregroundColor(.red)
+                    .frame(width: 44, height: 44)
+            }
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
@@ -1055,6 +1599,7 @@ struct CustomFieldRowView: View {
 struct AddCustomFieldView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
     let profile: Profile
     let onSave: (ProfileDetail) -> Void
@@ -1080,66 +1625,94 @@ struct AddCustomFieldView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Quick suggestions
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Quick Add")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                    Spacer()
 
-                            FlowLayout(spacing: 8) {
-                                ForEach(suggestions, id: \.self) { suggestion in
-                                    Button {
-                                        label = suggestion
-                                    } label: {
-                                        Text(suggestion)
-                                            .font(.appCaption)
-                                            .foregroundColor(label == suggestion ? .black : .textPrimary)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .background(label == suggestion ? Color.accentYellow : Color.cardBackgroundSoft)
-                                            .cornerRadius(16)
+                    Text("Add Information")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await saveField() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(label.isBlank || value.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(label.isBlank || value.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
+                .background(Color.appBackground)
+
+                ZStack {
+                    Color.appBackground.ignoresSafeArea()
+
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Quick suggestions
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Quick Add")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+
+                                FlowLayout(spacing: 8) {
+                                    ForEach(suggestions, id: \.self) { suggestion in
+                                        Button {
+                                            label = suggestion
+                                        } label: {
+                                            Text(suggestion)
+                                                .font(.appCaption)
+                                                .foregroundColor(label == suggestion ? .black : .textPrimary)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 8)
+                                                .background(label == suggestion ? appAccentColor : Color.cardBackgroundSoft)
+                                                .cornerRadius(16)
+                                        }
                                     }
                                 }
                             }
+
+                            // Custom label input
+                            AppTextField(placeholder: "Label (e.g., Driver's License)", text: $label)
+
+                            // Value input
+                            AppTextField(placeholder: "Value", text: $value)
+
+                            if let error = errorMessage {
+                                Text(error)
+                                    .font(.appCaption)
+                                    .foregroundColor(.medicalRed)
+                            }
                         }
-
-                        // Custom label input
-                        AppTextField(placeholder: "Label (e.g., Driver's License)", text: $label)
-
-                        // Value input
-                        AppTextField(placeholder: "Value", text: $value)
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                        }
+                        .padding(AppDimensions.screenPadding)
                     }
-                    .padding(AppDimensions.screenPadding)
                 }
             }
-            .navigationTitle("Add Information")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveField() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(label.isBlank || value.isBlank || isLoading)
-                }
-            }
+            .background(Color.appBackground)
+            .navigationBarHidden(true)
         }
     }
 
@@ -1224,44 +1797,34 @@ struct ConnectionsListView: View {
 
     let profile: Profile
 
-    @State private var connections: [ConnectionWithProfile] = []
+    @State private var relatedProfiles: [Profile] = []
     @State private var isLoading = false
-    @State private var showAddConnection = false
-    @State private var showFamilyTree = false
     @State private var showSettings = false
     @State private var error: String?
 
     var body: some View {
-        ZStack {
-            Color.appBackground.ignoresSafeArea()
-
+        ScrollView {
             VStack(spacing: 0) {
-                // Header at the top - fully interactive
+                // Header scrolls with content
                 ConnectionsHeaderView(
                     profile: profile,
-                    onBack: { dismiss() },
-                    onFamilyTree: { showFamilyTree = true }
+                    onBack: { dismiss() }
                 )
 
-                // Content scrolls below header
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
+                // Content
+                VStack(spacing: AppDimensions.cardSpacing) {
                         // Section header card
                         SectionHeaderCard(
                             title: "Connections",
-                            icon: "person.2.fill",
-                            backgroundColor: .connectionsGreen
+                            icon: "person.2.fill"
                         )
 
-                        // Connections list
-                        if !connections.isEmpty {
+                        // Connections list - auto-populated from other profiles in the account
+                        if !relatedProfiles.isEmpty {
                             VStack(spacing: AppDimensions.cardSpacing) {
-                                ForEach(connections) { connectionWithProfile in
-                                    NavigationLink(destination: ConnectionsListView(profile: connectionWithProfile.connectedProfile)) {
-                                        ConnectionCard(
-                                            profile: connectionWithProfile.connectedProfile,
-                                            relationshipType: connectionWithProfile.connection.relationshipType
-                                        )
+                                ForEach(relatedProfiles) { relatedProfile in
+                                    NavigationLink(destination: ProfileDetailView(profile: relatedProfile)) {
+                                        SimpleConnectionCard(profile: relatedProfile)
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
@@ -1275,7 +1838,7 @@ struct ConnectionsListView: View {
                         }
 
                         // Empty state
-                        if connections.isEmpty && !isLoading {
+                        if relatedProfiles.isEmpty && !isLoading {
                             VStack(spacing: 12) {
                                 Image(systemName: "person.2.slash")
                                     .font(.system(size: 48))
@@ -1285,43 +1848,34 @@ struct ConnectionsListView: View {
                                     .font(.appCardTitle)
                                     .foregroundColor(.textPrimary)
 
-                                Text("Add a connection from the menu below")
+                                Text("Add family members or friends from the Profiles page")
                                     .font(.appBody)
                                     .foregroundColor(.textSecondary)
+                                    .multilineTextAlignment(.center)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.top, 40)
                         }
 
+                        // Bottom spacing for nav bar
                         Spacer()
-                            .frame(height: 140)
-                    }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.top, AppDimensions.cardSpacing)
+                            .frame(height: 120)
                 }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.top, AppDimensions.cardSpacing)
             }
         }
+        .ignoresSafeArea(edges: .top)
+        .background(Color.appBackground)
         .navigationBarHidden(true)
-        .navigationDestination(isPresented: $showFamilyTree) {
-            FamilyTreeView(rootProfile: profile)
-        }
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView()
-            }
-        }
-        .sheet(isPresented: $showAddConnection) {
-            AddConnectionView(profile: profile) { newConnection in
-                Task {
-                    await loadConnections()
-                }
-            }
+        .sidePanel(isPresented: $showSettings) {
+            SettingsPanelView(onDismiss: { showSettings = false })
         }
         .task {
-            await loadConnections()
+            await loadRelatedProfiles()
         }
         .refreshable {
-            await loadConnections()
+            await loadRelatedProfiles()
         }
         .alert("Error", isPresented: .init(
             get: { error != nil },
@@ -1335,11 +1889,15 @@ struct ConnectionsListView: View {
         }
     }
 
-    private func loadConnections() async {
+    private func loadRelatedProfiles() async {
+        guard let account = appState.currentAccount else { return }
+
         isLoading = true
 
         do {
-            connections = try await appState.profileRepository.getConnectionsWithProfiles(profileId: profile.id)
+            // Get all profiles in the account except the current one
+            let allProfiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+            relatedProfiles = allProfiles.filter { $0.id != profile.id }
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription
@@ -1354,32 +1912,26 @@ struct ConnectionsListView: View {
 struct ConnectionsHeaderView: View {
     let profile: Profile
     let onBack: () -> Void
-    let onFamilyTree: (() -> Void)?
 
-    init(profile: Profile, onBack: @escaping () -> Void, onFamilyTree: (() -> Void)? = nil) {
+    init(profile: Profile, onBack: @escaping () -> Void) {
         self.profile = profile
         self.onBack = onBack
-        self.onFamilyTree = onFamilyTree
     }
 
     var body: some View {
-        HeaderImageView(
-            imageName: "header-connections",
+        CustomizableHeaderView(
+            pageIdentifier: .profileDetail,
             title: profile.fullName,
             subtitle: "Connections",
             showBackButton: true,
-            backAction: onBack,
-            customActionIcon: onFamilyTree != nil ? "figure.2.and.child.holdinghands" : nil,
-            customActionColor: .connectionsGreen,
-            customAction: onFamilyTree
+            backAction: onBack
         )
     }
 }
 
-// MARK: - Connection Card
-struct ConnectionCard: View {
+// MARK: - Simple Connection Card (uses profile's relationship field)
+struct SimpleConnectionCard: View {
     let profile: Profile
-    let relationshipType: ConnectionType
 
     var body: some View {
         HStack(spacing: 16) {
@@ -1391,9 +1943,11 @@ struct ConnectionCard: View {
                     .font(.appCardTitle)
                     .foregroundColor(.textPrimary)
 
-                Text(relationshipType.displayName)
-                    .font(.appCaption)
-                    .foregroundColor(.connectionsGreen)
+                if let relationship = profile.relationship, !relationship.isEmpty {
+                    Text(relationship)
+                        .font(.appCaption)
+                        .foregroundColor(.connectionsGreen)
+                }
             }
 
             Spacer()
@@ -1408,586 +1962,12 @@ struct ConnectionCard: View {
     }
 }
 
-// MARK: - Family Tree View
-struct FamilyTreeView: View {
-    @EnvironmentObject var appState: AppState
-    @Environment(\.dismiss) var dismiss
-
-    let rootProfile: Profile
-
-    @State private var treeData: FamilyTreeNode?
-    @State private var expandedNodes: Set<UUID> = []
-    @State private var isLoading = false
-    @State private var error: String?
-
-    private let maxDepth = 3 // Limit recursion depth
-
-    var body: some View {
-        ZStack {
-            Color.appBackground.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                // Header at the top - fully interactive
-                HeaderImageView(
-                    imageName: "header-connections",
-                    title: rootProfile.fullName,
-                    subtitle: "Family Tree",
-                    showBackButton: true,
-                    backAction: { dismiss() }
-                )
-
-                // Content scrolls below header
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
-                        // Section header
-                        SectionHeaderCard(
-                            title: "Family Tree",
-                            icon: "figure.2.and.child.holdinghands",
-                            backgroundColor: .connectionsGreen
-                        )
-
-                        if isLoading {
-                            LoadingView(message: "Building family tree...")
-                                .padding(.top, 40)
-                        } else if let node = treeData {
-                            // Root node with tree
-                            FamilyTreeNodeView(
-                                node: node,
-                                depth: 0,
-                                expandedNodes: $expandedNodes
-                            )
-                        } else {
-                            VStack(spacing: 12) {
-                                Image(systemName: "figure.2.and.child.holdinghands")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(.textSecondary)
-
-                                Text("No connections to display")
-                                    .font(.appCardTitle)
-                                    .foregroundColor(.textPrimary)
-
-                                Text("Add connections to see your family tree")
-                                    .font(.appBody)
-                                    .foregroundColor(.textSecondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
-                        }
-
-                        Spacer()
-                            .frame(height: 100)
-                    }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.top, AppDimensions.cardSpacing)
-                }
-            }
-        }
-        .navigationBarHidden(true)
-        .task {
-            await loadFamilyTree()
-        }
-        .alert("Error", isPresented: .init(
-            get: { error != nil },
-            set: { if !$0 { error = nil } }
-        )) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            if let err = error {
-                Text(err)
-            }
-        }
-    }
-
-    private func loadFamilyTree() async {
-        isLoading = true
-
-        do {
-            // Start with root profile in the ancestor chain
-            let ancestorChain = Set<UUID>([rootProfile.id])
-            treeData = try await buildTreeNode(
-                for: rootProfile,
-                relationshipToParent: nil,
-                depth: 0,
-                ancestorChain: ancestorChain
-            )
-            // Expand root node by default
-            expandedNodes.insert(rootProfile.id)
-        } catch {
-            self.error = error.localizedDescription
-        }
-
-        isLoading = false
-    }
-
-    private func buildTreeNode(
-        for profile: Profile,
-        relationshipToParent: ConnectionType?,
-        depth: Int,
-        ancestorChain: Set<UUID>
-    ) async throws -> FamilyTreeNode {
-        var children: [FamilyTreeNode] = []
-
-        // Only fetch children if we haven't reached max depth
-        if depth < maxDepth {
-            let connections = try await appState.profileRepository.getConnectionsWithProfiles(profileId: profile.id)
-
-            for connection in connections {
-                // Skip if this person is already in the ancestor chain (prevents cycles within a branch)
-                if ancestorChain.contains(connection.connectedProfile.id) {
-                    continue
-                }
-
-                // Create new ancestor chain for this branch
-                var childAncestorChain = ancestorChain
-                childAncestorChain.insert(connection.connectedProfile.id)
-
-                let childNode = try await buildTreeNode(
-                    for: connection.connectedProfile,
-                    relationshipToParent: connection.connection.relationshipType,
-                    depth: depth + 1,
-                    ancestorChain: childAncestorChain
-                )
-                children.append(childNode)
-            }
-        }
-
-        return FamilyTreeNode(
-            profile: profile,
-            relationshipToParent: relationshipToParent,
-            children: children,
-            depth: depth
-        )
-    }
-}
-
-// MARK: - Family Tree Node Model
-struct FamilyTreeNode: Identifiable {
-    let profile: Profile
-    let relationshipToParent: ConnectionType?
-    let children: [FamilyTreeNode]
-    let depth: Int
-
-    var id: UUID { profile.id }
-    var hasChildren: Bool { !children.isEmpty }
-}
-
-// MARK: - Family Tree Node View
-struct FamilyTreeNodeView: View {
-    let node: FamilyTreeNode
-    let depth: Int
-    @Binding var expandedNodes: Set<UUID>
-
-    private var isExpanded: Bool {
-        expandedNodes.contains(node.profile.id)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Node card
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if isExpanded {
-                        expandedNodes.remove(node.profile.id)
-                    } else {
-                        expandedNodes.insert(node.profile.id)
-                    }
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    // Indentation lines
-                    if depth > 0 {
-                        HStack(spacing: 0) {
-                            ForEach(0..<depth, id: \.self) { _ in
-                                Rectangle()
-                                    .fill(Color.connectionsGreen.opacity(0.3))
-                                    .frame(width: 2)
-                                    .padding(.horizontal, 8)
-                            }
-                        }
-                        .frame(width: CGFloat(depth) * 20)
-                    }
-
-                    // Expand/collapse indicator
-                    if node.hasChildren {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.connectionsGreen)
-                            .frame(width: 16)
-                    } else {
-                        Circle()
-                            .fill(Color.connectionsGreen.opacity(0.5))
-                            .frame(width: 8, height: 8)
-                            .frame(width: 16)
-                    }
-
-                    // Profile photo
-                    AsyncProfileImage(url: node.profile.photoUrl, size: 44)
-
-                    // Name and relationship
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(node.profile.displayName)
-                            .font(.appCardTitle)
-                            .foregroundColor(.textPrimary)
-
-                        if let relationship = node.relationshipToParent {
-                            Text(relationship.displayName)
-                                .font(.appCaption)
-                                .foregroundColor(.connectionsGreen)
-                        } else if depth == 0 {
-                            Text("Root")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Connection count badge
-                    if node.hasChildren {
-                        Text("\(node.children.count)")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.cardBackground.opacity(0.5))
-                            .cornerRadius(8)
-                    }
-                }
-                .padding(AppDimensions.cardPadding)
-                .background(depth == 0 ? Color.connectionsGreen.opacity(0.15) : Color.cardBackground)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // Children (expanded)
-            if isExpanded && node.hasChildren {
-                VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
-                    ForEach(node.children) { childNode in
-                        FamilyTreeNodeView(
-                            node: childNode,
-                            depth: depth + 1,
-                            expandedNodes: $expandedNodes
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, AppDimensions.cardSpacing)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-// MARK: - Add Connection View
-struct AddConnectionView: View {
-    @EnvironmentObject var appState: AppState
-    @Environment(\.dismiss) var dismiss
-
-    let profile: Profile
-    let onSave: (ProfileConnection) -> Void
-
-    @State private var allProfiles: [Profile] = []
-    @State private var selectedProfile: Profile?
-    @State private var selectedRelationship: ConnectionType?
-    @State private var isLoading = false
-    @State private var isSaving = false
-    @State private var error: String?
-    @State private var step: AddConnectionStep = .selectProfile
-
-    enum AddConnectionStep {
-        case selectProfile
-        case selectRelationship
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: 20) {
-                        if step == .selectProfile {
-                            profileSelectionView
-                        } else {
-                            relationshipSelectionView
-                        }
-                    }
-                    .padding(AppDimensions.screenPadding)
-                }
-            }
-            .navigationTitle(step == .selectProfile ? "Select Person" : "Select Relationship")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                if step == .selectRelationship {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
-                            Task { await saveConnection() }
-                        }
-                        .foregroundColor(.accentYellow)
-                        .disabled(selectedRelationship == nil || isSaving)
-                    }
-                }
-            }
-            .task {
-                await loadProfiles()
-            }
-        }
-    }
-
-    // MARK: - Profile Selection View
-    private var profileSelectionView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Who would you like to connect to \(profile.displayName)?")
-                .font(.appBody)
-                .foregroundColor(.textSecondary)
-
-            if isLoading {
-                LoadingView(message: "Loading profiles...")
-            } else if allProfiles.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "person.slash")
-                        .font(.system(size: 32))
-                        .foregroundColor(.textSecondary)
-
-                    Text("No other profiles available")
-                        .font(.appBody)
-                        .foregroundColor(.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 40)
-            } else {
-                LazyVStack(spacing: 12) {
-                    ForEach(allProfiles) { availableProfile in
-                        Button {
-                            selectedProfile = availableProfile
-                            step = .selectRelationship
-                        } label: {
-                            ProfileSelectionCard(profile: availableProfile)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Relationship Selection View
-    private var relationshipSelectionView: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Back button
-            Button {
-                step = .selectProfile
-                selectedRelationship = nil
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                    Text("Back to profiles")
-                }
-                .font(.appCaption)
-                .foregroundColor(.accentYellow)
-            }
-
-            // Selected profile summary
-            if let selected = selectedProfile {
-                HStack(spacing: 12) {
-                    AsyncProfileImage(url: selected.photoUrl, size: 48)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Connecting to")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        Text(selected.displayName)
-                            .font(.appCardTitle)
-                            .foregroundColor(.textPrimary)
-                    }
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-            }
-
-            Text("What is \(selectedProfile?.displayName ?? "this person") to \(profile.displayName)?")
-                .font(.appBody)
-                .foregroundColor(.textSecondary)
-
-            // Family relationships
-            RelationshipSection(
-                title: "Family",
-                types: ConnectionType.familyTypes,
-                selectedType: selectedRelationship
-            ) { type in
-                selectedRelationship = type
-            }
-
-            // Professional relationships
-            RelationshipSection(
-                title: "Professional",
-                types: ConnectionType.professionalTypes,
-                selectedType: selectedRelationship
-            ) { type in
-                selectedRelationship = type
-            }
-
-            // Social relationships
-            RelationshipSection(
-                title: "Social",
-                types: ConnectionType.socialTypes,
-                selectedType: selectedRelationship
-            ) { type in
-                selectedRelationship = type
-            }
-
-            // Other
-            Button {
-                selectedRelationship = .other
-            } label: {
-                Text("Other")
-                    .font(.appCaption)
-                    .foregroundColor(selectedRelationship == .other ? .black : .textPrimary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(selectedRelationship == .other ? Color.accentYellow : Color.cardBackgroundSoft)
-                    .cornerRadius(20)
-            }
-
-            if let err = error {
-                Text(err)
-                    .font(.appCaption)
-                    .foregroundColor(.medicalRed)
-            }
-        }
-    }
-
-    // MARK: - Load Profiles
-    private func loadProfiles() async {
-        guard let account = appState.currentAccount else { return }
-
-        isLoading = true
-
-        do {
-            let profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
-            // Get existing connections to filter out
-            let existingConnections = try await appState.profileRepository.getConnections(profileId: profile.id)
-            let connectedIds = Set(existingConnections.map { $0.toProfileId })
-
-            // Filter out the current profile and already-connected profiles
-            allProfiles = profiles.filter { p in
-                p.id != profile.id && !connectedIds.contains(p.id)
-            }
-        } catch {
-            if !error.isCancellation {
-                self.error = error.localizedDescription
-            }
-        }
-
-        isLoading = false
-    }
-
-    // MARK: - Save Connection
-    private func saveConnection() async {
-        guard let account = appState.currentAccount,
-              let targetProfile = selectedProfile,
-              let relationship = selectedRelationship else { return }
-
-        isSaving = true
-        error = nil
-
-        let insert = ProfileConnectionInsert(
-            accountId: account.id,
-            fromProfileId: profile.id,
-            toProfileId: targetProfile.id,
-            relationshipType: relationship
-        )
-
-        do {
-            let connection = try await appState.profileRepository.createConnection(insert, bidirectional: true)
-            onSave(connection)
-            dismiss()
-        } catch {
-            self.error = "Failed to create connection. Please try again."
-        }
-
-        isSaving = false
-    }
-}
-
-// MARK: - Profile Selection Card
-struct ProfileSelectionCard: View {
-    let profile: Profile
-
-    var body: some View {
-        HStack(spacing: 16) {
-            AsyncProfileImage(url: profile.photoUrl, size: 48)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(profile.displayName)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-
-                if let relationship = profile.relationship {
-                    Text(relationship)
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-                }
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.textSecondary)
-        }
-        .padding()
-        .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-    }
-}
-
-// MARK: - Relationship Section
-struct RelationshipSection: View {
-    let title: String
-    let types: [ConnectionType]
-    let selectedType: ConnectionType?
-    let onSelect: (ConnectionType) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.appCaption)
-                .foregroundColor(.textSecondary)
-
-            FlowLayout(spacing: 8) {
-                ForEach(types, id: \.self) { type in
-                    Button {
-                        onSelect(type)
-                    } label: {
-                        Text(type.displayName)
-                            .font(.appCaption)
-                            .foregroundColor(selectedType == type ? .black : .textPrimary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(selectedType == type ? Color.accentYellow : Color.cardBackgroundSoft)
-                            .cornerRadius(20)
-                    }
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Relationship Field With Picker
 struct RelationshipFieldWithPicker: View {
     @Binding var relationship: String
     @Binding var showPicker: Bool
+    @Environment(\.appAccentColor) private var appAccentColor
+    @State private var isButtonPressed = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -2000,15 +1980,24 @@ struct RelationshipFieldWithPicker: View {
                 .cornerRadius(AppDimensions.buttonCornerRadius)
 
             Button {
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
                 showPicker = true
             } label: {
                 Image(systemName: "list.bullet")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.black)
                     .frame(width: AppDimensions.textFieldHeight, height: AppDimensions.textFieldHeight)
-                    .background(Color.accentYellow)
+                    .background(appAccentColor)
                     .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .scaleEffect(isButtonPressed ? 0.9 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isButtonPressed)
             }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in isButtonPressed = true }
+                    .onEnded { _ in isButtonPressed = false }
+            )
         }
     }
 }
@@ -2017,6 +2006,7 @@ struct RelationshipFieldWithPicker: View {
 struct RelationshipPickerSheet: View {
     @Binding var selectedRelationship: String
     @Binding var isPresented: Bool
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         NavigationStack {
@@ -2033,17 +2023,13 @@ struct RelationshipPickerSheet: View {
 
                             FlowLayout(spacing: 8) {
                                 ForEach(ConnectionType.familyTypes, id: \.self) { type in
-                                    Button {
+                                    RelationshipPillButton(
+                                        title: type.displayName,
+                                        isSelected: selectedRelationship == type.displayName,
+                                        accentColor: appAccentColor
+                                    ) {
                                         selectedRelationship = type.displayName
                                         isPresented = false
-                                    } label: {
-                                        Text(type.displayName)
-                                            .font(.appCaption)
-                                            .foregroundColor(selectedRelationship == type.displayName ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedRelationship == type.displayName ? Color.accentYellow : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
                                     }
                                 }
                             }
@@ -2057,17 +2043,13 @@ struct RelationshipPickerSheet: View {
 
                             FlowLayout(spacing: 8) {
                                 ForEach(ConnectionType.professionalTypes, id: \.self) { type in
-                                    Button {
+                                    RelationshipPillButton(
+                                        title: type.displayName,
+                                        isSelected: selectedRelationship == type.displayName,
+                                        accentColor: appAccentColor
+                                    ) {
                                         selectedRelationship = type.displayName
                                         isPresented = false
-                                    } label: {
-                                        Text(type.displayName)
-                                            .font(.appCaption)
-                                            .foregroundColor(selectedRelationship == type.displayName ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedRelationship == type.displayName ? Color.accentYellow : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
                                     }
                                 }
                             }
@@ -2081,17 +2063,13 @@ struct RelationshipPickerSheet: View {
 
                             FlowLayout(spacing: 8) {
                                 ForEach(ConnectionType.socialTypes, id: \.self) { type in
-                                    Button {
+                                    RelationshipPillButton(
+                                        title: type.displayName,
+                                        isSelected: selectedRelationship == type.displayName,
+                                        accentColor: appAccentColor
+                                    ) {
                                         selectedRelationship = type.displayName
                                         isPresented = false
-                                    } label: {
-                                        Text(type.displayName)
-                                            .font(.appCaption)
-                                            .foregroundColor(selectedRelationship == type.displayName ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedRelationship == type.displayName ? Color.accentYellow : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
                                     }
                                 }
                             }
@@ -2103,17 +2081,13 @@ struct RelationshipPickerSheet: View {
                                 .font(.appCaption)
                                 .foregroundColor(.textSecondary)
 
-                            Button {
+                            RelationshipPillButton(
+                                title: "Other",
+                                isSelected: selectedRelationship == "Other",
+                                accentColor: appAccentColor
+                            ) {
                                 selectedRelationship = "Other"
                                 isPresented = false
-                            } label: {
-                                Text("Other")
-                                    .font(.appCaption)
-                                    .foregroundColor(selectedRelationship == "Other" ? .black : .textPrimary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-                                    .background(selectedRelationship == "Other" ? Color.accentYellow : Color.cardBackgroundSoft)
-                                    .cornerRadius(20)
                             }
                         }
                     }
@@ -2130,7 +2104,42 @@ struct RelationshipPickerSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
+    }
+}
+
+// MARK: - Relationship Pill Button
+/// An animated pill button for selecting a relationship
+struct RelationshipPillButton: View {
+    let title: String
+    let isSelected: Bool
+    let accentColor: Color
+    let onSelect: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Button {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            onSelect()
+        } label: {
+            Text(title)
+                .font(.appCaption)
+                .foregroundColor(isSelected ? .black : .textPrimary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(isSelected ? accentColor : Color.cardBackgroundSoft)
+                .cornerRadius(20)
+                .scaleEffect(isPressed ? 0.95 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
     }
 }
 
@@ -2138,6 +2147,7 @@ struct RelationshipPickerSheet: View {
 struct SizeFieldWithPicker: View {
     @Binding var size: String
     @Binding var showPicker: Bool
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         HStack(spacing: 8) {
@@ -2156,7 +2166,7 @@ struct SizeFieldWithPicker: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.black)
                     .frame(width: AppDimensions.textFieldHeight, height: AppDimensions.textFieldHeight)
-                    .background(Color.accentYellow)
+                    .background(appAccentColor)
                     .cornerRadius(AppDimensions.buttonCornerRadius)
             }
         }
@@ -2167,6 +2177,7 @@ struct SizeFieldWithPicker: View {
 struct SizePickerSheet: View {
     @Binding var selectedSize: String
     @Binding var isPresented: Bool
+    @Environment(\.appAccentColor) private var appAccentColor
 
     private let letterSizes = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"]
     private let numericSizes = ["6", "7", "8", "9", "10", "11", "12", "13", "14"]
@@ -2197,7 +2208,7 @@ struct SizePickerSheet: View {
                                             .foregroundColor(selectedSize == size ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(selectedSize == size ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -2221,7 +2232,7 @@ struct SizePickerSheet: View {
                                             .foregroundColor(selectedSize == size ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(selectedSize == size ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -2269,7 +2280,7 @@ struct SizePickerSheet: View {
                                             .foregroundColor(selectedSize == size ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(selectedSize == size ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -2318,4 +2329,841 @@ struct SizePickerSheet: View {
         details: []
     )
     .environmentObject(AppState())
+}
+
+// MARK: - Gift Card Frame Preference Key
+struct GiftCardFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+// MARK: - Gift Card With Overlay Support
+struct GiftCardWithOverlay: View {
+    let detail: ProfileDetail
+    let status: GiftItemCard.GiftStatus
+    let isActive: Bool
+    let onStatusChange: (GiftItemCard.GiftStatus) -> Void
+    let onOptionsPressed: () -> Void
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gift")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                Text(detail.label)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+            }
+
+            Spacer()
+
+            // Status badge - tappable to toggle to Bought
+            Button {
+                if status == .idea {
+                    onStatusChange(.bought)
+                }
+            } label: {
+                Text(status.displayName)
+                    .font(.appCaption)
+                    .fontWeight(.medium)
+                    .foregroundColor(status.textColor)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(status.color(accent: appAccentColor))
+                    .cornerRadius(12)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // Ellipsis button for options overlay
+            Button(action: onOptionsPressed) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.textSecondary)
+                    .frame(width: 32, height: 32)
+                    .rotationEffect(.degrees(90))
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .opacity(isActive ? 0 : 1)
+    }
+}
+
+// MARK: - Highlighted Gift Overlay
+struct HighlightedGiftOverlay: View {
+    let detail: ProfileDetail
+    let frame: CGRect
+    let status: GiftItemCard.GiftStatus
+    let onStatusChange: (GiftItemCard.GiftStatus) -> Void
+    let onDelete: () -> Void
+    let onDismiss: () -> Void
+
+    @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var menuScale: CGFloat = 0.8
+    @State private var menuOpacity: Double = 0
+
+    private let menuWidth: CGFloat = 200
+
+    var body: some View {
+        GeometryReader { geometry in
+            let overlayFrame = geometry.frame(in: .global)
+            let panelSize = geometry.size
+            let adaptiveScreenPadding = AppDimensions.screenPadding(for: horizontalSizeClass)
+            let cardWidth = panelSize.width - (adaptiveScreenPadding * 2)
+            // Convert global Y to local Y
+            let localCardMinY = frame.minY - overlayFrame.minY
+            let localCardMaxY = frame.maxY - overlayFrame.minY
+            let localCardY = localCardMinY + frame.height / 2
+            let menuYPosition = calculateMenuYPosition(localCardMinY: localCardMinY, localCardMaxY: localCardMaxY, screenHeight: panelSize.height)
+
+            ZStack(alignment: .topLeading) {
+                // Dark overlay
+                Color.cardBackgroundLight.opacity(0.9)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        onDismiss()
+                    }
+
+                // Highlighted card at captured position
+                HighlightedGiftCard(
+                    detail: detail,
+                    status: status,
+                    onStatusChange: onStatusChange
+                )
+                .frame(width: cardWidth, height: frame.height)
+                .position(
+                    x: panelSize.width / 2,
+                    y: localCardY
+                )
+                .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
+
+                // Options menu
+                VStack(spacing: 0) {
+                    // Mark as Idea
+                    Button(action: {
+                        onStatusChange(.idea)
+                    }) {
+                        HStack {
+                            Image(systemName: "tag")
+                                .font(.system(size: 16))
+                                .foregroundColor(.textPrimary)
+                                .frame(width: 24)
+                            Text("Not bought")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppDimensions.cardPadding)
+                        .padding(.vertical, 16)
+                        .background(Color.cardBackground)
+                    }
+
+                    Divider()
+                        .background(Color.textSecondary.opacity(0.2))
+
+                    // Mark as Given
+                    Button(action: {
+                        onStatusChange(.given)
+                    }) {
+                        HStack {
+                            Image(systemName: "gift")
+                                .font(.system(size: 16))
+                                .foregroundColor(.textPrimary)
+                                .frame(width: 24)
+                            Text("Given")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppDimensions.cardPadding)
+                        .padding(.vertical, 16)
+                        .background(Color.cardBackground)
+                    }
+
+                    Divider()
+                        .background(Color.textSecondary.opacity(0.2))
+
+                    // Delete
+                    Button(action: onDelete) {
+                        HStack {
+                            Image(systemName: "trash")
+                                .font(.system(size: 16))
+                                .foregroundColor(.red)
+                                .frame(width: 24)
+                            Text("Delete")
+                                .font(.appBody)
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppDimensions.cardPadding)
+                        .padding(.vertical, 16)
+                        .background(Color.cardBackground)
+                    }
+
+                    Divider()
+                        .background(Color.textSecondary.opacity(0.2))
+
+                    // Cancel
+                    Button(action: onDismiss) {
+                        HStack {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16))
+                                .foregroundColor(.textSecondary)
+                                .frame(width: 24)
+                            Text("Cancel")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppDimensions.cardPadding)
+                        .padding(.vertical, 16)
+                        .background(Color.cardBackground)
+                    }
+                }
+                .frame(width: menuWidth)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                .scaleEffect(menuScale)
+                .opacity(menuOpacity)
+                .position(
+                    x: panelSize.width - menuWidth / 2 - adaptiveScreenPadding,
+                    y: menuYPosition
+                )
+            }
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                menuScale = 1.0
+                menuOpacity = 1.0
+            }
+        }
+    }
+
+    private func calculateMenuYPosition(localCardMinY: CGFloat, localCardMaxY: CGFloat, screenHeight: CGFloat) -> CGFloat {
+        // Estimate menu height based on number of buttons (4 buttons)
+        let estimatedMenuHeight: CGFloat = 52 * 4
+
+        let menuGap: CGFloat = 12
+        let topSafeArea: CGFloat = 60
+
+        // Try to position above the card first
+        let aboveCardY = localCardMinY - menuGap - (estimatedMenuHeight / 2)
+
+        if aboveCardY - (estimatedMenuHeight / 2) > topSafeArea {
+            return aboveCardY
+        } else {
+            return localCardMaxY + menuGap + (estimatedMenuHeight / 2)
+        }
+    }
+}
+
+// MARK: - Highlighted Gift Card
+struct HighlightedGiftCard: View {
+    let detail: ProfileDetail
+    let status: GiftItemCard.GiftStatus
+    let onStatusChange: (GiftItemCard.GiftStatus) -> Void
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gift")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                Text(detail.label)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+            }
+
+            Spacer()
+
+            // Status badge - tappable to toggle to Bought
+            Button {
+                if status == .idea {
+                    onStatusChange(.bought)
+                }
+            } label: {
+                Text(status.displayName)
+                    .font(.appCaption)
+                    .fontWeight(.medium)
+                    .foregroundColor(status.textColor)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(status.color(accent: appAccentColor))
+                    .cornerRadius(12)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // Ellipsis icon
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.textSecondary)
+                .frame(width: 32, height: 32)
+                .rotationEffect(.degrees(90))
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .fill(Color.cardBackground)
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(appAccentColor, lineWidth: 3)
+            }
+        )
+    }
+}
+
+// MARK: - Clothing Card Frame Preference Key
+struct ClothingCardFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+// MARK: - Clothing Card With Overlay Support
+struct ClothingCardWithOverlay: View {
+    let detail: ProfileDetail
+    let isActive: Bool
+    let onOptionsPressed: () -> Void
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Clothing")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                Text(detail.label)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+            }
+
+            Spacer()
+
+            // Size value pill
+            Text(detail.value)
+                .font(.appValuePill)
+                .foregroundColor(.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.pillCornerRadius)
+
+            // Ellipsis button for options overlay
+            Button(action: onOptionsPressed) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.textSecondary)
+                    .rotationEffect(.degrees(90))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .opacity(isActive ? 0 : 1)
+    }
+}
+
+// MARK: - Highlighted Clothing Overlay
+struct HighlightedClothingOverlay: View {
+    let detail: ProfileDetail
+    let frame: CGRect
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onDismiss: () -> Void
+
+    @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var menuScale: CGFloat = 0.8
+    @State private var menuOpacity: Double = 0
+
+    private let menuWidth: CGFloat = 200
+
+    var body: some View {
+        GeometryReader { geometry in
+            let overlayFrame = geometry.frame(in: .global)
+            let panelSize = geometry.size
+            let adaptiveScreenPadding = AppDimensions.screenPadding(for: horizontalSizeClass)
+            let cardWidth = panelSize.width - (adaptiveScreenPadding * 2)
+            // Convert global Y to local Y
+            let localCardMinY = frame.minY - overlayFrame.minY
+            let localCardMaxY = frame.maxY - overlayFrame.minY
+            let localCardY = localCardMinY + frame.height / 2
+            let menuYPosition = calculateMenuYPosition(localCardMinY: localCardMinY, localCardMaxY: localCardMaxY, screenHeight: panelSize.height)
+
+            ZStack(alignment: .topLeading) {
+                // Dark overlay
+                Color.cardBackgroundLight.opacity(0.9)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        onDismiss()
+                    }
+
+                // Highlighted card at captured position
+                HighlightedClothingCard(detail: detail)
+                    .frame(width: cardWidth, height: frame.height)
+                    .position(
+                        x: panelSize.width / 2,
+                        y: localCardY
+                    )
+                    .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
+
+                // Options menu
+                VStack(spacing: 0) {
+                    // Edit
+                    Button(action: onEdit) {
+                        HStack {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 16))
+                                .foregroundColor(.textPrimary)
+                                .frame(width: 24)
+                            Text("Edit")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppDimensions.cardPadding)
+                        .padding(.vertical, 16)
+                        .background(Color.cardBackground)
+                    }
+
+                    Divider()
+                        .background(Color.textSecondary.opacity(0.2))
+
+                    // Delete
+                    Button(action: onDelete) {
+                        HStack {
+                            Image(systemName: "trash")
+                                .font(.system(size: 16))
+                                .foregroundColor(.red)
+                                .frame(width: 24)
+                            Text("Delete")
+                                .font(.appBody)
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppDimensions.cardPadding)
+                        .padding(.vertical, 16)
+                        .background(Color.cardBackground)
+                    }
+
+                    Divider()
+                        .background(Color.textSecondary.opacity(0.2))
+
+                    // Cancel
+                    Button(action: onDismiss) {
+                        HStack {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16))
+                                .foregroundColor(.textSecondary)
+                                .frame(width: 24)
+                            Text("Cancel")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, AppDimensions.cardPadding)
+                        .padding(.vertical, 16)
+                        .background(Color.cardBackground)
+                    }
+                }
+                .frame(width: menuWidth)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                .scaleEffect(menuScale)
+                .opacity(menuOpacity)
+                .position(
+                    x: panelSize.width - menuWidth / 2 - adaptiveScreenPadding,
+                    y: menuYPosition
+                )
+            }
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                menuScale = 1.0
+                menuOpacity = 1.0
+            }
+        }
+    }
+
+    private func calculateMenuYPosition(localCardMinY: CGFloat, localCardMaxY: CGFloat, screenHeight: CGFloat) -> CGFloat {
+        // Estimate menu height based on number of buttons (3 buttons)
+        let estimatedMenuHeight: CGFloat = 52 * 3
+
+        let menuGap: CGFloat = 12
+        let topSafeArea: CGFloat = 60
+
+        // Try to position above the card first
+        let aboveCardY = localCardMinY - menuGap - (estimatedMenuHeight / 2)
+
+        if aboveCardY - (estimatedMenuHeight / 2) > topSafeArea {
+            return aboveCardY
+        } else {
+            return localCardMaxY + menuGap + (estimatedMenuHeight / 2)
+        }
+    }
+}
+
+// MARK: - Highlighted Clothing Card
+struct HighlightedClothingCard: View {
+    let detail: ProfileDetail
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Clothing")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                Text(detail.label)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+            }
+
+            Spacer()
+
+            // Size value pill
+            Text(detail.value)
+                .font(.appValuePill)
+                .foregroundColor(.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.pillCornerRadius)
+
+            // Ellipsis icon
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.textSecondary)
+                .rotationEffect(.degrees(90))
+                .frame(width: 44, height: 44)
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .fill(Color.cardBackground)
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(appAccentColor, lineWidth: 3)
+            }
+        )
+    }
+}
+
+// MARK: - Connected To Picker Field
+/// A picker field that allows selecting another profile as a family tree connection
+struct ConnectedToPickerField: View {
+    @Binding var selectedProfileId: UUID?
+    let profiles: [Profile]
+    let currentProfileId: UUID?  // Exclude current profile from selection
+    @Environment(\.appAccentColor) private var appAccentColor
+    @State private var showPicker = false
+
+    /// Filtered profiles (excludes current profile and primary profile)
+    private var availableProfiles: [Profile] {
+        profiles.filter { profile in
+            profile.id != currentProfileId && profile.type != .primary
+        }
+    }
+
+    /// The full name of the selected profile
+    private var selectedProfileFullName: String? {
+        guard let id = selectedProfileId else { return nil }
+        return profiles.first { $0.id == id }?.fullName
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("FAMILY CONNECTION")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+
+            Button {
+                showPicker = true
+            } label: {
+                HStack {
+                    if let name = selectedProfileFullName {
+                        Text("Connected to: \(name)")
+                            .foregroundColor(.textPrimary)
+                    } else {
+                        Text("Connect to family member (optional)")
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.textSecondary)
+                }
+                .padding()
+                .frame(height: AppDimensions.textFieldHeight)
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+            }
+
+            // Helper text
+            if selectedProfileId != nil {
+                Text("This helps build the family tree by linking related people")
+                    .font(.system(size: 11))
+                    .foregroundColor(.textSecondary)
+                    .padding(.top, 2)
+            }
+        }
+        .sheet(isPresented: $showPicker) {
+            FamilyConnectionPickerSheet(
+                selectedProfileId: $selectedProfileId,
+                profiles: availableProfiles,
+                isPresented: $showPicker
+            )
+        }
+    }
+}
+
+// MARK: - Family Connection Picker Sheet
+/// A sheet for selecting a family connection with nice animations
+struct FamilyConnectionPickerSheet: View {
+    @Binding var selectedProfileId: UUID?
+    let profiles: [Profile]
+    @Binding var isPresented: Bool
+    @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    @State private var selectedDetent: PresentationDetent = .large
+    @State private var searchText: String = ""
+
+    /// Profiles filtered by search text and sorted alphabetically
+    private var filteredProfiles: [Profile] {
+        let sorted = profiles.sorted { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending }
+        if searchText.isEmpty {
+            return sorted
+        }
+        return sorted.filter { $0.fullName.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.appBackground.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Search field
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.textSecondary)
+                            TextField("Search family members", text: $searchText)
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                            if !searchText.isEmpty {
+                                Button {
+                                    searchText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.textSecondary)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+
+                        // None option
+                        Button {
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                            selectedProfileId = nil
+                            isPresented = false
+                        } label: {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(selectedProfileId == nil ? appAccentColor : Color.cardBackgroundSoft)
+                                        .frame(width: 44, height: 44)
+
+                                    Image(systemName: "minus.circle")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(selectedProfileId == nil ? .black : .textSecondary)
+                                }
+
+                                Text("None")
+                                    .font(.appBody)
+                                    .foregroundColor(selectedProfileId == nil ? appAccentColor : .textPrimary)
+
+                                Spacer()
+
+                                if selectedProfileId == nil {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(appAccentColor)
+                                }
+                            }
+                            .padding()
+                            .background(Color.cardBackground)
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        if !filteredProfiles.isEmpty {
+                            Text("FAMILY MEMBERS")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                                .padding(.top, 8)
+
+                            // Profile options
+                            ForEach(filteredProfiles) { profile in
+                                ProfileConnectionRow(
+                                    profile: profile,
+                                    isSelected: selectedProfileId == profile.id,
+                                    accentColor: appAccentColor,
+                                    onSelect: {
+                                        let impact = UIImpactFeedbackGenerator(style: .light)
+                                        impact.impactOccurred()
+                                        selectedProfileId = profile.id
+                                        isPresented = false
+                                    }
+                                )
+                            }
+                        } else if !searchText.isEmpty {
+                            // No results for search
+                            VStack(spacing: 8) {
+                                Image(systemName: "person.slash")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(.textSecondary)
+                                Text("No family members found")
+                                    .font(.appBody)
+                                    .foregroundColor(.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 32)
+                        }
+                    }
+                    .padding(AppDimensions.screenPadding)
+                }
+            }
+            .navigationTitle("Family Connection")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .foregroundColor(.textSecondary)
+                }
+            }
+        }
+        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
+        .presentationDragIndicator(.visible)
+    }
+}
+
+// MARK: - Profile Connection Row
+/// A row displaying a profile option in the family connection picker
+struct ProfileConnectionRow: View {
+    let profile: Profile
+    let isSelected: Bool
+    let accentColor: Color
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            onSelect()
+        } label: {
+            HStack(spacing: 12) {
+                // Profile avatar
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? accentColor : Color.cardBackgroundSoft)
+                        .frame(width: 44, height: 44)
+
+                    if let photoUrl = profile.photoUrl, let url = URL(string: photoUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Text(profile.fullName.prefix(1).uppercased())
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(isSelected ? .black : .textPrimary)
+                        }
+                        .frame(width: 40, height: 40)
+                        .clipShape(Circle())
+                    } else {
+                        Text(profile.fullName.prefix(1).uppercased())
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(isSelected ? .black : .textPrimary)
+                    }
+                }
+
+                // Profile info
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(profile.fullName)
+                        .font(.appBody)
+                        .fontWeight(isSelected ? .semibold : .regular)
+                        .foregroundColor(isSelected ? accentColor : .textPrimary)
+
+                    if let relationship = profile.relationship {
+                        Text(relationship)
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                // Selected indicator
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(accentColor)
+                }
+            }
+            .padding()
+            .background(isSelected ? accentColor.opacity(0.1) : Color.cardBackground)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? accentColor : Color.clear, lineWidth: 2)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+}
+
+// MARK: - Scale Button Style
+/// A button style that provides a subtle scale animation on press
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
+    }
 }

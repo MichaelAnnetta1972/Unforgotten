@@ -4,8 +4,10 @@ import SwiftUI
 struct EditUsefulContactView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
 
     let contact: UsefulContact
+    var onDismiss: (() -> Void)? = nil
     let onSave: (UsefulContact) -> Void
 
     @State private var name: String
@@ -20,8 +22,9 @@ struct EditUsefulContactView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    init(contact: UsefulContact, onSave: @escaping (UsefulContact) -> Void) {
+    init(contact: UsefulContact, onDismiss: (() -> Void)? = nil, onSave: @escaping (UsefulContact) -> Void) {
         self.contact = contact
+        self.onDismiss = onDismiss
         self.onSave = onSave
         self._name = State(initialValue: contact.name)
         self._category = State(initialValue: contact.category)
@@ -33,10 +36,56 @@ struct EditUsefulContactView: View {
         self._notes = State(initialValue: contact.notes ?? "")
     }
 
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
+
+                    Spacer()
+
+                    Text("Edit Contact")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await updateContact() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(name.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -58,7 +107,7 @@ struct EditUsefulContactView: View {
                                             .foregroundColor(category == cat ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(category == cat ? Color.accentYellow : Color.cardBackgroundSoft)
+                                            .background(category == cat ? appAccentColor : Color.cardBackgroundSoft)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -81,24 +130,13 @@ struct EditUsefulContactView: View {
                     .padding(AppDimensions.screenPadding)
                 }
             }
-            .navigationTitle("Edit Contact")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await updateContact() }
-                    }
-                    .foregroundColor(.accentYellow)
-                    .disabled(name.isBlank || isLoading)
-                }
-            }
+            .background(Color.clear)
+            .navigationBarHidden(true)
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .toolbarBackground(.clear, for: .navigationBar)
+        .containerBackground(.clear, for: .navigation)
     }
 
     private func updateContact() async {
@@ -118,7 +156,7 @@ struct EditUsefulContactView: View {
         do {
             let saved = try await appState.usefulContactRepository.updateContact(updatedContact)
             onSave(saved)
-            dismiss()
+            dismissView()
         } catch {
             errorMessage = "Failed to save contact"
         }

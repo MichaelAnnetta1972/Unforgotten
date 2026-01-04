@@ -6,7 +6,9 @@ struct NavigationCard: View {
     let icon: String?
     let showChevron: Bool
     let action: () -> Void
-    
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
     init(
         title: String,
         icon: String? = nil,
@@ -18,14 +20,14 @@ struct NavigationCard: View {
         self.showChevron = showChevron
         self.action = action
     }
-    
+
     var body: some View {
         Button(action: action) {
             HStack {
                 if let icon = icon {
                     Image(systemName: icon)
                         .font(.title2)
-                        .foregroundColor(.textPrimary)
+                        .foregroundColor(appAccentColor)
                 }
                 
                 Text(title)
@@ -242,6 +244,7 @@ struct GiftItemCard: View {
     let onStatusChange: ((GiftStatus) -> Void)?
     let onDelete: (() -> Void)?
 
+    @Environment(\.appAccentColor) private var appAccentColor
     @State private var showMenu = false
 
     enum GiftStatus: String {
@@ -257,11 +260,11 @@ struct GiftItemCard: View {
             }
         }
 
-        var color: Color {
+        func color(accent: Color) -> Color {
             switch self {
             case .idea: return .badgeGrey
             case .bought: return .badgeGreen
-            case .given: return .accentYellow
+            case .given: return accent
             }
         }
 
@@ -307,7 +310,7 @@ struct GiftItemCard: View {
                     .foregroundColor(status.textColor)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(status.color)
+                    .background(status.color(accent: appAccentColor))
                     .cornerRadius(12)
             }
             .buttonStyle(PlainButtonStyle())
@@ -337,7 +340,8 @@ struct GiftItemCard: View {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.textSecondary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 60, height: 60)
+                    .contentShape(Rectangle())
                     .rotationEffect(.degrees(90))
             }
         }
@@ -399,7 +403,9 @@ struct CategoryCard: View {
     let backgroundColor: Color
     let iconBackgroundColor: Color?
     let action: () -> Void
-    
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     init(
         title: String,
         icon: String,
@@ -413,7 +419,23 @@ struct CategoryCard: View {
         self.iconBackgroundColor = iconBackgroundColor
         self.action = action
     }
-    
+
+    private var cardWidth: CGFloat {
+        AppDimensions.categoryCardMinWidth(for: horizontalSizeClass)
+    }
+
+    private var cardHeight: CGFloat {
+        horizontalSizeClass == .regular ? 185 : 165
+    }
+
+    private var iconSize: CGFloat {
+        horizontalSizeClass == .regular ? 56 : 50
+    }
+
+    private var iconFontSize: CGFloat {
+        horizontalSizeClass == .regular ? 32 : 28
+    }
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 8) {
@@ -421,22 +443,24 @@ struct CategoryCard: View {
                     if let bgColor = iconBackgroundColor {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(bgColor)
-                            .frame(width: 50, height: 50)
+                            .frame(width: iconSize, height: iconSize)
                     }
-                    
+
                     Image(systemName: icon)
-                        .font(.system(size: 28))
+                        .font(.system(size: iconFontSize))
                         .foregroundColor(.white)
                 }
-                
+
                 Text(title)
                     .font(.appCaption)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
             }
-            .frame(width: AppDimensions.categoryCardWidth, height: AppDimensions.categoryCardHeight)
+            .frame(minWidth: cardWidth, minHeight: cardHeight)
+            .frame(maxWidth: .infinity, maxHeight: cardHeight)
             .background(backgroundColor)
             .cornerRadius(AppDimensions.cardCornerRadius)
+            .hoverEffect(.lift)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -495,43 +519,54 @@ struct FloatingButtonContainer<Content: View>: View {
 enum NavDestination: Hashable {
     case home
     case profiles
+    case myCard  // For limited access users (Helper/Viewer)
     case appointments
     case medications
-    case other  // For pages without a nav bar icon (My Card, Birthdays, Contacts, Mood)
+    case other  // For pages without a nav bar icon (Birthdays, Contacts, Mood)
 }
 
 // MARK: - Bottom Nav Bar (4 icons in container + add button with popup menu)
 struct BottomNavBar: View {
     let currentPage: NavDestination
     let isAtHomeRoot: Bool
+    let isLimitedAccess: Bool
     let onNavigate: (NavDestination) -> Void
 
     let onAddProfile: (() -> Void)?
     let onAddMedication: (() -> Void)?
     let onAddAppointment: (() -> Void)?
     let onAddContact: (() -> Void)?
-    let onAddConnection: (() -> Void)?
+    let onAddToDoList: (() -> Void)?
+    let onAddNote: (() -> Void)?
+    let onAddStickyReminder: (() -> Void)?
 
+    @Environment(\.appAccentColor) private var appAccentColor
     @State private var showAddMenu = false
 
     init(
         currentPage: NavDestination = .home,
         isAtHomeRoot: Bool = true,
+        isLimitedAccess: Bool = false,
         onNavigate: @escaping (NavDestination) -> Void,
         onAddProfile: (() -> Void)? = nil,
         onAddMedication: (() -> Void)? = nil,
         onAddAppointment: (() -> Void)? = nil,
         onAddContact: (() -> Void)? = nil,
-        onAddConnection: (() -> Void)? = nil
+        onAddToDoList: (() -> Void)? = nil,
+        onAddNote: (() -> Void)? = nil,
+        onAddStickyReminder: (() -> Void)? = nil
     ) {
         self.currentPage = currentPage
         self.isAtHomeRoot = isAtHomeRoot
+        self.isLimitedAccess = isLimitedAccess
         self.onNavigate = onNavigate
         self.onAddProfile = onAddProfile
         self.onAddMedication = onAddMedication
         self.onAddAppointment = onAddAppointment
         self.onAddContact = onAddContact
-        self.onAddConnection = onAddConnection
+        self.onAddToDoList = onAddToDoList
+        self.onAddNote = onAddNote
+        self.onAddStickyReminder = onAddStickyReminder
     }
 
     var body: some View {
@@ -570,12 +605,14 @@ struct BottomNavBar: View {
                             Divider()
                                 .background(Color.cardBackgroundSoft)
 
-                            // Menu items
-                            AddMenuRow(icon: "person.2", title: "Family or Friend") {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    showAddMenu = false
+                            // Menu items - limited for Helper/Viewer roles
+                            if !isLimitedAccess {
+                                AddMenuRow(icon: "person.2", title: "Family or Friend") {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        showAddMenu = false
+                                    }
+                                    onAddProfile?()
                                 }
-                                onAddProfile?()
                             }
 
                             AddMenuRow(icon: "pill", title: "Medication") {
@@ -599,11 +636,27 @@ struct BottomNavBar: View {
                                 onAddContact?()
                             }
 
-                            AddMenuRow(icon: "link", title: "Connection") {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    showAddMenu = false
+                            if !isLimitedAccess {
+                                AddMenuRow(icon: "checklist", title: "To Do List") {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        showAddMenu = false
+                                    }
+                                    onAddToDoList?()
                                 }
-                                onAddConnection?()
+
+                                AddMenuRow(icon: "note.text", title: "Note") {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        showAddMenu = false
+                                    }
+                                    onAddNote?()
+                                }
+
+                                AddMenuRow(icon: "pin.fill", title: "Sticky Reminder") {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        showAddMenu = false
+                                    }
+                                    onAddStickyReminder?()
+                                }
                             }
                         }
                         .background(Color.cardBackgroundLight.opacity(0.5))
@@ -624,68 +677,113 @@ struct BottomNavBar: View {
 
                     // Nav bar
                     HStack(spacing: 12) {
-                        // Container for 4 nav icons
-                        HStack(spacing: 0) {
-                            // Home button - active only when on home tab AND at root
-                            NavBarButton(
-                                icon: "house.fill",
-                                isActive: currentPage == .home && isAtHomeRoot
-                            ) {
-                                onNavigate(.home)
-                            }
+                        // Container for 4 nav icons with glass effect
+                        GeometryReader { geometry in
+                            let buttonWidth = geometry.size.width / 4
+                            let activeIndex = activeButtonIndex(for: currentPage, isAtHomeRoot: isAtHomeRoot)
+                            let indicatorPadding: CGFloat = 8
+                            let indicatorWidth = buttonWidth - indicatorPadding
+                            // Calculate offset from leading edge
+                            let indicatorOffset = CGFloat(activeIndex) * buttonWidth + (indicatorPadding / 2)
 
-                            // Family & Friends button
-                            NavBarButton(
-                                icon: "person.2.fill",
-                                isActive: currentPage == .profiles
-                            ) {
-                                onNavigate(.profiles)
-                            }
+                            ZStack(alignment: .leading) {
+                                // Sliding indicator background
+                                Capsule()
+                                    .fill(appAccentColor.opacity(0.25))
+                                    .frame(width: indicatorWidth, height: 52)
+                                    .offset(x: indicatorOffset)
+                                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: activeIndex)
 
-                            // Medications button
-                            NavBarButton(
-                                icon: "pill.fill",
-                                isActive: currentPage == .medications
-                            ) {
-                                onNavigate(.medications)
-                            }
+                                // Nav buttons
+                                HStack(spacing: 0) {
+                                    // Home button - active only when on home tab AND at root
+                                    NavBarButton(
+                                        icon: "house.fill",
+                                        isActive: currentPage == .home && isAtHomeRoot
+                                    ) {
+                                        onNavigate(.home)
+                                    }
 
-                            // Appointments button
-                            NavBarButton(
-                                icon: "calendar",
-                                isActive: currentPage == .appointments
-                            ) {
-                                onNavigate(.appointments)
-                            }
+                                    // Second button: My Card for limited access, Family & Friends for full access
+                                    if isLimitedAccess {
+                                        NavBarButton(
+                                            icon: "person.crop.circle.fill",
+                                            isActive: currentPage == .myCard
+                                        ) {
+                                            onNavigate(.myCard)
+                                        }
+                                    } else {
+                                        NavBarButton(
+                                            icon: "person.2.fill",
+                                            isActive: currentPage == .profiles
+                                        ) {
+                                            onNavigate(.profiles)
+                                        }
+                                    }
 
+                                    // Medications button
+                                    NavBarButton(
+                                        icon: "pill.fill",
+                                        isActive: currentPage == .medications
+                                    ) {
+                                        onNavigate(.medications)
+                                    }
+
+                                    // Appointments button
+                                    NavBarButton(
+                                        icon: "calendar",
+                                        isActive: currentPage == .appointments
+                                    ) {
+                                        onNavigate(.appointments)
+                                    }
+                                }
+                            }
                         }
-                        .background(Color.cardBackgroundLight.opacity(0.5))
+                        .frame(height: 60)
+                        .background(.ultraThinMaterial.opacity(0.8))
+                        .background(Color.cardBackgroundLight.opacity(0.3))
                         .clipShape(Capsule())
                         .overlay(
                             Capsule()
-                                .stroke(Color.cardBackgroundLight, lineWidth: 1)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.3),
+                                            Color.white.opacity(0.1),
+                                            Color.clear
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1
+                                )
                         )
+                        .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
 
-                        // Add button
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                showAddMenu.toggle()
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundColor(.black)
-                                .rotationEffect(.degrees(showAddMenu ? 45 : 0))
-                                .frame(width: 60, height: 60)
-                                .background(Color.accentYellow)
-                                .clipShape(Circle())
-                        }
+                        // Add button with press animation
+                        AddNavButton(showAddMenu: $showAddMenu)
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
                 }
             }
             .ignoresSafeArea(.container, edges: .bottom)
+        }
+    }
+
+    // Helper function to get the index of the active button
+    private func activeButtonIndex(for page: NavDestination, isAtHomeRoot: Bool) -> Int {
+        switch page {
+        case .home:
+            return 0
+        case .profiles, .myCard:
+            return 1
+        case .medications:
+            return 2
+        case .appointments:
+            return 3
+        case .other:
+            return 0 // Default to home
         }
     }
 }
@@ -696,6 +794,9 @@ struct NavBarButton: View {
     let isActive: Bool
     let action: () -> Void
 
+    @Environment(\.appAccentColor) private var appAccentColor
+    @State private var isPressed = false
+
     var body: some View {
         Button {
             if !isActive {
@@ -704,11 +805,64 @@ struct NavBarButton: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 20, weight: .medium))
-                .foregroundColor(isActive ? .accentYellow : .white)
+                .foregroundColor(isActive ? appAccentColor : .white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
+                .scaleEffect(isPressed ? 0.85 : 1.0)
+                .opacity(isPressed ? 0.7 : 1.0)
+                .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
         }
         .disabled(isActive)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isActive && !isPressed {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+    }
+}
+
+// MARK: - Add Nav Button (with press animation)
+struct AddNavButton: View {
+    @Binding var showAddMenu: Bool
+    @Environment(\.appAccentColor) private var appAccentColor
+    @State private var isPressed = false
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                showAddMenu.toggle()
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(.black)
+                .rotationEffect(.degrees(showAddMenu ? 45 : 0))
+                .frame(width: 60, height: 60)
+                .background(
+                    Circle()
+                        .fill(appAccentColor)
+                        .shadow(color: appAccentColor.opacity(0.4), radius: isPressed ? 5 : 10, y: isPressed ? 2 : 5)
+                )
+                .scaleEffect(isPressed ? 0.9 : 1.0)
+                .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
     }
 }
 
@@ -718,12 +872,14 @@ struct AddMenuRow: View {
     let title: String
     let action: () -> Void
 
+    @Environment(\.appAccentColor) private var appAccentColor
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
                     .frame(width: 24)
 
                 Text(title)
@@ -810,6 +966,7 @@ struct FloatingNavContainer<Content: View>: View {
 // MARK: - Floating Add Button
 struct FloatingAddButton: View {
     let action: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button(action: action) {
@@ -817,7 +974,7 @@ struct FloatingAddButton: View {
                 .font(.system(size: 24, weight: .medium))
                 .foregroundColor(.black)
                 .frame(width: AppDimensions.floatingButtonSize, height: AppDimensions.floatingButtonSize)
-                .background(Color.accentYellow)
+                .background(appAccentColor)
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
         }
@@ -827,6 +984,7 @@ struct FloatingAddButton: View {
 // MARK: - Floating Edit Button
 struct FloatingEditButton: View {
     let action: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button(action: action) {
@@ -834,7 +992,7 @@ struct FloatingEditButton: View {
                 .font(.system(size: 24, weight: .medium))
                 .foregroundColor(.black)
                 .frame(width: AppDimensions.floatingButtonSize, height: AppDimensions.floatingButtonSize)
-                .background(Color.accentYellow)
+                .background(appAccentColor)
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
         }
@@ -844,6 +1002,7 @@ struct FloatingEditButton: View {
 // MARK: - Floating Settings Button
 struct FloatingSettingsButton: View {
     let action: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button(action: action) {
@@ -851,7 +1010,7 @@ struct FloatingSettingsButton: View {
                 .font(.system(size: 24, weight: .medium))
                 .foregroundColor(.black)
                 .frame(width: AppDimensions.floatingButtonSize, height: AppDimensions.floatingButtonSize)
-                .background(Color.accentYellow)
+                .background(appAccentColor)
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
         }
@@ -862,30 +1021,173 @@ struct FloatingSettingsButton: View {
 struct SectionHeaderCard: View {
     let title: String
     let icon: String
-    let backgroundColor: Color
-    
+    var backgroundColor: Color? = nil // Optional - if nil, uses accent color
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    private var effectiveBackgroundColor: Color {
+        backgroundColor ?? appAccentColor
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.white.opacity(0.2))
                     .frame(width: 50, height: 50)
-                
+
                 Image(systemName: icon)
                     .font(.system(size: 24))
                     .foregroundColor(.white)
             }
-            
+
             Text(title)
                 .font(.appTitle2)
                 .foregroundColor(.white)
-            
+
             Spacer()
         }
         .padding(AppDimensions.cardPadding)
-        .background(backgroundColor)
+        .background(effectiveBackgroundColor)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }
+}
+
+// MARK: - Header Action Button (with press animation)
+struct HeaderActionButton: View {
+    let icon: String
+    let color: Color
+    let backgroundColor: Color
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    init(
+        icon: String,
+        color: Color = .white,
+        backgroundColor: Color = Color.white.opacity(0.25),
+        action: @escaping () -> Void
+    ) {
+        self.icon = icon
+        self.color = color
+        self.backgroundColor = backgroundColor
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 36, height: 36)
+                .background(backgroundColor)
+                .clipShape(Circle())
+                .scaleEffect(isPressed ? 0.85 : 1.0)
+                .opacity(isPressed ? 0.7 : 1.0)
+                .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+    }
+}
+
+// MARK: - Header Edit Button (capsule style with press animation)
+struct HeaderEditButton: View {
+    let action: () -> Void
+
+    @Environment(\.appAccentColor) private var appAccentColor
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "pencil")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Edit")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundColor(.appBackground)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(appAccentColor)
+            .clipShape(Capsule())
+            .scaleEffect(isPressed ? 0.9 : 1.0)
+            .opacity(isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+    }
+}
+
+// MARK: - Header Bottom Action Button (larger semi-transparent style for bottom-right positioning)
+struct HeaderBottomActionButton: View {
+    let icon: String
+    let label: String?
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    init(icon: String, label: String? = nil, action: @escaping () -> Void) {
+        self.icon = icon
+        self.label = label
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                if let label = label {
+                    Text(label)
+                        .font(.system(size: 16, weight: .semibold))
+                }
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, label != nil ? 16 : 14)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.25))
+            .clipShape(Capsule())
+            .scaleEffect(isPressed ? 0.9 : 1.0)
+            .opacity(isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                }
+        )
+    }
+}
+
+// MARK: - Header Button Position
+enum HeaderButtonPosition {
+    case topRight
+    case bottomRight
 }
 
 // MARK: - Header Image View
@@ -901,12 +1203,22 @@ struct HeaderImageView: View {
     let homeAction: (() -> Void)?
     let showEditButton: Bool
     let editAction: (() -> Void)?
+    let editButtonPosition: HeaderButtonPosition
     let showSettingsButton: Bool
     let settingsAction: (() -> Void)?
     // Custom action button (bottom right)
     let customActionIcon: String?
     let customActionColor: Color?
     let customAction: (() -> Void)?
+    // Bottom-right add button
+    let showAddButton: Bool
+    let addAction: (() -> Void)?
+    // Reorder button
+    let showReorderButton: Bool
+    let isReordering: Bool
+    let reorderAction: (() -> Void)?
+
+    @Environment(\.appAccentColor) private var appAccentColor
 
     init(
         imageName: String? = nil,
@@ -919,11 +1231,17 @@ struct HeaderImageView: View {
         homeAction: (() -> Void)? = nil,
         showEditButton: Bool = false,
         editAction: (() -> Void)? = nil,
+        editButtonPosition: HeaderButtonPosition = .topRight,
         showSettingsButton: Bool = false,
         settingsAction: (() -> Void)? = nil,
         customActionIcon: String? = nil,
         customActionColor: Color? = nil,
-        customAction: (() -> Void)? = nil
+        customAction: (() -> Void)? = nil,
+        showAddButton: Bool = false,
+        addAction: (() -> Void)? = nil,
+        showReorderButton: Bool = false,
+        isReordering: Bool = false,
+        reorderAction: (() -> Void)? = nil
     ) {
         self.imageName = imageName
         self.photoUrl = photoUrl
@@ -935,42 +1253,53 @@ struct HeaderImageView: View {
         self.homeAction = homeAction
         self.showEditButton = showEditButton
         self.editAction = editAction
+        self.editButtonPosition = editButtonPosition
         self.showSettingsButton = showSettingsButton
         self.settingsAction = settingsAction
         self.customActionIcon = customActionIcon
         self.customActionColor = customActionColor
         self.customAction = customAction
+        self.showAddButton = showAddButton
+        self.addAction = addAction
+        self.showReorderButton = showReorderButton
+        self.isReordering = isReordering
+        self.reorderAction = reorderAction
     }
 
     var body: some View {
         GeometryReader { geometry in
+            let safeAreaTop = geometry.safeAreaInsets.top
+
             ZStack(alignment: .bottomLeading) {
                 // Background image: remote URL, local image, or gradient fallback
-                if let urlString = photoUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                                .clipped()
-                        case .failure, .empty:
-                            fallbackImage(imageName: imageName, width: geometry.size.width, height: geometry.size.height)
-                        @unknown default:
-                            fallbackImage(imageName: imageName, width: geometry.size.width, height: geometry.size.height)
+                Group {
+                    if let urlString = photoUrl, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: geometry.size.width, height: geometry.size.height)
+                                    .clipped()
+                            case .failure, .empty:
+                                fallbackImage(imageName: imageName, width: geometry.size.width, height: geometry.size.height)
+                            @unknown default:
+                                fallbackImage(imageName: imageName, width: geometry.size.width, height: geometry.size.height)
+                            }
                         }
+                    } else if let imageName = imageName {
+                        Image(imageName)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                    } else {
+                        LinearGradient.headerGradient
+                            .frame(width: geometry.size.width, height: geometry.size.height)
                     }
-                } else if let imageName = imageName {
-                    Image(imageName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped()
-                } else {
-                    LinearGradient.headerGradient
-                        .frame(width: geometry.size.width, height: geometry.size.height)
                 }
+                .allowsHitTesting(false)
 
                 // Gradient overlay for text readability
                 LinearGradient(
@@ -980,78 +1309,99 @@ struct HeaderImageView: View {
                 )
                 .allowsHitTesting(false)
 
-                // Content overlay
+                // Content overlay - only buttons receive touches
                 VStack(alignment: .leading, spacing: 4) {
-                    // Top row with back button and edit button
+                    // Top row with back button and edit/reorder buttons (when positioned top-right)
                     HStack {
                         if showBackButton, let backAction = backAction {
-                            Button(action: backAction) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 36, height: 36)
-                                    .background(Color.white.opacity(0.25))
-                                    .clipShape(Circle())
-                            }
+                            HeaderActionButton(
+                                icon: "chevron.left",
+                                action: backAction
+                            )
                         }
 
                         Spacer()
+                            .allowsHitTesting(false)
 
-                        if showEditButton, let editAction = editAction {
-                            Button(action: editAction) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "pencil")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text("Edit")
-                                        .font(.system(size: 14, weight: .semibold))
-                                }
-                                .foregroundColor(.appBackground)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.accentYellow)
-                                .clipShape(Capsule())
+                        HStack(spacing: 12) {
+                            if showEditButton && editButtonPosition == .topRight, let editAction = editAction {
+                                HeaderEditButton(action: editAction)
                             }
                         }
                     }
+                    .padding(.top, safeAreaTop)
+                    .allowsHitTesting(showBackButton || (showEditButton && editButtonPosition == .topRight))
 
                     Spacer()
+                        .allowsHitTesting(false)
 
-                    // Bottom row with title and settings button
+                    // Bottom row with title and action buttons
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 4) {
                             if let subtitle = subtitle {
                                 Text(subtitle)
                                     .font(.appCaption)
-                                    .foregroundColor(.accentYellow)
+                                    .foregroundColor(appAccentColor)
                             }
 
                             Text(title)
                                 .font(.appLargeTitle)
                                 .foregroundColor(.white)
                         }
+                        .allowsHitTesting(false)
 
                         Spacer()
+                            .allowsHitTesting(false)
 
                         if showSettingsButton, let settingsAction = settingsAction {
-                            Button(action: settingsAction) {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 36, height: 36)
-                                    .background(Color.white.opacity(0.25))
-                                    .clipShape(Circle())
-                            }
+                            HeaderActionButton(
+                                icon: "gearshape.fill",
+                                action: settingsAction
+                            )
                         }
 
                         if let icon = customActionIcon, let action = customAction {
-                            Button(action: action) {
-                                Image(systemName: icon)
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(customActionColor ?? .white)
-                                    .frame(width: 36, height: 36)
-                                    .background((customActionColor ?? .white).opacity(0.25))
-                                    .clipShape(Circle())
+                            HeaderActionButton(
+                                icon: icon,
+                                color: customActionColor ?? .white,
+                                backgroundColor: (customActionColor ?? .white).opacity(0.25),
+                                action: action
+                            )
+                        }
+
+                        // Reorder button (bottom-right)
+                        if showReorderButton, let reorderAction = reorderAction {
+                            Button {
+                                reorderAction()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: isReordering ? "checkmark" : "arrow.up.arrow.down")
+                                    Text(isReordering ? "Done" : "Reorder")
+                                }
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(isReordering ? .black : .white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(isReordering ? appAccentColor : Color.white.opacity(0.2))
+                                .cornerRadius(16)
                             }
+                        }
+
+                        // Edit button (when positioned bottom-right)
+                        if showEditButton && editButtonPosition == .bottomRight, let editAction = editAction {
+                            HeaderBottomActionButton(
+                                icon: "pencil",
+                                label: "Edit",
+                                action: editAction
+                            )
+                        }
+
+                        // Add button (bottom-right)
+                        if showAddButton, let addAction = addAction {
+                            HeaderBottomActionButton(
+                                icon: "plus",
+                                action: addAction
+                            )
                         }
                     }
                 }
@@ -1060,8 +1410,7 @@ struct HeaderImageView: View {
             }
         }
         .frame(height: AppDimensions.headerHeight)
-        .background(Color.appBackground)
-        .ignoresSafeArea(edges: .top)
+        .background(Color.appBackground.allowsHitTesting(false))
     }
 
     @ViewBuilder
@@ -1083,14 +1432,28 @@ struct HeaderImageView: View {
 struct PrimaryButton: View {
     let title: String
     let isLoading: Bool
+    let backgroundColor: Color?
     let action: () -> Void
-    
-    init(title: String, isLoading: Bool = false, action: @escaping () -> Void) {
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    init(
+        title: String,
+        isLoading: Bool = false,
+        backgroundColor: Color? = nil,
+        action: @escaping () -> Void
+    ) {
         self.title = title
         self.isLoading = isLoading
+        self.backgroundColor = backgroundColor
         self.action = action
     }
-    
+
+    /// The effective background color (custom or environment accent)
+    private var effectiveBackgroundColor: Color {
+        backgroundColor ?? appAccentColor
+    }
+
     var body: some View {
         Button(action: action) {
             HStack {
@@ -1104,7 +1467,7 @@ struct PrimaryButton: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: AppDimensions.buttonHeight)
-            .background(Color.accentYellow)
+            .background(effectiveBackgroundColor)
             .foregroundColor(.black)
             .cornerRadius(AppDimensions.buttonCornerRadius)
         }
@@ -1164,12 +1527,19 @@ struct AppTextField: View {
 
 // MARK: - Empty State View
 struct EmptyStateView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let icon: String
     let title: String
     let message: String
     let buttonTitle: String?
     let buttonAction: (() -> Void)?
-    
+
+    /// Check if we're in iPad mode (regular size class)
+    private var isiPad: Bool {
+        horizontalSizeClass == .regular
+    }
+
     init(
         icon: String,
         title: String,
@@ -1183,28 +1553,29 @@ struct EmptyStateView: View {
         self.buttonTitle = buttonTitle
         self.buttonAction = buttonAction
     }
-    
+
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: icon)
                 .font(.system(size: 60))
                 .foregroundColor(.textSecondary)
-            
+
             Text(title)
                 .font(.appTitle)
                 .foregroundColor(.textPrimary)
-            
+
             Text(message)
                 .font(.appBody)
                 .foregroundColor(.textSecondary)
                 .multilineTextAlignment(.center)
-            
+
             if let buttonTitle = buttonTitle, let action = buttonAction {
                 PrimaryButton(title: buttonTitle, action: action)
                     .frame(width: 200)
                     .padding(.top, 8)
             }
         }
+        .frame(maxWidth: isiPad ? 400 : .infinity)
         .padding(AppDimensions.screenPadding)
     }
 }
@@ -1212,17 +1583,19 @@ struct EmptyStateView: View {
 // MARK: - Loading View
 struct LoadingView: View {
     let message: String
-    
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
     init(message: String = "Loading...") {
         self.message = message
     }
-    
+
     var body: some View {
         VStack(spacing: 16) {
             ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .accentYellow))
+                .progressViewStyle(CircularProgressViewStyle(tint: appAccentColor))
                 .scaleEffect(1.5)
-            
+
             Text(message)
                 .font(.appBody)
                 .foregroundColor(.textSecondary)

@@ -3,8 +3,9 @@ import AuthenticationServices
 
 // MARK: - Auth View
 struct AuthView: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     @State private var showSignUp = false
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -14,20 +15,17 @@ struct AuthView: View {
                     VStack(spacing: 32) {
                         // Header
                         VStack(spacing: 16) {
-                            Image(systemName: "brain.head.profile")
-                                .font(.system(size: 80))
-                                .foregroundColor(.accentYellow)
-                            
-                            Text("Don't Forget")
-                                .font(.appLargeTitle)
-                                .foregroundColor(.textPrimary)
-                            
+                            Image("unforgotten-logo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 100)
+
                             Text("Remember what matters most")
                                 .font(.appBody)
                                 .foregroundColor(.textSecondary)
                         }
                         .padding(.top, 60)
-                        
+
                         // Auth Form
                         if showSignUp {
                             SignUpForm(showSignUp: $showSignUp)
@@ -36,7 +34,9 @@ struct AuthView: View {
                         }
                     }
                     .padding(AppDimensions.screenPadding)
+                    .frame(maxWidth: 550)
                 }
+                .frame(maxWidth: .infinity)
             }
         }
     }
@@ -45,8 +45,9 @@ struct AuthView: View {
 // MARK: - Sign In Form
 struct SignInForm: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.appAccentColor) private var appAccentColor
     @Binding var showSignUp: Bool
-    
+
     @State private var email = ""
     @State private var password = ""
     @State private var isLoading = false
@@ -119,7 +120,7 @@ struct SignInForm: View {
                     Text("Don't have an account?")
                         .foregroundColor(.textSecondary)
                     Text("Sign Up")
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(appAccentColor)
                 }
                 .font(.appBody)
             }
@@ -214,8 +215,9 @@ struct SignInForm: View {
 // MARK: - Sign Up Form
 struct SignUpForm: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.appAccentColor) private var appAccentColor
     @Binding var showSignUp: Bool
-    
+
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
@@ -293,7 +295,7 @@ struct SignUpForm: View {
                     Text("Already have an account?")
                         .foregroundColor(.textSecondary)
                     Text("Sign In")
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(appAccentColor)
                 }
                 .font(.appBody)
             }

@@ -5,70 +5,78 @@ struct BirthdaysView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
     @Environment(\.navigateToRoot) var navigateToRoot
+    @Environment(\.iPadHomeAction) private var iPadHomeAction
     @StateObject private var viewModel = BirthdaysViewModel()
     @State private var showSettings = false
 
     var body: some View {
         ZStack {
-            Color.appBackground.ignoresSafeArea()
+            Color.appBackgroundLight.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header at the top - fully interactive
-                HeaderImageView(
-                    imageName: "header-birthdays",
-                    title: "Birthdays",
-                    showBackButton: true,
-                    backAction: { dismiss() }
-                )
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Header scrolls with content - uses style-based assets from HeaderStyleManager
+                    CustomizableHeaderView(
+                        pageIdentifier: .birthdays,
+                        title: "Birthdays",
+                        showBackButton: iPadHomeAction == nil,
+                        backAction: { dismiss() },
+                        showHomeButton: iPadHomeAction != nil,
+                        homeAction: iPadHomeAction
+                    )
 
-                // Content scrolls below header
-                ScrollView {
+                    // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
-                        // Birthday list
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
-                            ForEach(viewModel.upcomingBirthdays) { birthday in
-                                NavigationLink(destination: ProfileDetailView(profile: birthday.profile)) {
-                                    BirthdayCard(birthday: birthday)
+                            // Birthday list
+                            LazyVStack(spacing: AppDimensions.cardSpacing) {
+                                ForEach(viewModel.upcomingBirthdays) { birthday in
+                                    NavigationLink(destination: ProfileDetailView(profile: birthday.profile)) {
+                                        BirthdayCard(birthday: birthday)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
-                                .buttonStyle(PlainButtonStyle())
                             }
-                        }
 
-                        // Loading state
-                        if viewModel.isLoading && viewModel.upcomingBirthdays.isEmpty {
-                            LoadingView(message: "Loading birthdays...")
+                            // Loading state
+                            if viewModel.isLoading && viewModel.upcomingBirthdays.isEmpty {
+                                LoadingView(message: "Loading birthdays...")
+                                    .padding(.top, 40)
+                            }
+
+                            // Empty state
+                            if viewModel.upcomingBirthdays.isEmpty && !viewModel.isLoading {
+                                EmptyStateView(
+                                    icon: "gift.fill",
+                                    title: "No upcoming birthdays",
+                                    message: "Add birthdays to profiles to see them here"
+                                )
                                 .padding(.top, 40)
-                        }
+                            }
 
-                        // Empty state
-                        if viewModel.upcomingBirthdays.isEmpty && !viewModel.isLoading {
-                            EmptyStateView(
-                                icon: "gift.fill",
-                                title: "No upcoming birthdays",
-                                message: "Add birthdays to profiles to see them here"
-                            )
-                            .padding(.top, 40)
-                        }
-
-                        Spacer()
-                            .frame(height: 140)
+                            // Bottom spacing for nav bar
+                            Spacer()
+                                .frame(height: 120)
                     }
                     .padding(.horizontal, AppDimensions.screenPadding)
                     .padding(.top, AppDimensions.cardSpacing)
                 }
             }
+            .ignoresSafeArea(edges: .top)
         }
         .navigationBarHidden(true)
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView()
-            }
+        .sidePanel(isPresented: $showSettings) {
+            SettingsPanelView(onDismiss: { showSettings = false })
         }
         .task {
             await viewModel.loadBirthdays(appState: appState)
         }
         .refreshable {
             await viewModel.loadBirthdays(appState: appState)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
+            Task {
+                await viewModel.loadBirthdays(appState: appState)
+            }
         }
         .alert("Error", isPresented: .init(
             get: { viewModel.error != nil },
@@ -86,52 +94,82 @@ struct BirthdaysView: View {
 // MARK: - Birthday Card
 struct BirthdayCard: View {
     let birthday: UpcomingBirthday
+    @Environment(\.appAccentColor) private var appAccentColor
 
     private var countdownText: String {
         if birthday.daysUntil == 0 {
-            return "Today! 🎉"
+            return "Today!"
         } else if birthday.daysUntil == 1 {
-            return "Tomorrow"
+            return "1 day"
         } else {
-            return "in \(birthday.daysUntil) days"
+            return "\(birthday.daysUntil) days"
         }
     }
 
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(birthday.profile.displayName)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
+    private var turningAge: Int? {
+        guard let age = birthday.profile.age else { return nil }
+        return age + 1
+    }
 
-                if let bday = birthday.profile.birthday {
-                    Text(bday.formattedBirthday())
+    var body: some View {
+        HStack(alignment: .center) {
+            // Left side - Name with days badge, and date below
+            VStack(alignment: .leading, spacing: 8) {
+                // Name and days badge on same line
+                HStack(spacing: 12) {
+                    Text(birthday.profile.displayName)
+                        .font(.appTitle)
+                        .foregroundColor(.textPrimary)
+
+                    // Memorial heart icon if deceased
+                    if birthday.profile.isDeceased {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.textMuted)
+                    }
+
+                    // Days countdown pill
+                    Text(countdownText)
                         .font(.appCaption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.cardBackgroundLight)
+                        .cornerRadius(16)
+                }
+
+                // Date below
+                if let bday = birthday.profile.birthday {
+                    Text(bday.formattedBirthdayWithOrdinal())
+                        .font(.appBody)
                         .foregroundColor(.textSecondary)
                 }
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
-                if let age = birthday.profile.age {
-                    Text("Turning \(age + 1)")
+            // Right side - Age badge (show "Would be" for deceased)
+            if let age = turningAge {
+                VStack(spacing: 1) {
+                    Text(birthday.profile.isDeceased ? "Would be" : "Turns")
                         .font(.appCaption)
-                        .foregroundColor(birthday.daysUntil <= 30 ? .accentYellow : .textSecondary)
-                }
+                        .foregroundColor(appAccentColor)
 
-                Text(countdownText)
-                    .font(.appCaption)
-                    .fontWeight(birthday.daysUntil <= 30 ? .semibold : .regular)
-                    .foregroundColor(birthday.daysUntil <= 30 ? .accentYellow : .textSecondary)
+                    Text("\(age)")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.cardBackgroundLight.opacity(0.4))
+                )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(birthday.daysUntil == 0 ? Color.accentYellow.opacity(0.2) :
-                       birthday.daysUntil <= 30 ? Color.accentYellow.opacity(0.1) : Color.cardBackgroundSoft)
-            .cornerRadius(AppDimensions.pillCornerRadius)
         }
-        .padding(AppDimensions.cardPadding)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - View Extensions
 extension View {
@@ -46,6 +47,15 @@ extension Date {
         formatter.dateFormat = "d MMMM, yyyy"
         let day = Calendar.current.component(.day, from: self)
         let suffix = daySuffix(for: day)
+        formatter.dateFormat = "MMMM, yyyy"
+        return "\(day)\(suffix) \(formatter.string(from: self))"
+    }
+
+    /// Format as "17th December, 2002" with ordinal day
+    func formattedBirthdayWithOrdinal() -> String {
+        let day = Calendar.current.component(.day, from: self)
+        let suffix = daySuffix(for: day)
+        let formatter = DateFormatter()
         formatter.dateFormat = "MMMM, yyyy"
         return "\(day)\(suffix) \(formatter.string(from: self))"
     }
@@ -231,5 +241,394 @@ extension Error {
         }
 
         return false
+    }
+}
+
+// MARK: - Notification Names for Data Refresh
+extension Notification.Name {
+    /// Posted when profiles data has changed and lists should refresh
+    static let profilesDidChange = Notification.Name("profilesDidChange")
+
+    /// Posted when medications data has changed and lists should refresh
+    static let medicationsDidChange = Notification.Name("medicationsDidChange")
+
+    /// Posted when appointments data has changed and lists should refresh
+    /// userInfo keys: "appointmentId" (UUID), "action" (AppointmentChangeAction), "appointment" (Appointment, optional)
+    static let appointmentsDidChange = Notification.Name("appointmentsDidChange")
+
+    /// Posted when contacts data has changed and lists should refresh
+    static let contactsDidChange = Notification.Name("contactsDidChange")
+
+    /// Posted when sticky reminders data has changed and lists should refresh
+    static let stickyRemindersDidChange = Notification.Name("stickyRemindersDidChange")
+
+    /// Posted when the current account has changed (e.g., user switched accounts)
+    static let accountDidChange = Notification.Name("accountDidChange")
+
+    /// Posted when profile details (medical conditions, gift ideas, clothing sizes) have changed
+    static let profileDetailsDidChange = Notification.Name("profileDetailsDidChange")
+
+    /// Posted when important accounts have changed
+    static let importantAccountsDidChange = Notification.Name("importantAccountsDidChange")
+
+    /// Posted when the app should open the edit sheet for the primary profile (My Card)
+    static let editPrimaryProfileRequested = Notification.Name("editPrimaryProfileRequested")
+}
+
+// MARK: - Appointment Change Action
+enum AppointmentChangeAction: String {
+    case created
+    case updated
+    case deleted
+    case completionToggled
+}
+
+// MARK: - Notification UserInfo Keys
+enum NotificationUserInfoKey {
+    static let appointmentId = "appointmentId"
+    static let appointment = "appointment"
+    static let action = "action"
+}
+
+// MARK: - Bottom Nav Bar Visibility Environment Key
+private struct BottomNavBarVisibleKey: EnvironmentKey {
+    static let defaultValue: Bool = true
+}
+
+extension EnvironmentValues {
+    var isBottomNavBarVisible: Bool {
+        get { self[BottomNavBarVisibleKey.self] }
+        set { self[BottomNavBarVisibleKey.self] = newValue }
+    }
+}
+
+// MARK: - Bottom Nav Bar Visibility Preference Key
+struct BottomNavBarVisibilityPreference: PreferenceKey {
+    static var defaultValue: Bool = true
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = nextValue()
+    }
+}
+
+extension View {
+    /// Hide the bottom navigation bar for this view
+    func hideBottomNavBar(_ hide: Bool = true) -> some View {
+        self.preference(key: BottomNavBarVisibilityPreference.self, value: !hide)
+    }
+}
+
+// MARK: - iPad Floating Add Button Visibility Environment Key
+private struct HideFloatingAddButtonKey: EnvironmentKey {
+    static let defaultValue: Binding<Bool>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to hide the iPad floating add button
+    var hideFloatingAddButton: Binding<Bool>? {
+        get { self[HideFloatingAddButtonKey.self] }
+        set { self[HideFloatingAddButtonKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Home Action Environment Key
+private struct iPadHomeActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to navigate back to iPad home (deselect all content)
+    var iPadHomeAction: (() -> Void)? {
+        get { self[iPadHomeActionKey.self] }
+        set { self[iPadHomeActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Note Action Environment Key
+private struct iPadAddNoteActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add Note panel on iPad
+    var iPadAddNoteAction: (() -> Void)? {
+        get { self[iPadAddNoteActionKey.self] }
+        set { self[iPadAddNoteActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Note Action Environment Key
+private struct iPadEditNoteActionKey: EnvironmentKey {
+    static let defaultValue: ((LocalNote) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Edit Note panel on iPad with an existing note
+    var iPadEditNoteAction: ((LocalNote) -> Void)? {
+        get { self[iPadEditNoteActionKey.self] }
+        set { self[iPadEditNoteActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Sticky Reminder Action Environment Key
+private struct iPadAddStickyReminderActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add Sticky Reminder panel on iPad
+    var iPadAddStickyReminderAction: (() -> Void)? {
+        get { self[iPadAddStickyReminderActionKey.self] }
+        set { self[iPadAddStickyReminderActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Sticky Reminder Action Environment Key
+private struct iPadEditStickyReminderActionKey: EnvironmentKey {
+    static let defaultValue: ((StickyReminder) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Edit Sticky Reminder panel on iPad with an existing reminder
+    var iPadEditStickyReminderAction: ((StickyReminder) -> Void)? {
+        get { self[iPadEditStickyReminderActionKey.self] }
+        set { self[iPadEditStickyReminderActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad View Sticky Reminder Action Environment Key
+private struct iPadViewStickyReminderActionKey: EnvironmentKey {
+    static let defaultValue: ((StickyReminder) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to view a Sticky Reminder in the full-screen side panel on iPad
+    var iPadViewStickyReminderAction: ((StickyReminder) -> Void)? {
+        get { self[iPadViewStickyReminderActionKey.self] }
+        set { self[iPadViewStickyReminderActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad View ToDo List Action Environment Key
+private struct iPadViewToDoListActionKey: EnvironmentKey {
+    static let defaultValue: ((ToDoList) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to view a ToDo List in the full-screen side panel on iPad
+    var iPadViewToDoListAction: ((ToDoList) -> Void)? {
+        get { self[iPadViewToDoListActionKey.self] }
+        set { self[iPadViewToDoListActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Profile Action Environment Key
+private struct iPadEditProfileActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit a Profile in the full-screen side panel on iPad
+    var iPadEditProfileAction: ((Profile) -> Void)? {
+        get { self[iPadEditProfileActionKey.self] }
+        set { self[iPadEditProfileActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Medication Action Environment Key
+private struct iPadEditMedicationActionKey: EnvironmentKey {
+    static let defaultValue: ((Medication) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit a Medication in the full-screen side panel on iPad
+    var iPadEditMedicationAction: ((Medication) -> Void)? {
+        get { self[iPadEditMedicationActionKey.self] }
+        set { self[iPadEditMedicationActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Appointment Action Environment Key
+private struct iPadEditAppointmentActionKey: EnvironmentKey {
+    static let defaultValue: ((Appointment) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit an Appointment in the full-screen side panel on iPad
+    var iPadEditAppointmentAction: ((Appointment) -> Void)? {
+        get { self[iPadEditAppointmentActionKey.self] }
+        set { self[iPadEditAppointmentActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Useful Contact Action Environment Key
+private struct iPadEditUsefulContactActionKey: EnvironmentKey {
+    static let defaultValue: ((UsefulContact) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit a Useful Contact in the full-screen side panel on iPad
+    var iPadEditUsefulContactAction: ((UsefulContact) -> Void)? {
+        get { self[iPadEditUsefulContactActionKey.self] }
+        set { self[iPadEditUsefulContactActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Important Account Action Environment Key
+private struct iPadEditImportantAccountActionKey: EnvironmentKey {
+    static let defaultValue: ((ImportantAccount, Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit an Important Account in the full-screen side panel on iPad
+    var iPadEditImportantAccountAction: ((ImportantAccount, Profile) -> Void)? {
+        get { self[iPadEditImportantAccountActionKey.self] }
+        set { self[iPadEditImportantAccountActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Important Account Action Environment Key
+private struct iPadAddImportantAccountActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add an Important Account in the full-screen side panel on iPad
+    var iPadAddImportantAccountAction: ((Profile) -> Void)? {
+        get { self[iPadAddImportantAccountActionKey.self] }
+        set { self[iPadAddImportantAccountActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Medical Condition Action Environment Key
+private struct iPadAddMedicalConditionActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add a Medical Condition in the full-screen side panel on iPad
+    var iPadAddMedicalConditionAction: ((Profile) -> Void)? {
+        get { self[iPadAddMedicalConditionActionKey.self] }
+        set { self[iPadAddMedicalConditionActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Gift Idea Action Environment Key
+private struct iPadAddGiftIdeaActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add a Gift Idea in the full-screen side panel on iPad
+    var iPadAddGiftIdeaAction: ((Profile) -> Void)? {
+        get { self[iPadAddGiftIdeaActionKey.self] }
+        set { self[iPadAddGiftIdeaActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Clothing Size Action Environment Key
+private struct iPadAddClothingSizeActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add a Clothing Size in the full-screen side panel on iPad
+    var iPadAddClothingSizeAction: ((Profile) -> Void)? {
+        get { self[iPadAddClothingSizeActionKey.self] }
+        set { self[iPadAddClothingSizeActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Settings Panel Actions
+
+private struct iPadShowInviteMemberActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowManageMembersActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowJoinAccountActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowMoodHistoryActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowAppearanceSettingsActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowFeatureVisibilityActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowSwitchAccountActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowEditAccountNameActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowAdminPanelActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowUpgradeActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var iPadShowInviteMemberAction: (() -> Void)? {
+        get { self[iPadShowInviteMemberActionKey.self] }
+        set { self[iPadShowInviteMemberActionKey.self] = newValue }
+    }
+
+    var iPadShowManageMembersAction: (() -> Void)? {
+        get { self[iPadShowManageMembersActionKey.self] }
+        set { self[iPadShowManageMembersActionKey.self] = newValue }
+    }
+
+    var iPadShowJoinAccountAction: (() -> Void)? {
+        get { self[iPadShowJoinAccountActionKey.self] }
+        set { self[iPadShowJoinAccountActionKey.self] = newValue }
+    }
+
+    var iPadShowMoodHistoryAction: (() -> Void)? {
+        get { self[iPadShowMoodHistoryActionKey.self] }
+        set { self[iPadShowMoodHistoryActionKey.self] = newValue }
+    }
+
+    var iPadShowAppearanceSettingsAction: (() -> Void)? {
+        get { self[iPadShowAppearanceSettingsActionKey.self] }
+        set { self[iPadShowAppearanceSettingsActionKey.self] = newValue }
+    }
+
+    var iPadShowFeatureVisibilityAction: (() -> Void)? {
+        get { self[iPadShowFeatureVisibilityActionKey.self] }
+        set { self[iPadShowFeatureVisibilityActionKey.self] = newValue }
+    }
+
+    var iPadShowSwitchAccountAction: (() -> Void)? {
+        get { self[iPadShowSwitchAccountActionKey.self] }
+        set { self[iPadShowSwitchAccountActionKey.self] = newValue }
+    }
+
+    var iPadShowEditAccountNameAction: (() -> Void)? {
+        get { self[iPadShowEditAccountNameActionKey.self] }
+        set { self[iPadShowEditAccountNameActionKey.self] = newValue }
+    }
+
+    var iPadShowAdminPanelAction: (() -> Void)? {
+        get { self[iPadShowAdminPanelActionKey.self] }
+        set { self[iPadShowAdminPanelActionKey.self] = newValue }
+    }
+
+    var iPadShowUpgradeAction: (() -> Void)? {
+        get { self[iPadShowUpgradeActionKey.self] }
+        set { self[iPadShowUpgradeActionKey.self] = newValue }
     }
 }

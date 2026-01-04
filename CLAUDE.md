@@ -216,3 +216,133 @@ Displays "Today" card showing:
 - Birthdays occurring today
 
 Navigates to all feature sections (My Card, Family and Friends, Medicines, Appointments, Birthdays, Useful Contacts).
+
+
+# Unforgotten - iPad Development Guidelines
+
+## Platform Strategy
+
+Unforgotten uses an **adaptive approach** rather than separate iPhone/iPad implementations. All views should respond intelligently to available screen space using SwiftUI's environment values and native layout systems.
+
+## Size Class Detection
+
+Use environment values for layout decisions, never device type checks:
+
+```swift
+@Environment(\.horizontalSizeClass) private var horizontalSizeClass
+@Environment(\.verticalSizeClass) private var verticalSizeClass
+```
+
+- **Regular width**: iPad full screen, iPad split view (large side), large iPhones in landscape
+- **Compact width**: iPhone portrait, iPad slide-over, iPad split view (small side)
+
+## Navigation Patterns
+
+**Primary navigation structure:**
+- Use `NavigationSplitView` for features with list/detail relationships (Medications, Contacts, To Do Lists, Birthdays, Appointments)
+- Provide two-column layout on regular width, collapsing to stack navigation on compact
+- Sidebar should remain functional when shown in narrow split view contexts
+
+**Example pattern:**
+```swift
+NavigationSplitView {
+    ListContentView()
+} detail: {
+    DetailContentView()
+}
+.navigationSplitViewStyle(.balanced)
+```
+
+## Layout Considerations
+
+**Adaptive grids:**
+- Use `LazyVGrid` with adaptive columns rather than fixed counts
+- Minimum item width: 300pt for content cards, 160pt for compact items
+- Let the system determine column count based on available width
+
+**Content width:**
+- On very wide displays, constrain content to a readable maximum width (approximately 700pt for text-heavy views)
+- Center constrained content horizontally
+- Allow full width for grids and collection-style layouts
+
+**Spacing and margins:**
+- Use slightly larger margins on iPad (20-24pt) compared to iPhone (16pt)
+- Increase spacing between interactive elements to prevent accidental taps
+
+## Touch Targets and Accessibility
+
+Given our target demographic of older adults:
+- Minimum touch target: 44x44pt on iPhone, 48x48pt on iPad
+- Interactive elements should have generous padding
+- Maintain all existing accessibility labels and hints
+- Test with larger text sizes — iPad has more room to accommodate Dynamic Type gracefully
+
+## Pointer and Keyboard Support
+
+iPad users may use trackpad, mouse, or keyboard:
+- Add `.hoverEffect()` to interactive elements where appropriate
+- Implement keyboard shortcuts for common actions using `.keyboardShortcut()`
+- Support standard shortcuts: ⌘N (new item), ⌘F (search), Delete key (remove selected)
+
+## Theming System
+
+The existing theming system (accent colors, header customization) should apply consistently across iPhone and iPad. No iPad-specific theme variations unless explicitly requested.
+
+## Multitasking Support
+
+Unforgotten should work correctly in all iPad multitasking modes:
+- Full screen
+- Split View (both sides)
+- Slide Over
+
+Test layouts at all possible widths. Views must remain functional even at the narrowest Slide Over width (approximately 320pt).
+
+## Feature-Specific Guidance
+
+**To Do Lists:**
+- Two-column layout: list sidebar on left, selected list's items on right
+- Drag-to-reorder should work via both touch and pointer
+- Search and filter controls visible in sidebar header
+
+**Medications:**
+- Split view with medication list and selected medication's full details/schedule
+- Consider showing weekly schedule visualization in detail view on iPad
+
+**Contacts:**
+- Alphabetical list in sidebar, full contact card in detail pane
+- Show more contact fields simultaneously on iPad detail view
+
+**Appointments/Birthdays:**
+- Calendar or timeline view possible on iPad given additional space
+- List view in sidebar, selected event details on right
+
+## Local-First Behavior
+
+iPad implementation maintains the same local-first approach with background Supabase sync. No changes to data architecture for iPad — SwiftData and sync logic remain unified.
+
+## Debugging Approach
+
+When troubleshooting iPad layouts:
+- Use colored borders (`.border(Color.red)`) to visualize frame boundaries
+- Test in all size class combinations using Xcode's preview device variants
+- Verify behavior when rotating device and when entering/exiting split view
+- Check that animations perform smoothly on older supported iPad models
+
+## File Organization
+
+iPad-adaptive code should remain in existing view files. Avoid creating separate `*_iPad.swift` variants. Use internal `ViewBuilder` methods or extracted subviews when conditional layouts become complex:
+
+```swift
+@ViewBuilder
+private var contentLayout: some View {
+    if horizontalSizeClass == .regular {
+        regularWidthLayout
+    } else {
+        compactWidthLayout
+    }
+}
+```
+
+## Minimum Deployment
+
+iPad support follows the same iOS 17+ minimum as iPhone. Use modern SwiftUI APIs freely.
