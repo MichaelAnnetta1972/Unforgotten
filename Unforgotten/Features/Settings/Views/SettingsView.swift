@@ -844,7 +844,9 @@ class MoodHistoryViewModel: ObservableObject {
                 to: Date()
             )
         } catch {
+            #if DEBUG
             print("Error loading mood entries: \(error)")
+            #endif
         }
         
         isLoading = false
@@ -1187,7 +1189,9 @@ class ManageMembersViewModel: ObservableObject {
             // Filter pending invitations
             pendingInvitations = allInvitations.filter { $0.status == .pending && $0.isActive }
         } catch {
+            #if DEBUG
             print("Error loading members: \(error)")
+            #endif
         }
 
         isLoading = false
@@ -1198,7 +1202,9 @@ class ManageMembersViewModel: ObservableObject {
             try await appState.invitationRepository.revokeInvitation(id: invitation.id)
             pendingInvitations.removeAll { $0.id == invitation.id }
         } catch {
+            #if DEBUG
             print("Error revoking invitation: \(error)")
+            #endif
         }
     }
 
@@ -1207,7 +1213,9 @@ class ManageMembersViewModel: ObservableObject {
             try await appState.accountRepository.removeMember(memberId: memberWithEmail.member.id)
             membersWithEmail.removeAll { $0.id == memberWithEmail.id }
         } catch {
+            #if DEBUG
             print("Error removing member: \(error)")
+            #endif
         }
     }
 }
@@ -1909,7 +1917,9 @@ struct UpgradeView: View {
                 purchaseState = .idle
             }
         } catch {
+            #if DEBUG
             print("Failed to load products: \(error)")
+            #endif
             await MainActor.run {
                 purchaseState = .idle
             }
@@ -1945,7 +1955,9 @@ struct UpgradeView: View {
                             errorMessage = "Purchase verification failed. Please try again."
                             purchaseState = .idle
                         }
+                        #if DEBUG
                         print("Unverified transaction: \(error)")
+                        #endif
                     }
 
                 case .userCancelled:
@@ -1969,7 +1981,9 @@ struct UpgradeView: View {
                     errorMessage = "Purchase failed. Please try again."
                     purchaseState = .idle
                 }
+                #if DEBUG
                 print("Purchase error: \(error)")
+                #endif
             }
         }
     }
@@ -1998,7 +2012,9 @@ struct UpgradeView: View {
             await MainActor.run {
                 errorMessage = "Failed to restore purchases."
             }
+            #if DEBUG
             print("Restore error: \(error)")
+            #endif
         }
     }
 }

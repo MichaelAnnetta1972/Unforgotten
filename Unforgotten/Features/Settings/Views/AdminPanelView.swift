@@ -250,7 +250,9 @@ class AdminPanelViewModel: ObservableObject {
         } catch {
             errorMessage = "Failed to load users: \(error.localizedDescription)"
             showError = true
+            #if DEBUG
             print("Error loading users: \(error)")
+            #endif
         }
 
         isLoading = false
@@ -269,7 +271,9 @@ class AdminPanelViewModel: ObservableObject {
         } catch {
             errorMessage = "Failed to update admin status: \(error.localizedDescription)"
             showError = true
+            #if DEBUG
             print("Error toggling admin: \(error)")
+            #endif
         }
     }
 
@@ -291,7 +295,9 @@ class AdminPanelViewModel: ObservableObject {
         } catch {
             errorMessage = "Failed to update complimentary access: \(error.localizedDescription)"
             showError = true
+            #if DEBUG
             print("Error toggling complimentary access: \(error)")
+            #endif
         }
     }
 }

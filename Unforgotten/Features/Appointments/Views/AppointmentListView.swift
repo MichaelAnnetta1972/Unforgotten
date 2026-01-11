@@ -376,19 +376,9 @@ struct AppointmentListRow: View {
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    /// Adaptive padding: larger on iPad for better touch targets
-    private var cardPadding: CGFloat {
-        horizontalSizeClass == .regular ? 20 : 16
-    }
-
     /// Adaptive icon size: larger on iPad
     private var iconSize: CGFloat {
         horizontalSizeClass == .regular ? 48 : 40
-    }
-
-    /// Minimum row height for better touch targets on iPad
-    private var minRowHeight: CGFloat {
-        horizontalSizeClass == .regular ? 80 : 60
     }
 
     /// Adaptive button size for iPad
@@ -441,7 +431,6 @@ struct AppointmentListRow: View {
 
                     Spacer()
                 }
-                .frame(minHeight: minRowHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
@@ -471,7 +460,7 @@ struct AppointmentListRow: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(cardPadding)
+        .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
         .contentShape(Rectangle())

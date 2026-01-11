@@ -75,8 +75,10 @@ struct OnboardingView: View {
                     birthday: birthday
                 )
             } catch {
+                #if DEBUG
                 print("❌ Onboarding error: \(error)")
                 print("❌ Error details: \(error.localizedDescription)")
+                #endif
                 errorMessage = "Failed to create account: \(error.localizedDescription)"
             }
             isLoading = false

@@ -165,8 +165,13 @@ struct TermsOfServiceView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("If you have questions about these Terms of Service, please contact us at:")
 
-                    Text("support@unforgotten.app")
+                    Link("support@unforgottenapp.com", destination: URL(string: "mailto:support@unforgottenapp.com")!)
                         .foregroundColor(appAccentColor)
+
+                    Link("View full terms online", destination: URL(string: "https://unforgottenapp.com/terms")!)
+                        .font(.appCaption)
+                        .foregroundColor(appAccentColor)
+                        .padding(.top, 4)
                 }
             }
         }
@@ -319,8 +324,13 @@ struct TermsOfServicePanelContent: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("If you have questions about these Terms of Service, please contact us at:")
 
-                    Text("support@unforgotten.app")
+                    Link("support@unforgottenapp.com", destination: URL(string: "mailto:support@unforgottenapp.com")!)
                         .foregroundColor(.accentYellow)
+
+                    Link("View full terms online", destination: URL(string: "https://unforgottenapp.com/terms")!)
+                        .font(.appCaption)
+                        .foregroundColor(.accentYellow)
+                        .padding(.top, 4)
                 }
             }
         }

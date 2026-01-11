@@ -963,7 +963,9 @@ struct IPhoneMainView: View {
             // Load note count from SwiftData
             await loadNoteCount(accountId: account.id)
         } catch {
+            #if DEBUG
             print("Error loading feature counts: \(error)")
+            #endif
         }
     }
 
@@ -980,7 +982,9 @@ struct IPhoneMainView: View {
             let notes = try context.fetch(descriptor)
             noteCount = notes.count
         } catch {
+            #if DEBUG
             print("Error loading note count: \(error)")
+            #endif
             noteCount = 0
         }
     }

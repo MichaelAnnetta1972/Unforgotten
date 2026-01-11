@@ -350,7 +350,9 @@ struct ProfileCategoryListView: View {
             }
             NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
         } catch {
+            #if DEBUG
             print("Failed to update gift status: \(error)")
+            #endif
         }
     }
 
@@ -360,7 +362,9 @@ struct ProfileCategoryListView: View {
             currentDetails.removeAll { $0.id == detail.id }
             NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
         } catch {
+            #if DEBUG
             print("Failed to delete detail: \(error)")
+            #endif
         }
     }
 }
@@ -1129,7 +1133,9 @@ struct AddProfileView: View {
         do {
             allProfiles = try await appState.profileRepository.getProfiles(accountId: accountId)
         } catch {
+            #if DEBUG
             print("Failed to load profiles: \(error)")
+            #endif
         }
     }
 
@@ -1170,8 +1176,10 @@ struct AddProfileView: View {
             onSave(newProfile)
             dismiss()
         } catch {
+            #if DEBUG
             print("❌ Profile creation error: \(error)")
             print("❌ Error details: \(error.localizedDescription)")
+            #endif
             errorMessage = "Failed to save: \(error.localizedDescription)"
         }
 
@@ -1483,7 +1491,9 @@ struct EditProfileView: View {
         do {
             allProfiles = try await appState.profileRepository.getProfiles(accountId: accountId)
         } catch {
+            #if DEBUG
             print("Failed to load profiles: \(error)")
+            #endif
         }
     }
 
@@ -1493,7 +1503,9 @@ struct EditProfileView: View {
             let allDetails = try await appState.profileRepository.getProfileDetails(profileId: profile.id)
             customFields = allDetails.filter { $0.category == .note }
         } catch {
+            #if DEBUG
             print("Failed to load custom fields: \(error)")
+            #endif
         }
     }
 
@@ -1539,7 +1551,9 @@ struct EditProfileView: View {
                     updatedProfile.photoUrl = photoURL
                 } catch {
                     // Photo upload failed - continue saving profile without photo
+                    #if DEBUG
                     print("Photo upload failed: \(error.localizedDescription)")
+                    #endif
                 }
             }
 

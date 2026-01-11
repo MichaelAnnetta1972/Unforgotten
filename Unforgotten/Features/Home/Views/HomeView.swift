@@ -188,16 +188,26 @@ struct HomeView: View {
                 .environmentObject(appState)
         }
         .task {
+            #if DEBUG
             print("🏠 HomeView: Loading data...")
+            #endif
             await viewModel.loadData(appState: appState)
+            #if DEBUG
             print("🏠 HomeView: Initial load - medications count: \(viewModel.todayMedications.count)")
+            #endif
             // Generate today's medication logs if needed
+            #if DEBUG
             print("🏠 HomeView: Generating today's medication logs...")
+            #endif
             await appState.generateTodaysMedicationLogs()
             // Reload after generating
+            #if DEBUG
             print("🏠 HomeView: Reloading after generation...")
+            #endif
             await viewModel.loadData(appState: appState)
+            #if DEBUG
             print("🏠 HomeView: Final load - medications count: \(viewModel.todayMedications.count)")
+            #endif
         }
         .refreshable {
             await viewModel.loadData(appState: appState)
@@ -712,26 +722,36 @@ class HomeViewModel: ObservableObject {
 
     func loadData(appState: AppState) async {
         guard let accountId = appState.currentAccount?.id else {
+            #if DEBUG
             print("🏠 HomeViewModel: No account ID, skipping load")
+            #endif
             return
         }
 
+        #if DEBUG
         print("🏠 HomeViewModel: Loading data for account \(accountId)")
+        #endif
         isLoading = true
 
         do {
             // Load medications for name lookup
             medications = try await appState.medicationRepository.getMedications(accountId: accountId)
+            #if DEBUG
             print("🏠 HomeViewModel: Loaded \(medications.count) medications")
+            #endif
 
             // Load today's medication logs
             let allLogs = try await appState.medicationRepository.getTodaysLogs(accountId: accountId)
+            #if DEBUG
             print("🏠 HomeViewModel: Got \(allLogs.count) total logs for today")
             for log in allLogs {
                 print("🏠   - log id: \(log.id), medicationId: \(log.medicationId), status: \(log.status), scheduledAt: \(log.scheduledAt)")
             }
+            #endif
             todayMedications = allLogs.filter { $0.status == .scheduled || $0.status == .taken }
+            #if DEBUG
             print("🏠 HomeViewModel: Filtered to \(todayMedications.count) scheduled/taken medications")
+            #endif
 
             // Load today's appointments
             let calendar = Calendar.current

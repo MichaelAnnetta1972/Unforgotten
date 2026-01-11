@@ -13,9 +13,6 @@ struct ToDoItemCard: View {
     let onToggle: () -> Void
     let onTextChange: (String) -> Void
     let onDelete: () -> Void
-    let onMoveUp: (() -> Void)?
-    let onMoveDown: (() -> Void)?
-    @Binding var activeOptionsMenuItemId: UUID?
 
     @State private var itemText: String
     @State private var checkboxScale: CGFloat = 1.0
@@ -27,28 +24,18 @@ struct ToDoItemCard: View {
         focusedItemId: Binding<UUID?>,
         onToggle: @escaping () -> Void,
         onTextChange: @escaping (String) -> Void,
-        onDelete: @escaping () -> Void,
-        onMoveUp: (() -> Void)? = nil,
-        onMoveDown: (() -> Void)? = nil,
-        activeOptionsMenuItemId: Binding<UUID?>
+        onDelete: @escaping () -> Void
     ) {
         self.item = item
         self._focusedItemId = focusedItemId
         self.onToggle = onToggle
         self.onTextChange = onTextChange
         self.onDelete = onDelete
-        self.onMoveUp = onMoveUp
-        self.onMoveDown = onMoveDown
-        self._activeOptionsMenuItemId = activeOptionsMenuItemId
         self._itemText = State(initialValue: item.text)
         self._showCheckmark = State(initialValue: item.isCompleted)
     }
 
     @Environment(\.appAccentColor) private var appAccentColor
-
-    private var showOptionsMenu: Bool {
-        activeOptionsMenuItemId == item.id
-    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -88,7 +75,7 @@ struct ToDoItemCard: View {
                     onTextChange(newValue)
                 }
 
-            // Show X to dismiss keyboard when focused, or ellipsis when not
+            // Show X to dismiss keyboard when focused, or delete icon when not
             if isTextFieldFocused {
                 Button(action: { isTextFieldFocused = false }) {
                     Image(systemName: "xmark.circle.fill")
@@ -98,13 +85,12 @@ struct ToDoItemCard: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
-                // Options button
-                Button(action: { activeOptionsMenuItemId = item.id }) {
-                    Image(systemName: "ellipsis")
-                        .rotationEffect(.degrees(90))
+                // Delete button
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
                         .font(.system(size: 16))
-                        .foregroundColor(.textSecondary)
-                        .frame(width: 32)
+                        .foregroundColor(.red.opacity(0.8))
+                        .frame(width: 32, height: 32)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -113,7 +99,6 @@ struct ToDoItemCard: View {
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
-        .opacity(showOptionsMenu ? 0 : 1)
         .onChange(of: item.text) { _, newValue in
             if itemText != newValue {
                 itemText = newValue

@@ -241,7 +241,9 @@ struct OnboardingProfileSetupView: View {
                     }
                 }
             } catch {
+                #if DEBUG
                 print("Error loading photo: \(error)")
+                #endif
                 await MainActor.run {
                     isLoadingPhoto = false
                 }

@@ -105,7 +105,9 @@ final class InvitationRepository: InvitationRepositoryProtocol {
             return
         } catch {
             // RPC not available, fall back to direct database operations
+            #if DEBUG
             print("RPC accept_invitation failed: \(error). Falling back to direct operations.")
+            #endif
         }
 
         // Fallback: Direct database operations (may fail due to RLS)
@@ -138,7 +140,9 @@ final class InvitationRepository: InvitationRepositoryProtocol {
         } catch {
             // If the full update fails (possibly due to missing accepted_by column),
             // try updating just the status and acceptedAt
+            #if DEBUG
             print("Full invitation update failed: \(error). Trying fallback update.")
+            #endif
             let fallbackUpdate = InvitationStatusUpdateWithDate(
                 status: .accepted,
                 acceptedAt: Date()

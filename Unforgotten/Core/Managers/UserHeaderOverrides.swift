@@ -142,7 +142,9 @@ class UserHeaderOverrides {
             imageCache[page] = resizedImage
 
         } catch {
+            #if DEBUG
             print("Failed to save header image: \(error)")
+            #endif
         }
     }
 

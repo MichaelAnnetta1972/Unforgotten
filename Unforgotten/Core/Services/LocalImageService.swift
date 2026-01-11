@@ -40,7 +40,9 @@ final class LocalImageService {
             try data.write(to: fileURL)
             return fileName
         } catch {
+            #if DEBUG
             print("Failed to save medication photo: \(error)")
+            #endif
             return nil
         }
     }

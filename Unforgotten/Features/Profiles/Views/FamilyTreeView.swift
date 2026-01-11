@@ -332,7 +332,9 @@ struct FamilyTreeView: View {
             }
             isLoading = false
         } catch {
+            #if DEBUG
             print("Failed to load profiles: \(error)")
+            #endif
             isLoading = false
         }
     }

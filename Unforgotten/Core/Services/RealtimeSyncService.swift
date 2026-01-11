@@ -34,7 +34,9 @@ final class RealtimeSyncService: ObservableObject {
         // Subscribe to sticky reminders table changes for this account
         await subscribeToStickyReminders(accountId: accountId)
 
+        #if DEBUG
         print("📡 RealtimeSyncService: Started listening for account \(accountId)")
+        #endif
     }
 
     /// Stop all realtime subscriptions
@@ -56,7 +58,9 @@ final class RealtimeSyncService: ObservableObject {
         }
 
         currentAccountId = nil
+        #if DEBUG
         print("📡 RealtimeSyncService: Stopped listening")
+        #endif
     }
 
     // MARK: - Private Subscriptions
@@ -84,12 +88,16 @@ final class RealtimeSyncService: ObservableObject {
     }
 
     private func handleAppointmentChange(_ change: AnyAction) async {
+        #if DEBUG
         print("📡 RealtimeSyncService: Received appointment change")
+        #endif
 
         switch change {
         case .insert(let action):
             // New appointment created on another device
+            #if DEBUG
             print("📡 RealtimeSyncService: INSERT detected")
+            #endif
             NotificationCenter.default.post(
                 name: .appointmentsDidChange,
                 object: nil,
@@ -100,7 +108,9 @@ final class RealtimeSyncService: ObservableObject {
 
         case .update(let action):
             // Appointment updated on another device - try to decode and pass the data
+            #if DEBUG
             print("📡 RealtimeSyncService: UPDATE detected")
+            #endif
             if let appointment = decodeAppointment(from: action.record) {
                 NotificationCenter.default.post(
                     name: .appointmentsDidChange,
@@ -124,7 +134,9 @@ final class RealtimeSyncService: ObservableObject {
 
         case .delete(let action):
             // Appointment deleted on another device
+            #if DEBUG
             print("📡 RealtimeSyncService: DELETE detected")
+            #endif
             if let idValue = action.oldRecord["id"],
                let idString = extractStringValue(from: idValue),
                let appointmentId = UUID(uuidString: idString) {
@@ -220,7 +232,9 @@ final class RealtimeSyncService: ObservableObject {
 
             return try decoder.decode(Appointment.self, from: jsonData)
         } catch {
+            #if DEBUG
             print("📡 RealtimeSyncService: Failed to decode appointment: \(error)")
+            #endif
             return nil
         }
     }
@@ -250,15 +264,21 @@ final class RealtimeSyncService: ObservableObject {
     }
 
     private func handleStickyReminderChange(_ change: AnyAction) async {
+        #if DEBUG
         print("📡 RealtimeSyncService: Received sticky reminder change")
+        #endif
 
         switch change {
         case .insert(let action):
+            #if DEBUG
             print("📡 RealtimeSyncService: Sticky reminder INSERT detected")
+            #endif
 
             // Try to decode the reminder and schedule local notification
             if let reminder = decodeStickyReminder(from: action.record) {
+                #if DEBUG
                 print("📡 RealtimeSyncService: Scheduling notification for new reminder: \(reminder.title)")
+                #endif
                 await NotificationService.shared.scheduleStickyReminder(reminder: reminder)
             }
 
@@ -269,7 +289,9 @@ final class RealtimeSyncService: ObservableObject {
             )
 
         case .update(let action):
+            #if DEBUG
             print("📡 RealtimeSyncService: Sticky reminder UPDATE detected")
+            #endif
             var userInfo: [String: Any] = ["action": StickyReminderChangeAction.updated]
 
             // Try to decode the updated reminder and reschedule local notification
@@ -277,10 +299,14 @@ final class RealtimeSyncService: ObservableObject {
                 userInfo["reminderId"] = reminder.id
 
                 if reminder.isActive && !reminder.isDismissed {
+                    #if DEBUG
                     print("📡 RealtimeSyncService: Rescheduling notification for updated reminder: \(reminder.title)")
+                    #endif
                     await NotificationService.shared.scheduleStickyReminder(reminder: reminder)
                 } else {
+                    #if DEBUG
                     print("📡 RealtimeSyncService: Cancelling notification for dismissed/inactive reminder: \(reminder.title)")
+                    #endif
                     await NotificationService.shared.cancelStickyReminder(reminderId: reminder.id)
                 }
             } else if let idValue = action.record["id"],
@@ -296,7 +322,9 @@ final class RealtimeSyncService: ObservableObject {
             )
 
         case .delete(let action):
+            #if DEBUG
             print("📡 RealtimeSyncService: Sticky reminder DELETE detected")
+            #endif
             var userInfo: [String: Any] = ["action": StickyReminderChangeAction.deleted]
 
             // Cancel the local notification for the deleted reminder
@@ -304,7 +332,9 @@ final class RealtimeSyncService: ObservableObject {
                let idString = extractStringValue(from: idValue),
                let reminderId = UUID(uuidString: idString) {
                 userInfo["reminderId"] = reminderId
+                #if DEBUG
                 print("📡 RealtimeSyncService: Cancelling notification for deleted reminder: \(reminderId)")
+                #endif
                 await NotificationService.shared.cancelStickyReminder(reminderId: reminderId)
             }
 
@@ -369,7 +399,9 @@ final class RealtimeSyncService: ObservableObject {
 
             return try decoder.decode(StickyReminder.self, from: jsonData)
         } catch {
+            #if DEBUG
             print("📡 RealtimeSyncService: Failed to decode sticky reminder: \(error)")
+            #endif
             return nil
         }
     }

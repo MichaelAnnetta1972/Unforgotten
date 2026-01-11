@@ -186,7 +186,9 @@ struct ImportantAccountDetailView: View {
             onDelete()
             dismiss()
         } catch {
+            #if DEBUG
             print("Error deleting account: \(error)")
+            #endif
         }
 
         isDeleting = false

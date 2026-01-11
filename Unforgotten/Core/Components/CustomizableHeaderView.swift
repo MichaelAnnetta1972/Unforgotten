@@ -354,7 +354,9 @@ struct CustomizableHeaderView: View {
                 await MainActor.run {
                     isLoadingImage = false
                 }
+                #if DEBUG
                 print("Failed to load image: \(error)")
+                #endif
             }
         }
 

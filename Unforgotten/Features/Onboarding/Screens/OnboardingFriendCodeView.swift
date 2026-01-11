@@ -274,7 +274,9 @@ struct OnboardingFriendCodeView: View {
                     validationError = "Something went wrong. Please try again."
                     isValidating = false
                 }
+                #if DEBUG
                 print("Error validating code: \(error)")
+                #endif
             }
         }
     }

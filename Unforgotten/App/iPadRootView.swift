@@ -561,7 +561,9 @@ struct iPadRootView: View {
             // Load note count from SwiftData
             await loadNoteCount(accountId: account.id)
         } catch {
+            #if DEBUG
             print("Error loading feature counts: \(error)")
+            #endif
         }
     }
 
@@ -578,7 +580,9 @@ struct iPadRootView: View {
             let notes = try context.fetch(descriptor)
             noteCount = notes.count
         } catch {
+            #if DEBUG
             print("Error loading note count: \(error)")
+            #endif
             noteCount = 0
         }
     }
@@ -665,9 +669,11 @@ struct iPadEmptyContentView: View {
                     .multilineTextAlignment(.center)
                     .opacity(logoOpacity * 0.6)
             }
+            .zIndex(1000)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
+        .zIndex(1000)
         .onAppear {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
                 logoScale = 1.0
@@ -867,10 +873,10 @@ struct iPadHomeSidebar: View {
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        Color.appBackgroundLight.opacity(0.0),
-                        Color.appBackgroundLight.opacity(0.5),
-                        Color.appBackgroundLight.opacity(0.85),
-                        Color.appBackgroundLight
+                        Color.black.opacity(0.0),
+                        Color.black.opacity(0.3),
+                        Color.black.opacity(0.5),
+                        Color.black
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -1835,8 +1841,6 @@ struct iPadToDoListDetailView: View {
     @State private var showKeyboardToolbar = false
     @State private var showDeleteConfirmation = false
     @State private var focusedItemId: UUID?
-    @State private var activeOptionsMenuItemId: UUID?
-    @State private var cardFrames: [UUID: CGRect] = [:]
     @FocusState private var newItemFocused: Bool
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(HeaderStyleManager.self) private var headerStyleManager
@@ -1883,13 +1887,11 @@ struct iPadToDoListDetailView: View {
                             .clipped()
 
                             // Gradient overlay
-                            if activeOptionsMenuItemId == nil {
-                                LinearGradient(
-                                    colors: [.clear, .black.opacity(0.8)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            }
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.8)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
 
                             // Header content with close button
                             VStack {
@@ -1911,7 +1913,6 @@ struct iPadToDoListDetailView: View {
                             }
                         }
                         .frame(height: compactHeaderHeight)
-                        .opacity(activeOptionsMenuItemId != nil ? 0 : 1)
 
                         VStack(spacing: AppDimensions.cardSpacing) {
                             // Title Edit Field with Type Icon and Delete Button
@@ -1978,7 +1979,7 @@ struct iPadToDoListDetailView: View {
                                     .padding(.horizontal, AppDimensions.screenPadding)
 
                                 LazyVStack(spacing: 12) {
-                                    ForEach(Array(viewModel.sortedItems.enumerated()), id: \.element.id) { index, item in
+                                    ForEach(viewModel.sortedItems) { item in
                                         ToDoItemCard(
                                             item: item,
                                             focusedItemId: $focusedItemId,
@@ -1986,19 +1987,7 @@ struct iPadToDoListDetailView: View {
                                             onTextChange: { newText in
                                                 viewModel.updateItemText(item, text: newText)
                                             },
-                                            onDelete: { viewModel.deleteItem(item) },
-                                            onMoveUp: index > 0 ? { viewModel.moveItemUp(item) } : nil,
-                                            onMoveDown: index < viewModel.sortedItems.count - 1 ? { viewModel.moveItemDown(item) } : nil,
-                                            activeOptionsMenuItemId: $activeOptionsMenuItemId
-                                        )
-                                        .background(
-                                            GeometryReader { geometry in
-                                                Color.clear
-                                                    .preference(
-                                                        key: CardFramePreferenceKey.self,
-                                                        value: [item.id: geometry.frame(in: .global)]
-                                                    )
-                                            }
+                                            onDelete: { viewModel.deleteItem(item) }
                                         )
                                         .padding(.horizontal, AppDimensions.screenPadding)
                                         .id(item.id)
@@ -2012,9 +2001,6 @@ struct iPadToDoListDetailView: View {
                     }
                 }
                 .ignoresSafeArea(edges: .top)
-                .onPreferenceChange(CardFramePreferenceKey.self) { frames in
-                    cardFrames = frames
-                }
                 .onChange(of: focusedItemId) { _, newValue in
                     if let itemId = newValue {
                         withAnimation {
@@ -2095,22 +2081,6 @@ struct iPadToDoListDetailView: View {
                 }
             }
 
-            // Highlighted item overlay with options menu
-            if let activeItemId = activeOptionsMenuItemId,
-               let item = viewModel.items.first(where: { $0.id == activeItemId }),
-               let frame = cardFrames[activeItemId],
-               let index = viewModel.sortedItems.firstIndex(where: { $0.id == activeItemId }) {
-                HighlightedItemOverlay(
-                    item: item,
-                    frame: frame,
-                    onToggle: { viewModel.toggleItem(item) },
-                    onMoveUp: index > 0 ? { viewModel.moveItemUp(item) } : nil,
-                    onMoveDown: index < viewModel.sortedItems.count - 1 ? { viewModel.moveItemDown(item) } : nil,
-                    onDelete: { viewModel.deleteItem(item) },
-                    onDismiss: { activeOptionsMenuItemId = nil }
-                )
-                .zIndex(1000)
-            }
         }
         .alert("Add New Type", isPresented: $showingAddType) {
             TextField("Type name", text: $newTypeName)
@@ -2505,10 +2475,10 @@ struct iPadFloatingAddButtonOverlay: View {
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        Color.appBackgroundLight.opacity(0.0),
-                        Color.appBackgroundLight.opacity(0.5),
-                        Color.appBackgroundLight.opacity(0.85),
-                        Color.appBackgroundLight
+                        Color.black.opacity(0.0),
+                        Color.black.opacity(0.3),
+                        Color.black.opacity(0.5),
+                        Color.black
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -2590,10 +2560,10 @@ struct iPadAddMenuOverlay: View {
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        Color.appBackgroundLight.opacity(0.0),
-                        Color.appBackgroundLight.opacity(0.5),
-                        Color.appBackgroundLight.opacity(0.85),
-                        Color.appBackgroundLight
+                        Color.black.opacity(0.0),
+                        Color.black.opacity(0.3),
+                        Color.black.opacity(0.5),
+                        Color.black
                     ],
                     startPoint: .top,
                     endPoint: .bottom

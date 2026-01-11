@@ -82,7 +82,9 @@ class ToDoListDetailViewModel: ObservableObject {
                 createdTypes.append(newType)
             } catch {
                 // Continue with other types even if one fails
+                #if DEBUG
                 print("Failed to create default type '\(name)': \(error)")
+                #endif
             }
         }
         return createdTypes

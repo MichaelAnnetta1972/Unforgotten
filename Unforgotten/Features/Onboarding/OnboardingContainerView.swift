@@ -235,7 +235,9 @@ struct OnboardingContainerView: View {
                 // Navigation to specific section is handled by AppState.pendingOnboardingAction
 
             } catch {
+                #if DEBUG
                 print("❌ Onboarding completion error: \(error)")
+                #endif
                 await MainActor.run {
                     completionError = "Failed to set up your account. Please try again. (\(error.localizedDescription))"
                     isCompleting = false

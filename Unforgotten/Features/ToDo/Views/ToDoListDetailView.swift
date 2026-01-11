@@ -17,8 +17,6 @@ struct ToDoListDetailView: View {
     @State private var showKeyboardToolbar = false
     @State private var showDeleteConfirmation = false
     @State private var focusedItemId: UUID?
-    @State private var activeOptionsMenuItemId: UUID?
-    @State private var cardFrames: [UUID: CGRect] = [:]
     @FocusState private var newItemFocused: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appAccentColor) private var appAccentColor
@@ -69,13 +67,11 @@ struct ToDoListDetailView: View {
                         .clipped()
 
                         // Gradient overlay
-                        if activeOptionsMenuItemId == nil {
-                            LinearGradient(
-                                colors: [.clear, .black.opacity(0.8)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.8)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
 
                         // Header content
                         VStack {
@@ -97,7 +93,6 @@ struct ToDoListDetailView: View {
                         }
                     }
                     .frame(height: compactHeaderHeight)
-                    .opacity(activeOptionsMenuItemId != nil ? 0 : 1)
 
                     VStack(spacing: AppDimensions.cardSpacing) {
                     // Title Edit Field with Type Icon and Delete Button
@@ -168,7 +163,7 @@ struct ToDoListDetailView: View {
                             .padding(.horizontal, AppDimensions.screenPadding)
 
                         LazyVStack(spacing: 12) {
-                            ForEach(Array(viewModel.sortedItems.enumerated()), id: \.element.id) { index, item in
+                            ForEach(viewModel.sortedItems) { item in
                                 ToDoItemCard(
                                     item: item,
                                     focusedItemId: $focusedItemId,
@@ -180,20 +175,7 @@ struct ToDoListDetailView: View {
                                     onTextChange: { newText in
                                         viewModel.updateItemText(item, text: newText)
                                     },
-                                    onDelete: { viewModel.deleteItem(item) },
-                                    onMoveUp: index > 0 ? { viewModel.moveItemUp(item) } : nil,
-                                    onMoveDown: index < viewModel.sortedItems.count - 1 ? { viewModel.moveItemDown(item) } : nil,
-                                    activeOptionsMenuItemId: $activeOptionsMenuItemId
-                                )
-                                .background(
-                                    GeometryReader { geometry in
-                                        let capturedFrame = geometry.frame(in: .global)
-                                        Color.clear
-                                            .preference(
-                                                key: CardFramePreferenceKey.self,
-                                                value: [item.id: capturedFrame]
-                                            )
-                                    }
+                                    onDelete: { viewModel.deleteItem(item) }
                                 )
                                 .padding(.horizontal, AppDimensions.screenPadding)
                                 .id(item.id)
@@ -231,9 +213,6 @@ struct ToDoListDetailView: View {
                     }
                 }
                 .ignoresSafeArea(edges: .top)
-                .onPreferenceChange(CardFramePreferenceKey.self) { frames in
-                    cardFrames = frames
-                }
                 .onChange(of: focusedItemId) { _, newValue in
                     if let itemId = newValue {
                         withAnimation {
@@ -316,23 +295,6 @@ struct ToDoListDetailView: View {
                 .onDisappear {
                     viewModel.saveType()
                 }
-            }
-
-            // Highlighted item overlay with options menu
-            if let activeItemId = activeOptionsMenuItemId,
-               let item = viewModel.items.first(where: { $0.id == activeItemId }),
-               let frame = cardFrames[activeItemId],
-               let index = viewModel.sortedItems.firstIndex(where: { $0.id == activeItemId }) {
-                HighlightedItemOverlay(
-                    item: item,
-                    frame: frame,
-                    onToggle: { viewModel.toggleItem(item) },
-                    onMoveUp: index > 0 ? { viewModel.moveItemUp(item) } : nil,
-                    onMoveDown: index < viewModel.sortedItems.count - 1 ? { viewModel.moveItemDown(item) } : nil,
-                    onDelete: { viewModel.deleteItem(item) },
-                    onDismiss: { activeOptionsMenuItemId = nil }
-                )
-                .zIndex(1000)
             }
 
         }

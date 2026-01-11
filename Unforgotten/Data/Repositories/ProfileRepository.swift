@@ -210,7 +210,9 @@ final class ProfileRepository: ProfileRepositoryProtocol {
     
     // MARK: - Get Upcoming Birthdays
     func getUpcomingBirthdays(accountId: UUID, days: Int = 30) async throws -> [Profile] {
+        #if DEBUG
         print("🔍 Fetching profiles with birthdays for account: \(accountId)")
+        #endif
 
         // Get all profiles with birthdays
         let profiles: [Profile] = try await supabase
@@ -221,17 +223,21 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             .execute()
             .value
 
+        #if DEBUG
         print("🔍 Query returned \(profiles.count) profiles with birthdays")
         profiles.forEach { profile in
             print("🔍 Profile: \(profile.fullName), Birthday: \(profile.birthday?.description ?? "nil")")
         }
+        #endif
 
         // Filter to those within the specified days
         let filtered = profiles.filter { profile in
             guard let birthday = profile.birthday else { return false }
             let daysUntil = birthday.daysUntilNextOccurrence()
             let included = daysUntil >= 0 && daysUntil <= days
+            #if DEBUG
             print("🔍 \(profile.fullName): \(daysUntil) days until birthday, included: \(included)")
+            #endif
             return included
         }.sorted { profile1, profile2 in
             let days1 = profile1.birthday?.daysUntilNextOccurrence() ?? Int.max
@@ -239,7 +245,9 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             return days1 < days2
         }
 
+        #if DEBUG
         print("🔍 After filtering: \(filtered.count) upcoming birthdays")
+        #endif
         return filtered
     }
     
@@ -469,7 +477,9 @@ extension ProfileRepository {
                 result.append(ConnectionWithProfile(connection: connection, connectedProfile: profile))
             } catch {
                 // Skip connections where the profile no longer exists
+                #if DEBUG
                 print("Could not load profile for connection: \(error)")
+                #endif
             }
         }
 

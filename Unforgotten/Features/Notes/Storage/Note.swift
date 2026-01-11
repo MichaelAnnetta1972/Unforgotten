@@ -130,7 +130,9 @@ final class LocalNote {
             self.updatedAt = Date()
             self.isSynced = false
         } catch {
+            #if DEBUG
             print("Error encoding attributed string: \(error)")
+            #endif
         }
     }
 
@@ -148,7 +150,9 @@ final class LocalNote {
             )
             return attributedString
         } catch {
+            #if DEBUG
             print("Error decoding attributed string: \(error)")
+            #endif
             return NSAttributedString(string: contentPlainText)
         }
     }
@@ -171,7 +175,9 @@ final class LocalNote {
             )
             self.content = data
         } catch {
+            #if DEBUG
             print("Error encoding plain text: \(error)")
+            #endif
         }
         self.updatedAt = Date()
         self.isSynced = false

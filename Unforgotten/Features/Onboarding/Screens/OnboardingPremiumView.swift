@@ -360,7 +360,9 @@ struct OnboardingPremiumView: View {
                 purchaseState = .idle
             }
         } catch {
+            #if DEBUG
             print("Failed to load products: \(error)")
+            #endif
             await MainActor.run {
                 purchaseState = .idle
             }
@@ -397,7 +399,9 @@ struct OnboardingPremiumView: View {
                             errorMessage = "Purchase verification failed. Please try again."
                             purchaseState = .idle
                         }
+                        #if DEBUG
                         print("Unverified transaction: \(error)")
+                        #endif
                     }
 
                 case .userCancelled:
@@ -421,7 +425,9 @@ struct OnboardingPremiumView: View {
                     errorMessage = "Purchase failed. Please try again."
                     purchaseState = .idle
                 }
+                #if DEBUG
                 print("Purchase error: \(error)")
+                #endif
             }
         }
     }
@@ -451,7 +457,9 @@ struct OnboardingPremiumView: View {
             await MainActor.run {
                 errorMessage = "Failed to restore purchases."
             }
+            #if DEBUG
             print("Restore error: \(error)")
+            #endif
         }
     }
 }

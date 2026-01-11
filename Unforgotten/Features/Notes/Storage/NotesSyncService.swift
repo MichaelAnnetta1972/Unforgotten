@@ -228,7 +228,9 @@ final class NotesSyncService: ObservableObject, NotesSyncServiceProtocol {
                     insertDTO: insertDTO
                 )
             } catch {
+                #if DEBUG
                 print("Sync error: \(error)")
+                #endif
             }
         }
     }

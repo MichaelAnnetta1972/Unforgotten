@@ -39,14 +39,20 @@ final class PreferencesSyncService: ObservableObject {
         do {
             if let remote = try await repository.getPreferences(userId: userId, accountId: accountId) {
                 applyRemotePreferences(remote)
+                #if DEBUG
                 print("✅ Loaded preferences from Supabase")
+                #endif
             } else {
                 // No remote preferences exist yet - save current local preferences to remote
+                #if DEBUG
                 print("📝 No remote preferences found, saving current local settings")
+                #endif
                 await saveToRemote(userId: userId, accountId: accountId)
             }
         } catch {
+            #if DEBUG
             print("⚠️ Error loading preferences from Supabase: \(error)")
+            #endif
             // Continue using local preferences
         }
     }
@@ -56,7 +62,9 @@ final class PreferencesSyncService: ObservableObject {
         guard let userPrefs = userPreferences,
               let headerManager = headerStyleManager,
               let featureManager = featureVisibilityManager else {
+            #if DEBUG
             print("⚠️ Managers not configured for preferences sync")
+            #endif
             return
         }
 
@@ -89,7 +97,9 @@ final class PreferencesSyncService: ObservableObject {
         guard let userPrefs = userPreferences,
               let headerManager = headerStyleManager,
               let featureManager = featureVisibilityManager else {
+            #if DEBUG
             print("⚠️ Managers not configured for preferences sync")
+            #endif
             return
         }
 
@@ -108,9 +118,13 @@ final class PreferencesSyncService: ObservableObject {
                 hasCustomAccentColor: userPrefs.hasCustomAccentColor,
                 featureVisibility: featureVisibility
             )
+            #if DEBUG
             print("✅ Saved preferences to Supabase")
+            #endif
         } catch {
+            #if DEBUG
             print("⚠️ Error saving preferences to Supabase: \(error)")
+            #endif
         }
     }
 

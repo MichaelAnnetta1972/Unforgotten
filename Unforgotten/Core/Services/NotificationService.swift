@@ -72,7 +72,9 @@ final class NotificationService: NSObject {
             let granted = try await notificationCenter.requestAuthorization(options: [.alert, .sound, .badge])
             return granted
         } catch {
+            #if DEBUG
             print("Notification permission error: \(error)")
+            #endif
             return false
         }
     }
@@ -95,7 +97,9 @@ final class NotificationService: NSObject {
         // Check permission first
         let status = await checkPermissionStatus()
         guard status == .authorized else {
+            #if DEBUG
             print("📱 Notifications not authorized, skipping medication reminder")
+            #endif
             return
         }
 
@@ -124,9 +128,13 @@ final class NotificationService: NSObject {
 
         do {
             try await notificationCenter.add(request)
+            #if DEBUG
             print("📱 Scheduled medication reminder for \(medicationName) at \(components.hour ?? 0):\(components.minute ?? 0)")
+            #endif
         } catch {
+            #if DEBUG
             print("Failed to schedule medication reminder: \(error)")
+            #endif
         }
     }
 
@@ -155,7 +163,9 @@ final class NotificationService: NSObject {
         // Check permission first
         let status = await checkPermissionStatus()
         guard status == .authorized else {
+            #if DEBUG
             print("📱 Notifications not authorized, skipping appointment reminder")
+            #endif
             return
         }
 
@@ -214,9 +224,13 @@ final class NotificationService: NSObject {
 
         do {
             try await notificationCenter.add(request)
+            #if DEBUG
             print("📱 Scheduled appointment reminder for '\(title)' at \(reminderDate)")
+            #endif
         } catch {
+            #if DEBUG
             print("Failed to schedule appointment reminder: \(error)")
+            #endif
         }
     }
 
@@ -237,7 +251,9 @@ final class NotificationService: NSObject {
         // Check permission first
         let status = await checkPermissionStatus()
         guard status == .authorized else {
+            #if DEBUG
             print("📱 Notifications not authorized, skipping birthday reminder")
+            #endif
             return
         }
 
@@ -277,9 +293,13 @@ final class NotificationService: NSObject {
 
         do {
             try await notificationCenter.add(request)
+            #if DEBUG
             print("📱 Scheduled birthday reminder for \(name) (day before birthday)")
+            #endif
         } catch {
+            #if DEBUG
             print("Failed to schedule birthday reminder: \(error)")
+            #endif
         }
     }
 
@@ -296,13 +316,17 @@ final class NotificationService: NSObject {
         // Check permission first
         let status = await checkPermissionStatus()
         guard status == .authorized else {
+            #if DEBUG
             print("📱 Notifications not authorized, skipping sticky reminder")
+            #endif
             return
         }
 
         // Don't schedule if dismissed or inactive
         guard reminder.isActive && !reminder.isDismissed else {
+            #if DEBUG
             print("📱 Sticky reminder is dismissed or inactive, skipping")
+            #endif
             return
         }
 
@@ -340,9 +364,13 @@ final class NotificationService: NSObject {
 
             do {
                 try await notificationCenter.add(request)
+                #if DEBUG
                 print("📱 Scheduled repeating sticky reminder '\(reminder.title)' every \(reminder.repeatInterval.displayName)")
+                #endif
             } catch {
+                #if DEBUG
                 print("Failed to schedule sticky reminder: \(error)")
+                #endif
             }
             return
         }
@@ -359,12 +387,16 @@ final class NotificationService: NSObject {
 
         do {
             try await notificationCenter.add(request)
+            #if DEBUG
             print("📱 Scheduled sticky reminder '\(reminder.title)' for \(triggerDate)")
+            #endif
 
             // Schedule the repeating notification to start after the initial trigger
             await scheduleRepeatingStickReminder(reminder: reminder, startAfter: triggerDate)
         } catch {
+            #if DEBUG
             print("Failed to schedule sticky reminder: \(error)")
+            #endif
         }
     }
 
@@ -394,9 +426,13 @@ final class NotificationService: NSObject {
 
         do {
             try await notificationCenter.add(request)
+            #if DEBUG
             print("📱 Scheduled repeating sticky reminder after initial trigger")
+            #endif
         } catch {
+            #if DEBUG
             print("Failed to schedule repeating sticky reminder: \(error)")
+            #endif
         }
     }
 
@@ -408,7 +444,9 @@ final class NotificationService: NSObject {
         ]
         notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
         notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
+        #if DEBUG
         print("📱 Cancelled sticky reminder notifications for \(reminderId)")
+        #endif
     }
 
     /// Reschedule all sticky reminders
@@ -545,9 +583,13 @@ final class NotificationService: NSObject {
 
         do {
             try await notificationCenter.add(request)
+            #if DEBUG
             print("📱 Scheduled snooze reminder for \(medicationName) in 10 minutes")
+            #endif
         } catch {
+            #if DEBUG
             print("Failed to schedule snooze reminder: \(error)")
+            #endif
         }
     }
 
@@ -560,12 +602,16 @@ final class NotificationService: NSObject {
         medications: [Medication],
         schedules: [UUID: [MedicationSchedule]]
     ) async {
+        #if DEBUG
         print("📱 Re-scheduling all notifications...")
+        #endif
 
         // Check permission first
         let status = await checkPermissionStatus()
         guard status == .authorized else {
+            #if DEBUG
             print("📱 Notifications not authorized, skipping re-schedule")
+            #endif
             return
         }
 
@@ -637,13 +683,16 @@ final class NotificationService: NSObject {
         }
 
         let count = await getPendingNotificationCount()
+        #if DEBUG
         print("📱 Re-scheduled notifications complete. \(count) pending notifications.")
+        #endif
     }
 
     // MARK: - Debug
 
     /// Print all pending notifications (for debugging)
     func debugPrintPendingNotifications() async {
+        #if DEBUG
         let requests = await notificationCenter.pendingNotificationRequests()
         print("📱 Pending Notifications (\(requests.count)):")
         for request in requests {
@@ -654,6 +703,7 @@ final class NotificationService: NSObject {
                 print("    Trigger: in \(trigger.timeInterval) seconds")
             }
         }
+        #endif
     }
 }
 
@@ -680,7 +730,9 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         let categoryIdentifier = response.notification.request.content.categoryIdentifier
         let actionIdentifier = response.actionIdentifier
 
+        #if DEBUG
         print("📱 Notification response: category=\(categoryIdentifier), action=\(actionIdentifier)")
+        #endif
 
         // Handle navigation synchronously to ensure it works from locked screen
         handleNotificationResponseSync(
@@ -716,7 +768,9 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             handleStickyReminderNotificationSync(actionIdentifier: actionIdentifier, userInfo: userInfo)
 
         default:
+            #if DEBUG
             print("📱 Unknown notification category: \(categoryIdentifier)")
+            #endif
         }
     }
 
@@ -724,13 +778,17 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     private func handleStickyReminderNotificationSync(actionIdentifier: String, userInfo: [AnyHashable: Any]) {
         guard let reminderIdString = userInfo["reminderId"] as? String,
               let reminderId = UUID(uuidString: reminderIdString) else {
+            #if DEBUG
             print("📱 Missing reminderId in notification")
+            #endif
             return
         }
 
         switch actionIdentifier {
         case NotificationAction.dismissStickyReminder.rawValue:
+            #if DEBUG
             print("📱 User dismissed sticky reminder: \(reminderId)")
+            #endif
             // Dismiss action needs async - fire and forget
             Task {
                 await delegate?.handleStickyReminderDismiss(reminderId: reminderId)
@@ -738,13 +796,17 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped the notification - open the app to sticky reminders
+            #if DEBUG
             print("📱 User tapped sticky reminder: \(reminderId)")
+            #endif
             if let delegate = delegate {
                 delegate.handleStickyReminderTapped(reminderId: reminderId)
             } else {
                 // Store for later when delegate becomes available
                 pendingStickyReminderId = reminderId
+                #if DEBUG
                 print("📱 Stored pending sticky reminder ID (delegate not ready)")
+                #endif
             }
 
         default:
@@ -756,7 +818,9 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     private func handleMedicationNotification(actionIdentifier: String, userInfo: [AnyHashable: Any]) async {
         guard let medicationIdString = userInfo["medicationId"] as? String,
               let medicationId = UUID(uuidString: medicationIdString) else {
+            #if DEBUG
             print("📱 Missing medicationId in notification")
+            #endif
             return
         }
 
@@ -773,11 +837,15 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         switch actionIdentifier {
         case NotificationAction.takeMedication.rawValue:
+            #if DEBUG
             print("📱 User marked medication as taken: \(medicationId)")
+            #endif
             await delegate?.handleMedicationTaken(medicationId: medicationId, scheduledTime: scheduledTime)
 
         case NotificationAction.snoozeMedication.rawValue:
+            #if DEBUG
             print("📱 User snoozed medication: \(medicationId)")
+            #endif
             await delegate?.handleMedicationSnooze(
                 medicationId: medicationId,
                 medicationName: medicationName,
@@ -786,7 +854,9 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         case UNNotificationDefaultActionIdentifier:
             // User tapped the notification itself - could open medication detail
+            #if DEBUG
             print("📱 User tapped medication notification: \(medicationId)")
+            #endif
 
         default:
             break
@@ -797,20 +867,26 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     private func handleAppointmentNotification(actionIdentifier: String, userInfo: [AnyHashable: Any]) {
         guard let appointmentIdString = userInfo["appointmentId"] as? String,
               let appointmentId = UUID(uuidString: appointmentIdString) else {
+            #if DEBUG
             print("📱 Missing appointmentId in notification")
+            #endif
             return
         }
 
         switch actionIdentifier {
         case NotificationAction.viewAppointment.rawValue,
              UNNotificationDefaultActionIdentifier:
+            #if DEBUG
             print("📱 User wants to view appointment: \(appointmentId)")
+            #endif
             if let delegate = delegate {
                 delegate.handleAppointmentView(appointmentId: appointmentId)
             } else {
                 // Store for later when delegate becomes available
                 pendingAppointmentId = appointmentId
+                #if DEBUG
                 print("📱 Stored pending appointment ID (delegate not ready)")
+                #endif
             }
 
         default:
@@ -822,17 +898,23 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     private func handleBirthdayNotification(userInfo: [AnyHashable: Any]) {
         guard let profileIdString = userInfo["profileId"] as? String,
               let profileId = UUID(uuidString: profileIdString) else {
+            #if DEBUG
             print("📱 Missing profileId in notification")
+            #endif
             return
         }
 
+        #if DEBUG
         print("📱 User tapped birthday notification: \(profileId)")
+        #endif
         if let delegate = delegate {
             delegate.handleBirthdayView(profileId: profileId)
         } else {
             // Store for later when delegate becomes available
             pendingProfileId = profileId
+            #if DEBUG
             print("📱 Stored pending profile ID (delegate not ready)")
+            #endif
         }
     }
 }

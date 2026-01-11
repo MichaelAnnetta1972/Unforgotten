@@ -127,8 +127,13 @@ struct PrivacyPolicyView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("If you have questions about this Privacy Policy, please contact us at:")
 
-                    Text("support@unforgotten.app")
+                    Link("support@unforgottenapp.com", destination: URL(string: "mailto:support@unforgottenapp.com")!)
                         .foregroundColor(appAccentColor)
+
+                    Link("View full policy online", destination: URL(string: "https://unforgottenapp.com/privacy")!)
+                        .font(.appCaption)
+                        .foregroundColor(appAccentColor)
+                        .padding(.top, 4)
                 }
             }
         }
@@ -243,8 +248,13 @@ struct PrivacyPolicyPanelContent: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("If you have questions about this Privacy Policy, please contact us at:")
 
-                    Text("support@unforgotten.app")
+                    Link("support@unforgottenapp.com", destination: URL(string: "mailto:support@unforgottenapp.com")!)
                         .foregroundColor(.accentYellow)
+
+                    Link("View full policy online", destination: URL(string: "https://unforgottenapp.com/privacy")!)
+                        .font(.appCaption)
+                        .foregroundColor(.accentYellow)
+                        .padding(.top, 4)
                 }
             }
         }

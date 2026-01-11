@@ -262,19 +262,9 @@ struct MedicationListRow: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    /// Adaptive padding: larger on iPad for better touch targets
-    private var cardPadding: CGFloat {
-        horizontalSizeClass == .regular ? 20 : 16
-    }
-
     /// Adaptive thumbnail size: larger on iPad
     private var thumbnailSize: CGFloat {
         horizontalSizeClass == .regular ? 60 : 50
-    }
-
-    /// Minimum row height for better touch targets on iPad
-    private var minRowHeight: CGFloat {
-        horizontalSizeClass == .regular ? 80 : 60
     }
 
     var body: some View {
@@ -330,7 +320,6 @@ struct MedicationListRow: View {
 
                     Spacer()
                 }
-                .frame(minHeight: minRowHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
@@ -347,7 +336,7 @@ struct MedicationListRow: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(cardPadding)
+        .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
         .contentShape(Rectangle())

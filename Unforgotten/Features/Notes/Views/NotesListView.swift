@@ -213,7 +213,9 @@ struct NotesListView: View {
 
     private func fetchRemoteChanges() async {
         guard let accountId = appState.currentAccount?.id else {
+            #if DEBUG
             print("No current account for syncing notes")
+            #endif
             return
         }
 
@@ -223,7 +225,9 @@ struct NotesListView: View {
                 try await syncService.mergeRemoteNotes(remoteNotes, into: modelContext)
             }
         } catch {
+            #if DEBUG
             print("Failed to fetch remote notes: \(error)")
+            #endif
         }
     }
 
@@ -233,7 +237,9 @@ struct NotesListView: View {
             do {
                 try await syncService.syncPendingNotes(pendingNotes)
             } catch {
+                #if DEBUG
                 print("Failed to sync pending notes: \(error)")
+                #endif
             }
         }
     }

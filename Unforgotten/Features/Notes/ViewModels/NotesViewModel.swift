@@ -63,7 +63,9 @@ final class NotesViewModel: ObservableObject {
             do {
                 try await syncService.deleteRemote(id: remoteId)
             } catch {
+                #if DEBUG
                 print("Failed to delete remote note: \(error)")
+                #endif
             }
         }
 

@@ -958,7 +958,9 @@ class MyCardViewModel: ObservableObject {
         do {
             primaryProfile = try await appState.profileRepository.getPrimaryProfile(accountId: account.id)
         } catch {
+            #if DEBUG
             print("Error loading primary profile: \(error)")
+            #endif
         }
         
         isLoading = false

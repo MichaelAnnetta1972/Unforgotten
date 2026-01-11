@@ -207,7 +207,9 @@ struct NoteEditorView: View {
                                 do {
                                     try await syncServiceRef.syncImmediately(noteToSync)
                                 } catch {
+                                    #if DEBUG
                                     print("Failed to sync note on disappear: \(error)")
+                                    #endif
                                 }
                             }
                         }
@@ -227,7 +229,9 @@ struct NoteEditorView: View {
                             do {
                                 try await syncServiceRef.syncImmediately(noteToSync)
                             } catch {
+                                #if DEBUG
                                 print("Failed to sync note on disappear: \(error)")
+                                #endif
                             }
                         }
                     }
@@ -376,7 +380,9 @@ struct NoteEditorView: View {
                 try await syncService.sync(note)
             } catch {
                 if !Task.isCancelled {
+                    #if DEBUG
                     print("Failed to sync note: \(error)")
+                    #endif
                 }
             }
         }

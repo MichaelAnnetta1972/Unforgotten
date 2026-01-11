@@ -111,10 +111,14 @@ final class SupabaseManager {
         get async {
             do {
                 let session = try await client.auth.session
+                #if DEBUG
                 print("🔐 Session found for user: \(session.user.id)")
+                #endif
                 return session.user
             } catch {
+                #if DEBUG
                 print("🔐 No session found: \(error)")
+                #endif
                 return nil
             }
         }

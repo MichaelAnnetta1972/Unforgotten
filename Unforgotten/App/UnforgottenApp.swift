@@ -69,7 +69,9 @@ struct UnforgottenApp: App {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     // App became active - check for pending notification navigation
+                    #if DEBUG
                     print("📱 App became active, checking pending notifications")
+                    #endif
 
                     // Re-sync sticky reminders to catch any changes while app was inactive
                     // This ensures notifications are scheduled on this device even if it
@@ -253,7 +255,9 @@ final class AppState: ObservableObject {
     private func syncAppUser(userId: UUID, email: String) async {
         // Always check hardcoded admins first as a baseline
         let isHardcodedAdmin = AppAdminService.shared.isAppAdmin(email: email)
+        #if DEBUG
         print("🔐 Checking admin status for: \(email), hardcoded admin: \(isHardcodedAdmin)")
+        #endif
 
         do {
             // First ensure the user exists (creates if needed)
@@ -263,13 +267,19 @@ final class AppState: ObservableObject {
                 currentAppUser = freshUser
                 // User is admin if either hardcoded OR set in database
                 isAppAdmin = freshUser.isAppAdmin || isHardcodedAdmin
+                #if DEBUG
                 print("🔐 App user synced, isAppAdmin: \(isAppAdmin), hasComplimentaryAccess: \(freshUser.hasComplimentaryAccess)")
+                #endif
             }
         } catch {
+            #if DEBUG
             print("🔐 Error syncing app user (table may not exist yet): \(error)")
+            #endif
             // Fall back to checking hardcoded admins only
             isAppAdmin = isHardcodedAdmin
+            #if DEBUG
             print("🔐 Using fallback, isAppAdmin: \(isAppAdmin)")
+            #endif
         }
     }
 
@@ -282,10 +292,14 @@ final class AppState: ObservableObject {
             if let freshUser = try await appUserRepository.getUser(id: userId) {
                 currentAppUser = freshUser
                 isAppAdmin = freshUser.isAppAdmin || AppAdminService.shared.isAppAdmin(email: freshUser.email)
+                #if DEBUG
                 print("🔐 App user refreshed, hasComplimentaryAccess: \(freshUser.hasComplimentaryAccess)")
+                #endif
             }
         } catch {
+            #if DEBUG
             print("🔐 Error refreshing app user: \(error)")
+            #endif
         }
     }
     
@@ -331,7 +345,9 @@ final class AppState: ObservableObject {
                 hasCompletedOnboarding = false
             }
         } catch {
+            #if DEBUG
             print("Error loading account: \(error)")
+            #endif
             currentAccount = nil
             currentUserRole = nil
             allAccounts = []
@@ -345,7 +361,9 @@ final class AppState: ObservableObject {
     func switchAccount(to accountWithRole: AccountWithRole) async {
         // Cancel all pending notifications from the previous account before switching
         NotificationService.shared.removeAllPendingNotifications()
+        #if DEBUG
         print("📱 Cancelled notifications from previous account before switching")
+        #endif
 
         currentAccount = accountWithRole.account
         currentUserRole = accountWithRole.role
@@ -377,7 +395,9 @@ final class AppState: ObservableObject {
         do {
             allAccounts = try await accountRepository.getAllUserAccounts()
         } catch {
+            #if DEBUG
             print("Error refreshing accounts: \(error)")
+            #endif
         }
     }
     
@@ -401,7 +421,9 @@ final class AppState: ObservableObject {
             )
             showMoodPrompt = (todaysMood == nil)
         } catch {
+            #if DEBUG
             print("Error checking mood: \(error)")
+            #endif
         }
     }
     
@@ -414,7 +436,9 @@ final class AppState: ObservableObject {
             // Cancel all pending notifications from the previous account
             // This prevents notifications from firing after signing out
             NotificationService.shared.removeAllPendingNotifications()
+            #if DEBUG
             print("📱 Cancelled all pending notifications on sign out")
+            #endif
 
             try await authRepository.signOut()
             isAuthenticated = false
@@ -428,32 +452,46 @@ final class AppState: ObservableObject {
             // Clear saved account selection
             UserDefaults.standard.removeObject(forKey: selectedAccountIdKey)
         } catch {
+            #if DEBUG
             print("Error signing out: \(error)")
+            #endif
         }
     }
     
     // MARK: - Complete Onboarding
     func completeOnboarding(accountName: String, primaryProfileName: String, birthday: Date?, firstAction: OnboardingFirstAction? = nil) async throws {
+        #if DEBUG
         print("🔵 Starting onboarding...")
         print("🔵 Account name: \(accountName)")
         print("🔵 Profile name: \(primaryProfileName)")
+        #endif
 
         // Verify we have a valid authenticated user before proceeding
         guard let userId = await SupabaseManager.shared.currentUserId else {
+            #if DEBUG
             print("❌ No authenticated user found during onboarding")
+            #endif
             throw SupabaseError.notAuthenticated
         }
+        #if DEBUG
         print("🔵 Authenticated user ID: \(userId)")
+        #endif
 
         // Create account
+        #if DEBUG
         print("🔵 Creating account...")
+        #endif
         let account = try await accountRepository.createAccount(
             displayName: accountName
         )
+        #if DEBUG
         print("✅ Account created: \(account.id)")
+        #endif
 
         // Create primary profile
+        #if DEBUG
         print("🔵 Creating primary profile...")
+        #endif
         let profileInsert = ProfileInsert(
             accountId: account.id,
             type: .primary,
@@ -461,7 +499,9 @@ final class AppState: ObservableObject {
             birthday: birthday
         )
         let profile = try await profileRepository.createProfile(profileInsert)
+        #if DEBUG
         print("✅ Profile created: \(profile.id)")
+        #endif
 
         // Update state
         currentAccount = account
@@ -470,7 +510,9 @@ final class AppState: ObservableObject {
 
         // Store the selected first action for navigation after onboarding completes
         pendingOnboardingAction = firstAction
+        #if DEBUG
         print("✅ Onboarding state updated with action: \(String(describing: firstAction))")
+        #endif
 
         // Start realtime sync for the new account
         await RealtimeSyncService.shared.startListening(accountId: account.id)
@@ -480,32 +522,46 @@ final class AppState: ObservableObject {
 
         // Check mood prompt
         await checkMoodPrompt()
+        #if DEBUG
         print("✅ Onboarding complete!")
+        #endif
     }
     
     // MARK: - Record Mood
     func recordMood(rating: Int, note: String? = nil) async {
+        #if DEBUG
         print("📝 recordMood called with rating: \(rating)")
+        #endif
 
         guard let account = currentAccount else {
+            #if DEBUG
             print("❌ recordMood failed: no currentAccount")
+            #endif
             return
         }
 
         guard let userId = await SupabaseManager.shared.currentUserId else {
+            #if DEBUG
             print("❌ recordMood failed: no currentUserId")
+            #endif
             return
         }
 
+        #if DEBUG
         print("📝 Recording mood for account: \(account.id), user: \(userId)")
+        #endif
 
         do {
             // Check if there's already a mood entry for today
             if let existingEntry = try await moodRepository.getTodaysEntry(accountId: account.id, userId: userId) {
                 // Update existing entry
+                #if DEBUG
                 print("📝 Updating existing mood entry: \(existingEntry.id)")
+                #endif
                 _ = try await moodRepository.updateEntry(id: existingEntry.id, rating: rating, note: note)
+                #if DEBUG
                 print("✅ Mood entry updated")
+                #endif
             } else {
                 // Create new entry
                 let entry = MoodEntryInsert(
@@ -515,11 +571,15 @@ final class AppState: ObservableObject {
                     note: note
                 )
                 let created = try await moodRepository.createEntry(entry)
+                #if DEBUG
                 print("✅ Mood entry created: \(created.id)")
+                #endif
             }
             showMoodPrompt = false
         } catch {
+            #if DEBUG
             print("❌ Error recording mood: \(error)")
+            #endif
         }
     }
     
@@ -533,18 +593,24 @@ final class AppState: ObservableObject {
                 date: Date()
             )
         } catch {
+            #if DEBUG
             print("Error generating medication logs: \(error)")
+            #endif
         }
     }
 
     // MARK: - Re-schedule Notifications
     func rescheduleNotifications() async {
         guard let account = currentAccount else {
+            #if DEBUG
             print("📱 No account, skipping notification re-schedule")
+            #endif
             return
         }
 
+        #if DEBUG
         print("📱 Re-scheduling notifications for account: \(account.id)")
+        #endif
 
         do {
             // Fetch upcoming appointments (next 30 days)
@@ -582,7 +648,9 @@ final class AppState: ObservableObject {
                 allReminders: allStickyReminders
             )
         } catch {
+            #if DEBUG
             print("Error re-scheduling notifications: \(error)")
+            #endif
         }
     }
 
@@ -591,11 +659,15 @@ final class AppState: ObservableObject {
     /// Called when app comes to foreground to catch any changes made while inactive.
     func syncStickyReminderNotifications() async {
         guard let account = currentAccount else {
+            #if DEBUG
             print("📱 No account, skipping sticky reminder sync")
+            #endif
             return
         }
 
+        #if DEBUG
         print("📱 Syncing sticky reminder notifications for account: \(account.id)")
+        #endif
 
         do {
             // Fetch all sticky reminders from Supabase
@@ -608,9 +680,13 @@ final class AppState: ObservableObject {
                 allReminders: allStickyReminders
             )
 
+            #if DEBUG
             print("📱 Synced \(activeStickyReminders.count) active sticky reminders")
+            #endif
         } catch {
+            #if DEBUG
             print("Error syncing sticky reminder notifications: \(error)")
+            #endif
         }
     }
 
@@ -636,7 +712,9 @@ extension AppState: NotificationHandlerDelegate {
     /// Handle "Mark as Taken" action from medication notification
     func handleMedicationTaken(medicationId: UUID, scheduledTime: Date) async {
         guard let account = currentAccount else {
+            #if DEBUG
             print("📱 No account for medication taken action")
+            #endif
             return
         }
 
@@ -666,12 +744,18 @@ extension AppState: NotificationHandlerDelegate {
                     status: .taken,
                     takenAt: Date()
                 )
+                #if DEBUG
                 print("📱 Marked medication as taken: \(medicationId)")
+                #endif
             } else {
+                #if DEBUG
                 print("📱 Could not find medication log to mark as taken")
+                #endif
             }
         } catch {
+            #if DEBUG
             print("📱 Error marking medication as taken: \(error)")
+            #endif
         }
     }
 
@@ -705,9 +789,13 @@ extension AppState: NotificationHandlerDelegate {
             _ = try await stickyReminderRepository.dismissReminder(id: reminderId)
             await NotificationService.shared.cancelStickyReminder(reminderId: reminderId)
             NotificationCenter.default.post(name: .stickyRemindersDidChange, object: nil)
+            #if DEBUG
             print("📱 Dismissed sticky reminder: \(reminderId)")
+            #endif
         } catch {
+            #if DEBUG
             print("📱 Error dismissing sticky reminder: \(error)")
+            #endif
         }
     }
 

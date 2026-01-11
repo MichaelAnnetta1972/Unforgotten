@@ -263,38 +263,54 @@ final class MedicationRepository: MedicationRepositoryProtocol {
         let calendar = Calendar.current
         let dayOfWeek = calendar.component(.weekday, from: date) - 1 // 0-6 (Sun-Sat)
 
+        #if DEBUG
         print("💊 generateDailyLogs: Starting for date \(date), dayOfWeek: \(dayOfWeek)")
+        #endif
 
         // Get all medications for this account
         let medications = try await getMedications(accountId: accountId)
+        #if DEBUG
         print("💊 generateDailyLogs: Found \(medications.count) medications")
+        #endif
 
         for medication in medications {
+            #if DEBUG
             print("💊 Processing medication: \(medication.name), isPaused: \(medication.isPaused)")
+            #endif
             // Skip paused medications
             guard !medication.isPaused else {
+                #if DEBUG
                 print("💊 Skipping paused medication: \(medication.name)")
+                #endif
                 continue
             }
 
             let schedules = try await getSchedules(medicationId: medication.id)
+            #if DEBUG
             print("💊 Found \(schedules.count) schedules for \(medication.name)")
+            #endif
 
             for schedule in schedules {
+                #if DEBUG
                 print("💊 Schedule startDate: \(schedule.startDate), endDate: \(String(describing: schedule.endDate))")
                 print("💊 Schedule entries: \(String(describing: schedule.scheduleEntries)), legacyTimes: \(String(describing: schedule.legacyTimes))")
+                #endif
 
                 // Check if schedule is active for this date
                 let scheduleStartDay = calendar.startOfDay(for: schedule.startDate)
                 let targetDay = calendar.startOfDay(for: date)
                 guard scheduleStartDay <= targetDay else {
+                    #if DEBUG
                     print("💊 Skipping schedule - startDate \(scheduleStartDay) is after target date \(targetDay)")
+                    #endif
                     continue
                 }
                 if let endDate = schedule.endDate {
                     let endDay = calendar.startOfDay(for: endDate)
                     if endDay < targetDay {
+                        #if DEBUG
                         print("💊 Skipping schedule - endDate \(endDay) is before target date \(targetDay)")
+                        #endif
                         continue
                     }
                 }
@@ -310,10 +326,12 @@ final class MedicationRepository: MedicationRepositoryProtocol {
                     doseDescription: schedule.doseDescription
                 )
 
+                #if DEBUG
                 print("💊 Active entries for this schedule: \(activeEntries.count)")
                 for entry in activeEntries {
                     print("💊   - time: \(entry.time), dosage: \(entry.dosage ?? "nil")")
                 }
+                #endif
 
                 for (timeString, _) in activeEntries {
                     // Parse time string (HH:mm format)
@@ -343,14 +361,20 @@ final class MedicationRepository: MedicationRepositoryProtocol {
                             status: .scheduled
                         )
                         _ = try await createLog(log)
+                        #if DEBUG
                         print("💊 Created log for \(medication.name) at \(scheduledAt)")
+                        #endif
                     } else {
+                        #if DEBUG
                         print("💊 Log already exists for \(medication.name) at \(scheduledAt)")
+                        #endif
                     }
                 }
             }
         }
+        #if DEBUG
         print("💊 generateDailyLogs: Complete")
+        #endif
     }
 
     /// Gets active schedule entries for a specific date, handling sequential durations

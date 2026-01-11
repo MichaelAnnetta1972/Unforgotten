@@ -10,7 +10,9 @@ private func configureAudioSession() {
         try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: .mixWithOthers)
         try AVAudioSession.sharedInstance().setActive(true)
     } catch {
+        #if DEBUG
         print("Failed to configure audio session: \(error)")
+        #endif
     }
 }
 
@@ -113,12 +115,16 @@ class LoopingPlayerUIView: UIView {
                 videoURL = tempURL
                 self.tempFileURL = tempURL
             } catch {
+                #if DEBUG
                 print("Failed to write video data to temp file: \(error)")
+                #endif
             }
         }
 
         guard let url = videoURL else {
+            #if DEBUG
             print("Video not found: \(videoName).\(videoExtension)")
+            #endif
             return
         }
 

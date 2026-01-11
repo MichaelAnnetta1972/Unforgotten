@@ -502,7 +502,9 @@ struct ImportantAccountDetailPanel: View {
             try await appState.importantAccountRepository.deleteAccount(id: account.id)
             onDelete()
         } catch {
+            #if DEBUG
             print("Error deleting account: \(error)")
+            #endif
         }
 
         isDeleting = false
