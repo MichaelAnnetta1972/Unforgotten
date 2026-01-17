@@ -273,6 +273,9 @@ extension Notification.Name {
 
     /// Posted when the app should open the edit sheet for the primary profile (My Card)
     static let editPrimaryProfileRequested = Notification.Name("editPrimaryProfileRequested")
+
+    /// Posted when countdowns data has changed and lists should refresh
+    static let countdownsDidChange = Notification.Name("countdownsDidChange")
 }
 
 // MARK: - Appointment Change Action
@@ -357,6 +360,19 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - iPad Add Contact Action Environment Key
+private struct iPadAddContactActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add Contact panel on iPad
+    var iPadAddContactAction: (() -> Void)? {
+        get { self[iPadAddContactActionKey.self] }
+        set { self[iPadAddContactActionKey.self] = newValue }
+    }
+}
+
 // MARK: - iPad Edit Note Action Environment Key
 private struct iPadEditNoteActionKey: EnvironmentKey {
     static let defaultValue: ((LocalNote) -> Void)? = nil
@@ -367,6 +383,111 @@ extension EnvironmentValues {
     var iPadEditNoteAction: ((LocalNote) -> Void)? {
         get { self[iPadEditNoteActionKey.self] }
         set { self[iPadEditNoteActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Medication Action Environment Key
+private struct iPadAddMedicationActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add Medication panel on iPad
+    var iPadAddMedicationAction: (() -> Void)? {
+        get { self[iPadAddMedicationActionKey.self] }
+        set { self[iPadAddMedicationActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Appointment Action Environment Key
+private struct iPadAddAppointmentActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add Appointment panel on iPad
+    var iPadAddAppointmentAction: (() -> Void)? {
+        get { self[iPadAddAppointmentActionKey.self] }
+        set { self[iPadAddAppointmentActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Appointment Filter Action Environment Key
+private struct iPadAppointmentFilterActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Appointment Filter overlay on iPad
+    var iPadAppointmentFilterAction: (() -> Void)? {
+        get { self[iPadAppointmentFilterActionKey.self] }
+        set { self[iPadAppointmentFilterActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Appointment Filter Binding Environment Key
+private struct iPadAppointmentFilterBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<AppointmentType?>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to the selected appointment type filter on iPad
+    var iPadAppointmentFilterBinding: Binding<AppointmentType?>? {
+        get { self[iPadAppointmentFilterBindingKey.self] }
+        set { self[iPadAppointmentFilterBindingKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add To Do List Action Environment Key
+private struct iPadAddToDoListActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add To Do List panel on iPad
+    var iPadAddToDoListAction: (() -> Void)? {
+        get { self[iPadAddToDoListActionKey.self] }
+        set { self[iPadAddToDoListActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad To Do List Filter Action Environment Key
+private struct iPadToDoListFilterActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the To Do List Filter overlay on iPad
+    var iPadToDoListFilterAction: (() -> Void)? {
+        get { self[iPadToDoListFilterActionKey.self] }
+        set { self[iPadToDoListFilterActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad To Do List Filter Binding Environment Key
+private struct iPadToDoListFilterBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<String?>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to the selected to do list type filter on iPad
+    var iPadToDoListFilterBinding: Binding<String?>? {
+        get { self[iPadToDoListFilterBindingKey.self] }
+        set { self[iPadToDoListFilterBindingKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad ToDo Detail Type Selector Action Environment Key
+private struct iPadToDoDetailTypeSelectorActionKey: EnvironmentKey {
+    static let defaultValue: ((ToDoListDetailViewModel, Binding<String?>, @escaping () -> Void) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Type Selector overlay on iPad for ToDo Detail view
+    /// Parameters: viewModel (for live types access), selected type binding, add new type action
+    var iPadToDoDetailTypeSelectorAction: ((ToDoListDetailViewModel, Binding<String?>, @escaping () -> Void) -> Void)? {
+        get { self[iPadToDoDetailTypeSelectorActionKey.self] }
+        set { self[iPadToDoDetailTypeSelectorActionKey.self] = newValue }
     }
 }
 
@@ -419,6 +540,32 @@ extension EnvironmentValues {
     var iPadViewToDoListAction: ((ToDoList) -> Void)? {
         get { self[iPadViewToDoListActionKey.self] }
         set { self[iPadViewToDoListActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Countdown Action Environment Key
+private struct iPadAddCountdownActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add Countdown panel on iPad
+    var iPadAddCountdownAction: (() -> Void)? {
+        get { self[iPadAddCountdownActionKey.self] }
+        set { self[iPadAddCountdownActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Countdown Action Environment Key
+private struct iPadEditCountdownActionKey: EnvironmentKey {
+    static let defaultValue: ((Countdown) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit a Countdown in the full-screen side panel on iPad
+    var iPadEditCountdownAction: ((Countdown) -> Void)? {
+        get { self[iPadEditCountdownActionKey.self] }
+        set { self[iPadEditCountdownActionKey.self] = newValue }
     }
 }
 
@@ -526,6 +673,19 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - iPad Edit Gift Idea Action Environment Key
+private struct iPadEditGiftIdeaActionKey: EnvironmentKey {
+    static let defaultValue: ((ProfileDetail) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit a Gift Idea in the full-screen side panel on iPad
+    var iPadEditGiftIdeaAction: ((ProfileDetail) -> Void)? {
+        get { self[iPadEditGiftIdeaActionKey.self] }
+        set { self[iPadEditGiftIdeaActionKey.self] = newValue }
+    }
+}
+
 // MARK: - iPad Add Clothing Size Action Environment Key
 private struct iPadAddClothingSizeActionKey: EnvironmentKey {
     static let defaultValue: ((Profile) -> Void)? = nil
@@ -536,6 +696,71 @@ extension EnvironmentValues {
     var iPadAddClothingSizeAction: ((Profile) -> Void)? {
         get { self[iPadAddClothingSizeActionKey.self] }
         set { self[iPadAddClothingSizeActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Hobby Section Action Environment Key
+private struct iPadAddHobbySectionActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add a Hobby section in the full-screen side panel on iPad
+    var iPadAddHobbySectionAction: ((Profile) -> Void)? {
+        get { self[iPadAddHobbySectionActionKey.self] }
+        set { self[iPadAddHobbySectionActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Activity Section Action Environment Key
+private struct iPadAddActivitySectionActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add an Activity section in the full-screen side panel on iPad
+    var iPadAddActivitySectionAction: ((Profile) -> Void)? {
+        get { self[iPadAddActivitySectionActionKey.self] }
+        set { self[iPadAddActivitySectionActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Hobby Item Action Environment Key
+private struct iPadAddHobbyItemActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile, String) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add a Hobby item in the full-screen side panel on iPad (profile, sectionName)
+    var iPadAddHobbyItemAction: ((Profile, String) -> Void)? {
+        get { self[iPadAddHobbyItemActionKey.self] }
+        set { self[iPadAddHobbyItemActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Activity Item Action Environment Key
+private struct iPadAddActivityItemActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile, String) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to add an Activity item in the full-screen side panel on iPad (profile, sectionName)
+    var iPadAddActivityItemAction: ((Profile, String) -> Void)? {
+        get { self[iPadAddActivityItemActionKey.self] }
+        set { self[iPadAddActivityItemActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Edit Clothing Size Action Environment Key
+private struct iPadEditClothingSizeActionKey: EnvironmentKey {
+    static let defaultValue: ((ProfileDetail) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit a Clothing Size in the full-screen side panel on iPad
+    var iPadEditClothingSizeAction: ((ProfileDetail) -> Void)? {
+        get { self[iPadEditClothingSizeActionKey.self] }
+        set { self[iPadEditClothingSizeActionKey.self] = newValue }
     }
 }
 

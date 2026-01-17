@@ -305,15 +305,6 @@ struct AccountDetailHeaderView: View {
                     }
 
                     Spacer()
-
-                    Button(action: onEdit) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.2))
-                            .clipShape(Circle())
-                    }
                 }
                 .padding(.horizontal, AppDimensions.screenPadding)
                 .padding(.top, 60)
@@ -332,6 +323,21 @@ struct AccountDetailHeaderView: View {
                         .foregroundColor(.white)
 
                     Spacer()
+
+                    // Edit button at bottom right
+                    Button(action: onEdit) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Edit")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.2))
+                        .clipShape(Capsule())
+                    }
                 }
                 .padding(.horizontal, AppDimensions.screenPadding)
                 .padding(.bottom, AppDimensions.screenPadding)

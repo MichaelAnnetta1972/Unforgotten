@@ -78,6 +78,7 @@ struct iPadAppointmentListView: View {
                     await viewModel.loadAppointments(appState: appState)
                 }
             }
+            .presentationBackground(Color.appBackgroundLight)
         }
         .task {
             await viewModel.loadAppointments(appState: appState)

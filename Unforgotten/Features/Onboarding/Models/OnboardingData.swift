@@ -22,6 +22,7 @@ class OnboardingData {
     // MARK: - Subscription (Screen 6)
     var isPremium: Bool = false
     var subscriptionProductId: String? = nil
+    var subscriptionTier: SubscriptionTier = .free
 
     // MARK: - Notifications (Screen 7)
     var notificationsEnabled: Bool = false
@@ -69,6 +70,7 @@ class OnboardingData {
         connectedAccountName = nil
         isPremium = false
         subscriptionProductId = nil
+        subscriptionTier = .free
         notificationsEnabled = false
     }
 }

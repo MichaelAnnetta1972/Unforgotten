@@ -568,6 +568,7 @@ struct IPhoneMainView: View {
     @State private var shouldShowToDoAddSheet = false
     @State private var showAddNote = false
     @State private var showAddStickyReminder = false
+    @State private var showAddCountdown = false
     @State private var homePath = NavigationPath()
     @State private var profilesPath = NavigationPath()
     @State private var appointmentsPath = NavigationPath()
@@ -670,11 +671,8 @@ struct IPhoneMainView: View {
                         }
                     },
                     onAddAppointment: {
-                        if PremiumLimitsManager.shared.canCreateAppointment(appState: appState, currentCount: appointmentCount) {
-                            showAddAppointment = true
-                        } else {
-                            showUpgradePrompt = true
-                        }
+                        // Appointments use date-based limit (30 days), not count-based
+                        showAddAppointment = true
                     },
                     onAddContact: {
                         if PremiumLimitsManager.shared.canCreateUsefulContact(appState: appState, currentCount: contactCount) {
@@ -697,6 +695,9 @@ struct IPhoneMainView: View {
                         } else {
                             showUpgradePrompt = true
                         }
+                    },
+                    onAddCountdown: {
+                        showAddCountdown = true
                     }
                 )
             }
@@ -732,6 +733,11 @@ struct IPhoneMainView: View {
             NotificationCenter.default.post(name: .stickyRemindersDidChange, object: nil)
         }) {
             AddStickyReminderView()
+        }
+        .sheet(isPresented: $showAddCountdown, onDismiss: {
+            NotificationCenter.default.post(name: .countdownsDidChange, object: nil)
+        }) {
+            AddCountdownView { _ in }
         }
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()

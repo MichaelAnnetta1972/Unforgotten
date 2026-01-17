@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initScrollEffects();
     initMobileMenu();
     initGalleryTabs();
+    initGalleryNavigation();
     initSmoothScrolling();
     initRevealAnimations();
     initHeroVideo();
@@ -275,8 +276,86 @@ function initGalleryTabs() {
                     gallery.style.display = 'none';
                 }
             });
+
+            // Update navigation button states for the new gallery
+            updateGalleryNavButtons();
         });
     });
+}
+
+/**
+ * Gallery navigation arrows
+ */
+function initGalleryNavigation() {
+    const prevBtn = document.querySelector('.gallery-nav-prev');
+    const nextBtn = document.querySelector('.gallery-nav-next');
+
+    if (!prevBtn || !nextBtn) return;
+
+    // Get the currently visible gallery track
+    function getActiveTrack() {
+        const tracks = document.querySelectorAll('.gallery-track');
+        for (const track of tracks) {
+            const computedDisplay = window.getComputedStyle(track).display;
+            if (computedDisplay !== 'none') {
+                return track;
+            }
+        }
+        return tracks[0];
+    }
+
+    // Scroll by one item width
+    function scrollGallery(direction) {
+        const track = getActiveTrack();
+        if (!track) return;
+
+        const item = track.querySelector('.gallery-item');
+        if (!item) return;
+
+        const scrollAmount = item.offsetWidth + 24; // item width + gap
+        const newScrollLeft = track.scrollLeft + (direction * scrollAmount);
+
+        track.scrollTo({
+            left: newScrollLeft,
+            behavior: 'smooth'
+        });
+    }
+
+    prevBtn.addEventListener('click', () => scrollGallery(-1));
+    nextBtn.addEventListener('click', () => scrollGallery(1));
+
+    // Update button states based on scroll position
+    function updateNavButtons() {
+        const track = getActiveTrack();
+        if (!track) return;
+
+        const isAtStart = track.scrollLeft <= 10;
+        const isAtEnd = track.scrollLeft >= track.scrollWidth - track.clientWidth - 10;
+
+        prevBtn.disabled = isAtStart;
+        nextBtn.disabled = isAtEnd;
+    }
+
+    // Listen to scroll events on all tracks
+    document.querySelectorAll('.gallery-track').forEach(track => {
+        track.addEventListener('scroll', updateNavButtons);
+    });
+
+    // Initial state
+    updateNavButtons();
+
+    // Expose update function globally for tab switching
+    window.updateGalleryNavButtons = updateNavButtons;
+}
+
+/**
+ * Update gallery nav buttons (called from tab switch)
+ */
+function updateGalleryNavButtons() {
+    if (window.updateGalleryNavButtons) {
+        // Small delay to let the display change take effect
+        setTimeout(window.updateGalleryNavButtons, 50);
+    }
 }
 
 /**

@@ -72,7 +72,7 @@ struct iPadBirthdaysView: View {
             rightPane
         }
         .background(Color.appBackground)
-        .navigationTitle("Birthdays")
+        .navigationTitle("Birthdays & Countdowns")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadBirthdays(appState: appState)

@@ -3,50 +3,65 @@ import SwiftUI
 // MARK: - Terms of Service View
 struct TermsOfServiceView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        VStack(spacing: 0) {
+            // Custom header with Done button
+            HStack {
+                Text("Terms of Service")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // Header
-                        VStack(spacing: 12) {
-                            Image(systemName: "doc.text.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(appAccentColor)
+                Spacer()
 
-                            Text("Terms of Service")
-                                .font(.appLargeTitle)
-                                .foregroundColor(.textPrimary)
-
-                            Text("Last updated: January 2025")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 24)
-
-                        // Content
-                        termsContent
-                    }
-                    .padding(AppDimensions.screenPadding)
-                    .padding(.bottom, 40)
+                Button("Done") {
+                    dismissView()
                 }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
             }
-            .navigationTitle("Terms of Service")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    // Header
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(appAccentColor)
+
+                        Text("Terms of Service")
+                            .font(.appLargeTitle)
+                            .foregroundColor(.textPrimary)
+
+                        Text("Last updated: January 2025")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
                     }
-                    .foregroundColor(appAccentColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+
+                    // Content
+                    termsContent
                 }
+                .padding(AppDimensions.screenPadding)
+                .padding(.bottom, 40)
             }
         }
+        .background(Color.appBackground)
     }
 
     private var termsContent: some View {

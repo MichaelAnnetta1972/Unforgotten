@@ -168,6 +168,7 @@ enum TableName {
     static let stickyReminders = "sticky_reminders"
     static let appUsers = "app_users"
     static let userPreferences = "user_preferences"
+    static let countdowns = "countdowns"
 }
 
 // MARK: - Supabase Error

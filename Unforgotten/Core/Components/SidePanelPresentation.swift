@@ -1,5 +1,27 @@
 import SwiftUI
 
+// MARK: - Side Panel Dismiss Action
+/// Custom dismiss action for side panels
+struct SidePanelDismissAction {
+    let dismiss: () -> Void
+
+    func callAsFunction() {
+        dismiss()
+    }
+}
+
+// MARK: - Side Panel Dismiss Environment Key
+private struct SidePanelDismissKey: EnvironmentKey {
+    static let defaultValue: SidePanelDismissAction? = nil
+}
+
+extension EnvironmentValues {
+    var sidePanelDismiss: SidePanelDismissAction? {
+        get { self[SidePanelDismissKey.self] }
+        set { self[SidePanelDismissKey.self] = newValue }
+    }
+}
+
 // MARK: - Side Panel Presentation
 /// A view modifier that presents content in a slide-in modal from the right on iPad
 /// or as a positioned sheet on smaller screens
@@ -15,6 +37,22 @@ struct SidePanelPresentation<PanelContent: View>: ViewModifier {
         horizontalSizeClass == .regular
     }
 
+    /// Dismiss action for iPad overlay (needs animation)
+    private var iPadDismissAction: SidePanelDismissAction {
+        SidePanelDismissAction {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                isPresented = false
+            }
+        }
+    }
+
+    /// Dismiss action for iPhone sheet (no animation needed, SwiftUI handles it)
+    private var iPhoneDismissAction: SidePanelDismissAction {
+        SidePanelDismissAction {
+            isPresented = false
+        }
+    }
+
     func body(content: Content) -> some View {
         if isiPad {
             // iPad: Overlay modal sliding from right
@@ -25,9 +63,7 @@ struct SidePanelPresentation<PanelContent: View>: ViewModifier {
                         Color.black.opacity(0.4)
                             .ignoresSafeArea()
                             .onTapGesture {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    isPresented = false
-                                }
+                                iPadDismissAction()
                             }
                             .transition(.opacity)
                     }
@@ -40,6 +76,7 @@ struct SidePanelPresentation<PanelContent: View>: ViewModifier {
 
                             SlidePanelWrapper(panelWidth: panelWidth, maxHeight: geometry.size.height) {
                                 panelContent()
+                                    .environment(\.sidePanelDismiss, iPadDismissAction)
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                         }
@@ -61,9 +98,11 @@ struct SidePanelPresentation<PanelContent: View>: ViewModifier {
             content
                 .sheet(isPresented: $isPresented) {
                     panelContent()
+                        .environment(\.sidePanelDismiss, iPhoneDismissAction)
                         .presentationDetents([.fraction(0.9)])
                         .presentationDragIndicator(.visible)
                         .presentationCornerRadius(24)
+                        .presentationBackground(Color.appBackgroundLight)
                 }
         }
     }
@@ -76,16 +115,14 @@ private struct SlidePanelWrapper<Content: View>: View {
     let maxHeight: CGFloat
     let content: () -> Content
 
-    /// The panel takes up at most 85% of the screen height
-    private var maxPanelHeight: CGFloat {
-        maxHeight * 0.85
+    /// The panel takes up the full screen height minus padding
+    private var panelHeight: CGFloat {
+        maxHeight - 80  // Account for top and bottom padding
     }
 
     var body: some View {
         content()
-            .frame(width: panelWidth, alignment: .top)
-            .frame(maxHeight: maxPanelHeight)
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: panelWidth, height: panelHeight, alignment: .top)
             .background(Color.appBackgroundLight)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
@@ -117,6 +154,21 @@ extension View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         modifier(SidePanelPresentation(isPresented: isPresented, panelContent: content))
+    }
+
+    /// Conditionally presents content in a side panel (only when showPanel is true)
+    /// Use this to disable the local sidePanel when iPad uses full-screen overlay instead
+    @ViewBuilder
+    func conditionalSidePanel<Content: View>(
+        isPresented: Binding<Bool>,
+        showPanel: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if showPanel {
+            modifier(SidePanelPresentation(isPresented: isPresented, panelContent: content))
+        } else {
+            self
+        }
     }
 }
 

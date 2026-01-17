@@ -356,13 +356,15 @@ struct MedicalConditionCard: View {
     let type: String
     let condition: String
     let action: (() -> Void)?
-    
-    init(type: String, condition: String, action: (() -> Void)? = nil) {
+    let onDelete: (() -> Void)?
+
+    init(type: String, condition: String, action: (() -> Void)? = nil, onDelete: (() -> Void)? = nil) {
         self.type = type
         self.condition = condition
         self.action = action
+        self.onDelete = onDelete
     }
-    
+
     var body: some View {
         Group {
             if let action = action {
@@ -375,20 +377,31 @@ struct MedicalConditionCard: View {
             }
         }
     }
-    
+
     private var cardContent: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(type)
                     .font(.appCaption)
                     .foregroundColor(.textSecondary)
-                
+
                 Text(condition)
                     .font(.appCardTitle)
                     .foregroundColor(.textPrimary)
             }
-            
+
             Spacer()
+
+            if let onDelete = onDelete {
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16))
+                        .foregroundColor(.red.opacity(0.8))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
@@ -539,6 +552,7 @@ struct BottomNavBar: View {
     let onAddToDoList: (() -> Void)?
     let onAddNote: (() -> Void)?
     let onAddStickyReminder: (() -> Void)?
+    let onAddCountdown: (() -> Void)?
 
     @Environment(\.appAccentColor) private var appAccentColor
     @State private var showAddMenu = false
@@ -554,7 +568,8 @@ struct BottomNavBar: View {
         onAddContact: (() -> Void)? = nil,
         onAddToDoList: (() -> Void)? = nil,
         onAddNote: (() -> Void)? = nil,
-        onAddStickyReminder: (() -> Void)? = nil
+        onAddStickyReminder: (() -> Void)? = nil,
+        onAddCountdown: (() -> Void)? = nil
     ) {
         self.currentPage = currentPage
         self.isAtHomeRoot = isAtHomeRoot
@@ -567,6 +582,7 @@ struct BottomNavBar: View {
         self.onAddToDoList = onAddToDoList
         self.onAddNote = onAddNote
         self.onAddStickyReminder = onAddStickyReminder
+        self.onAddCountdown = onAddCountdown
     }
 
     var body: some View {
@@ -656,6 +672,13 @@ struct BottomNavBar: View {
                                         showAddMenu = false
                                     }
                                     onAddStickyReminder?()
+                                }
+
+                                AddMenuRow(icon: "clock.badge.checkmark", title: "Countdown") {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        showAddMenu = false
+                                    }
+                                    onAddCountdown?()
                                 }
                             }
                         }

@@ -294,6 +294,9 @@ struct AddStickyReminderView: View {
                     intervalValue = reminder.repeatInterval.value
                     intervalUnit = reminder.repeatInterval.unit
                     startImmediately = reminder.triggerTime <= Date()
+                } else {
+                    // Focus title field for new reminders
+                    focusedField = .title
                 }
             }
             .sheet(isPresented: $showQuickOptions) {
@@ -310,6 +313,8 @@ struct AddStickyReminderView: View {
                 .presentationDragIndicator(.visible)
             }
         }
+        .padding(.top, 8)
+        .background(Color.appBackground)
     }
 
     // MARK: - Info Card
@@ -447,7 +452,7 @@ private struct QuickOptionsSheet: View {
                 .padding(.horizontal, AppDimensions.screenPadding)
                 .padding(.top, 16)
             }
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
             .navigationTitle("Quick Options")
             .navigationBarTitleDisplayMode(.inline)
         }

@@ -641,6 +641,30 @@ struct ProfileDetailView: View {
                             )
                         }
 
+                        // Hobbies & Interests (visible to all roles)
+                        NavigationLink(destination: SectionBasedCategoryView(
+                            profile: profile,
+                            category: .hobbies,
+                            details: viewModel.hobbies
+                        )) {
+                            CategoryCardView(
+                                title: "Hobbies &\nInterests",
+                                iconName: "icon-hobbies"
+                            )
+                        }
+
+                        // Activity Ideas (visible to all roles)
+                        NavigationLink(destination: SectionBasedCategoryView(
+                            profile: profile,
+                            category: .activities,
+                            details: viewModel.activityIdeas
+                        )) {
+                            CategoryCardView(
+                                title: "Activity\nIdeas",
+                                iconName: "icon-activities"
+                            )
+                        }
+
                         // Important Accounts (only for full access - contains sensitive info)
                         if hasFullAccess {
                             NavigationLink(destination: ImportantAccountsListView(profile: profile)) {
@@ -803,7 +827,7 @@ struct CategoryCardView: View {
             // Title - allows up to 2 lines
             Text(title)
                 .font(.appBody)
-                .foregroundColor(.white)
+                .foregroundColor(.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -818,65 +842,68 @@ struct CategoryCardView: View {
             ZStack {
                 // Base frosted glass material
                 RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .fill(.ultraThinMaterial)
+                    //.fill(.ultraThinMaterial)
+                   .fill(Color.cardBackgroundLight.opacity(0.8))
 
                 // Subtle color tint overlay
                 RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .fill(Color.cardBackgroundLight.opacity(0.3))
+                 .fill(Color.cardBackgroundLight.opacity(0.8))
+                 //  .fill(appAccentColor.opacity(0.6))
+
 
                 // Top-left light refraction highlight
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.15),
-                                Color.white.opacity(0.08),
-                                Color.clear,
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+         //       RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+         //           .fill(
+         //               LinearGradient(
+         //                   colors: [
+         //                       Color.white.opacity(0.15),
+         //                       Color.white.opacity(0.08),
+         //                       Color.clear,
+         //                       Color.clear
+         //                   ],
+         //                   startPoint: .topLeading,
+         //                   endPoint: .bottomTrailing
+         //               )
+         //           )
 
                 // Bottom-right subtle glow
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                appAccentColor.opacity(0.10),
-                                Color.clear
-                            ],
-                            center: .bottomTrailing,
-                            startRadius: 0,
-                            endRadius: 120
-                        )
-                    )
+        //      RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+        //        .fill(
+        //                RadialGradient(
+        //                    colors: [
+        //                        .white.opacity(0.1),
+        //                        Color.clear
+        //                    ],
+        //                    center: .bottomTrailing,
+        //                    startRadius: 0,
+        //                    endRadius: 120
+        //                )
+        //            )
             }
         }
         // Multi-layer border for liquid glass depth
-        .overlay(
-            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.5),
-                            Color.white.opacity(0.2),
-                            Color.white.opacity(0.05),
-                            Color.white.opacity(0.15)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
+    //    .overlay(
+    //        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+    //            .stroke(
+    //                LinearGradient(
+    //                    colors: [
+    //                        Color.white.opacity(0.5),
+    //                        Color.white.opacity(0.2),
+    //                        Color.white.opacity(0.05),
+    //                        Color.white.opacity(0.15)
+    //                    ],
+    //                    startPoint: .topLeading,
+    //                    endPoint: .bottomTrailing
+    //                ),
+    //                lineWidth: 1
+    //            )
+    //    )
         // Inner glow effect
-        .overlay(
-            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius - 1)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                .padding(1)
-        )
+    //    .overlay(
+    //        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius - 1)
+    //            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+    //            .padding(1)
+    //    )
         // Soft outer shadow for depth
         .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
         .shadow(color: appAccentColor.opacity(0.1), radius: 15, x: 0, y: 0)
@@ -891,6 +918,8 @@ class ProfileDetailViewModel: ObservableObject {
     @Published var medicalConditions: [ProfileDetail] = []
     @Published var allergies: [ProfileDetail] = []
     @Published var customFields: [ProfileDetail] = []
+    @Published var hobbies: [ProfileDetail] = []
+    @Published var activityIdeas: [ProfileDetail] = []
     @Published var isLoading = false
     @Published var error: String?
 
@@ -905,6 +934,8 @@ class ProfileDetailViewModel: ObservableObject {
             medicalConditions = allDetails.filter { $0.category == .medicalCondition }
             allergies = allDetails.filter { $0.category == .allergy }
             customFields = allDetails.filter { $0.category == .note }
+            hobbies = allDetails.filter { $0.category == .hobby }
+            activityIdeas = allDetails.filter { $0.category == .activityIdea }
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription

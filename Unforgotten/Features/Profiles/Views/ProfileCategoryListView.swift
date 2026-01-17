@@ -5,12 +5,16 @@ enum ProfileCategoryType: Identifiable {
     case clothing
     case gifts
     case medical
+    case hobbies
+    case activities
 
     var id: String {
         switch self {
         case .clothing: return "clothing"
         case .gifts: return "gifts"
         case .medical: return "medical"
+        case .hobbies: return "hobbies"
+        case .activities: return "activities"
         }
     }
 
@@ -19,22 +23,47 @@ enum ProfileCategoryType: Identifiable {
         case .clothing: return "Clothing Sizes"
         case .gifts: return "Gift Ideas"
         case .medical: return "Medical Conditions"
+        case .hobbies: return "Hobbies & Interests"
+        case .activities: return "Activity Ideas"
         }
     }
-    
+
     var icon: String {
         switch self {
         case .clothing: return "tshirt.fill"
         case .gifts: return "gift.fill"
         case .medical: return "cross.fill"
+        case .hobbies: return "heart.circle.fill"
+        case .activities: return "figure.walk"
         }
     }
-    
+
     var color: Color {
         switch self {
         case .clothing: return .clothingBlue
         case .gifts: return .giftPurple
         case .medical: return .medicalRed
+        case .hobbies: return .hobbyOrange
+        case .activities: return .activityGreen
+        }
+    }
+
+    /// Convert to DetailCategory for repository queries
+    var detailCategory: DetailCategory {
+        switch self {
+        case .clothing: return .clothing
+        case .gifts: return .giftIdea
+        case .medical: return .medicalCondition
+        case .hobbies: return .hobby
+        case .activities: return .activityIdea
+        }
+    }
+
+    /// Whether this category uses section-based organization
+    var usesSections: Bool {
+        switch self {
+        case .hobbies, .activities: return true
+        default: return false
         }
     }
 }
@@ -48,7 +77,9 @@ struct ProfileCategoryListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.iPadAddMedicalConditionAction) private var iPadAddMedicalConditionAction
     @Environment(\.iPadAddGiftIdeaAction) private var iPadAddGiftIdeaAction
+    @Environment(\.iPadEditGiftIdeaAction) private var iPadEditGiftIdeaAction
     @Environment(\.iPadAddClothingSizeAction) private var iPadAddClothingSizeAction
+    @Environment(\.iPadEditClothingSizeAction) private var iPadEditClothingSizeAction
 
     let profile: Profile
     let category: ProfileCategoryType
@@ -58,36 +89,8 @@ struct ProfileCategoryListView: View {
     @State private var showSettings = false
     @State private var currentDetails: [ProfileDetail]
     @State private var editingDetail: ProfileDetail?
-
-    // Gift card overlay state
-    @State private var activeGiftOptionsMenuItemId: UUID?
-    @State private var giftCardFrames: [UUID: CGRect] = [:]
-
-    // Clothing card overlay state
-    @State private var activeClothingOptionsMenuItemId: UUID?
-    @State private var clothingCardFrames: [UUID: CGRect] = [:]
-
-    // Gift card computed properties
-    private var activeGiftDetail: ProfileDetail? {
-        guard let activeId = activeGiftOptionsMenuItemId else { return nil }
-        return currentDetails.first(where: { $0.id == activeId })
-    }
-
-    private var activeGiftFrame: CGRect? {
-        guard let activeId = activeGiftOptionsMenuItemId else { return nil }
-        return giftCardFrames[activeId]
-    }
-
-    // Clothing card computed properties
-    private var activeClothingDetail: ProfileDetail? {
-        guard let activeId = activeClothingOptionsMenuItemId else { return nil }
-        return currentDetails.first(where: { $0.id == activeId })
-    }
-
-    private var activeClothingFrame: CGRect? {
-        guard let activeId = activeClothingOptionsMenuItemId else { return nil }
-        return clothingCardFrames[activeId]
-    }
+    @State private var showEditClothing = false
+    @State private var showEditGift = false
 
     /// Whether to use side panel presentation (iPad full-screen)
     private var useSidePanel: Bool {
@@ -109,6 +112,10 @@ struct ProfileCategoryListView: View {
             return "No gift ideas yet"
         case .medical:
             return "No medical conditions yet"
+        case .hobbies:
+            return "No hobbies yet"
+        case .activities:
+            return "No activity ideas yet"
         }
     }
 
@@ -142,6 +149,9 @@ struct ProfileCategoryListView: View {
                                 } else {
                                     showAddDetail = true
                                 }
+                            case .hobbies, .activities:
+                                // Hobbies and activities use SectionBasedCategoryView, not this view
+                                break
                             }
                         }
                     )
@@ -149,10 +159,10 @@ struct ProfileCategoryListView: View {
                     // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
                         // Section header card
-                        SectionHeaderCard(
-                            title: category.title,
-                            icon: category.icon
-                        )
+                        //SectionHeaderCard(
+                        //    title: category.title,
+                        //    icon: category.icon
+                        //)
 
                         // Details list
                         VStack(spacing: AppDimensions.cardSpacing) {
@@ -161,20 +171,19 @@ struct ProfileCategoryListView: View {
                                 case .clothing:
                                     ClothingCardWithOverlay(
                                         detail: detail,
-                                        isActive: activeClothingOptionsMenuItemId == detail.id,
-                                        onOptionsPressed: {
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                                activeClothingOptionsMenuItemId = detail.id
+                                        onEdit: {
+                                            // Use iPad full-screen overlay if available
+                                            if let iPadAction = iPadEditClothingSizeAction {
+                                                iPadAction(detail)
+                                            } else {
+                                                editingDetail = detail
+                                                showEditClothing = true
                                             }
-                                        }
-                                    )
-                                    .background(
-                                        GeometryReader { geo in
-                                            Color.clear
-                                                .preference(
-                                                    key: ClothingCardFramePreferenceKey.self,
-                                                    value: [detail.id: geo.frame(in: .global)]
-                                                )
+                                        },
+                                        onDelete: {
+                                            Task {
+                                                await deleteDetail(detail: detail)
+                                            }
                                         }
                                     )
 
@@ -182,33 +191,42 @@ struct ProfileCategoryListView: View {
                                     GiftCardWithOverlay(
                                         detail: detail,
                                         status: giftStatus(from: detail.status),
-                                        isActive: activeGiftOptionsMenuItemId == detail.id,
+                                        isActive: false,
                                         onStatusChange: { newStatus in
                                             Task {
                                                 await updateGiftStatus(detail: detail, newStatus: newStatus)
                                             }
                                         },
-                                        onOptionsPressed: {
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                                activeGiftOptionsMenuItemId = detail.id
+                                        onEdit: {
+                                            // Use iPad full-screen action if available
+                                            if let editAction = iPadEditGiftIdeaAction {
+                                                editAction(detail)
+                                            } else {
+                                                editingDetail = detail
+                                                showEditGift = true
                                             }
-                                        }
-                                    )
-                                    .background(
-                                        GeometryReader { geo in
-                                            Color.clear
-                                                .preference(
-                                                    key: GiftCardFramePreferenceKey.self,
-                                                    value: [detail.id: geo.frame(in: .global)]
-                                                )
+                                        },
+                                        onDelete: {
+                                            Task {
+                                                await deleteDetail(detail: detail)
+                                            }
                                         }
                                     )
 
                                 case .medical:
                                     MedicalConditionCard(
                                         type: detail.category == .allergy ? "Allergy" : "Medical Condition",
-                                        condition: detail.value.isEmpty ? detail.label : detail.value
+                                        condition: detail.value.isEmpty ? detail.label : detail.value,
+                                        onDelete: {
+                                            Task {
+                                                await deleteDetail(detail: detail)
+                                            }
+                                        }
                                     )
+
+                                case .hobbies, .activities:
+                                    // Hobbies and activities use SectionBasedCategoryView, not this view
+                                    EmptyView()
                                 }
                             }
                         }
@@ -236,64 +254,80 @@ struct ProfileCategoryListView: View {
                     .padding(.top, AppDimensions.cardSpacing)
                 }
             }
-            .onPreferenceChange(GiftCardFramePreferenceKey.self) { frames in
-                giftCardFrames = frames
-            }
-            .onPreferenceChange(ClothingCardFramePreferenceKey.self) { frames in
-                clothingCardFrames = frames
-            }
 
-            // Overlay for gift cards
-            if category == .gifts,
-               let detail = activeGiftDetail,
-               let frame = activeGiftFrame {
-                HighlightedGiftOverlay(
-                    detail: detail,
-                    frame: frame,
-                    status: giftStatus(from: detail.status),
-                    onStatusChange: { newStatus in
-                        Task {
-                            await updateGiftStatus(detail: detail, newStatus: newStatus)
+            // Local overlay for editing clothing on iPhone (iPad uses full-screen overlay via iPadEditClothingSizeAction)
+            if iPadEditClothingSizeAction == nil, showEditClothing, let detail = editingDetail {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showEditClothing = false
+                                editingDetail = nil
+                            }
                         }
-                        dismissGiftOverlay()
-                    },
-                    onDelete: {
-                        Task {
-                            await deleteDetail(detail: detail)
+
+                    EditClothingPanelOverlay(
+                        detail: detail,
+                        onDismiss: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showEditClothing = false
+                                editingDetail = nil
+                            }
+                        },
+                        onSave: { updatedDetail in
+                            if let index = currentDetails.firstIndex(where: { $0.id == updatedDetail.id }) {
+                                currentDetails[index] = updatedDetail
+                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showEditClothing = false
+                                editingDetail = nil
+                            }
                         }
-                        dismissGiftOverlay()
-                    },
-                    onDismiss: { dismissGiftOverlay() }
-                )
-                .zIndex(100)
+                    )
+                }
+                .zIndex(200)
                 .transition(.opacity)
             }
 
-            // Overlay for clothing cards
-            if category == .clothing,
-               let detail = activeClothingDetail,
-               let frame = activeClothingFrame {
-                HighlightedClothingOverlay(
-                    detail: detail,
-                    frame: frame,
-                    onEdit: {
-                        editingDetail = detail
-                        dismissClothingOverlay()
-                    },
-                    onDelete: {
-                        Task {
-                            await deleteDetail(detail: detail)
+            // Local overlay for editing gift on iPhone
+            if showEditGift, let detail = editingDetail {
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showEditGift = false
+                                editingDetail = nil
+                            }
                         }
-                        dismissClothingOverlay()
-                    },
-                    onDismiss: { dismissClothingOverlay() }
-                )
-                .zIndex(100)
+
+                    EditGiftPanelOverlay(
+                        detail: detail,
+                        onDismiss: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showEditGift = false
+                                editingDetail = nil
+                            }
+                        },
+                        onSave: { updatedDetail in
+                            if let index = currentDetails.firstIndex(where: { $0.id == updatedDetail.id }) {
+                                currentDetails[index] = updatedDetail
+                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showEditGift = false
+                                editingDetail = nil
+                            }
+                        }
+                    )
+                }
+                .zIndex(200)
                 .transition(.opacity)
             }
+
         }
         .ignoresSafeArea(edges: .top)
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
         .navigationBarHidden(true)
         .sidePanel(isPresented: $showSettings) {
             SettingsPanelView(onDismiss: { showSettings = false })
@@ -307,27 +341,27 @@ struct ProfileCategoryListView: View {
                 currentDetails.append(newDetail)
             }
         }
-        .sheet(item: $editingDetail) { detail in
-            EditClothingDetailView(
-                detail: detail,
-                onSave: { updatedDetail in
-                    if let index = currentDetails.firstIndex(where: { $0.id == detail.id }) {
-                        currentDetails[index] = updatedDetail
-                    }
+        .onReceive(NotificationCenter.default.publisher(for: .profileDetailsDidChange)) { notification in
+            // Reload details when they change (e.g., from iPad full-screen overlay)
+            if let profileId = notification.userInfo?["profileId"] as? UUID, profileId == profile.id {
+                Task {
+                    await reloadDetails()
                 }
-            )
-        }
-    }
-    
-    private func dismissGiftOverlay() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            activeGiftOptionsMenuItemId = nil
+            }
         }
     }
 
-    private func dismissClothingOverlay() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            activeClothingOptionsMenuItemId = nil
+    private func reloadDetails() async {
+        do {
+            let details = try await appState.profileRepository.getProfileDetails(
+                profileId: profile.id,
+                category: category.detailCategory
+            )
+            currentDetails = details
+        } catch {
+            #if DEBUG
+            print("Failed to reload details: \(error)")
+            #endif
         }
     }
 
@@ -410,6 +444,8 @@ struct AddProfileDetailView: View {
     @State private var label = ""
     @State private var value = ""
     @State private var status = "idea"
+    @State private var favouriteBrands = ""
+    @State private var websiteUrl = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSizePicker = false
@@ -482,6 +518,9 @@ struct AddProfileDetailView: View {
                                 giftForm
                             case .medical:
                                 medicalForm
+                            case .hobbies, .activities:
+                                // Hobbies and activities use SectionBasedCategoryView
+                                EmptyView()
                             }
 
                             if let error = errorMessage {
@@ -546,25 +585,70 @@ struct AddProfileDetailView: View {
     private var giftForm: some View {
         VStack(spacing: 16) {
             AppTextField(placeholder: "Gift idea", text: $label)
-            
-            // Status picker
-            VStack(alignment: .leading, spacing: 8) {
+
+            // Status picker in a row container
+            HStack {
                 Text("Status")
-                    .font(.appCaption)
+                    .font(.appBody)
                     .foregroundColor(.textSecondary)
-                
-                HStack(spacing: 12) {
-                    StatusButton(title: "Idea", isSelected: status == "idea") {
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    StatusButtonCompact(title: "Idea", isSelected: status == "idea") {
                         status = "idea"
                     }
-                    StatusButton(title: "Bought", isSelected: status == "bought") {
+                    StatusButtonCompact(title: "Bought", isSelected: status == "bought") {
                         status = "bought"
                     }
-                    StatusButton(title: "Given", isSelected: status == "given") {
+                    StatusButtonCompact(title: "Given", isSelected: status == "given") {
                         status = "given"
                     }
                 }
             }
+            .padding()
+            .frame(height: AppDimensions.textFieldHeight)
+            .background(Color.cardBackgroundSoft)
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+            )
+
+            // Favourite brands field
+            AppTextField(placeholder: "Favourite brands", text: $favouriteBrands)
+
+            // Website URL field with open button
+            HStack(spacing: 12) {
+                AppTextField(placeholder: "Website URL", text: $websiteUrl)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+
+                Button {
+                    openWebsite()
+                } label: {
+                    Image(systemName: "safari")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(websiteUrl.isBlank ? .textSecondary : appAccentColor)
+                        .frame(width: 48, height: 48)
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                }
+                .disabled(websiteUrl.isBlank)
+            }
+        }
+    }
+
+    private func openWebsite() {
+        var urlString = websiteUrl.trimmingCharacters(in: .whitespaces)
+
+        // Add https:// if no scheme is present
+        if !urlString.lowercased().hasPrefix("http://") && !urlString.lowercased().hasPrefix("https://") {
+            urlString = "https://" + urlString
+        }
+
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
         }
     }
     
@@ -625,10 +709,10 @@ struct AddProfileDetailView: View {
             errorMessage = "Please fill in all required fields"
             return
         }
-        
+
         isLoading = true
         errorMessage = nil
-        
+
         let detailCategory: DetailCategory
         switch category {
         case .clothing:
@@ -637,17 +721,37 @@ struct AddProfileDetailView: View {
             detailCategory = .giftIdea
         case .medical:
             detailCategory = value == "allergy" ? .allergy : .medicalCondition
+        case .hobbies:
+            detailCategory = .hobby
+        case .activities:
+            detailCategory = .activityIdea
         }
-        
+
+        // Build metadata for gifts
+        var metadata: [String: String]? = nil
+        if category == .gifts {
+            var giftMetadata: [String: String] = [:]
+            if !favouriteBrands.isBlank {
+                giftMetadata["favourite_brands"] = favouriteBrands.trimmingCharacters(in: .whitespaces)
+            }
+            if !websiteUrl.isBlank {
+                giftMetadata["website_url"] = websiteUrl.trimmingCharacters(in: .whitespaces)
+            }
+            if !giftMetadata.isEmpty {
+                metadata = giftMetadata
+            }
+        }
+
         let insert = ProfileDetailInsert(
             accountId: account.id,
             profileId: profile.id,
             category: detailCategory,
             label: label,
             value: category == .clothing ? value : label,
-            status: category == .gifts ? status : nil
+            status: category == .gifts ? status : nil,
+            metadata: metadata
         )
-        
+
         do {
             let newDetail = try await appState.profileRepository.createProfileDetail(insert)
             onSave(newDetail)
@@ -666,9 +770,11 @@ struct AddProfileDetailView: View {
 struct EditClothingDetailView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
     let detail: ProfileDetail
+    var onDismiss: (() -> Void)? = nil
     let onSave: (ProfileDetail) -> Void
 
     @State private var label: String
@@ -679,11 +785,22 @@ struct EditClothingDetailView: View {
 
     private let clothingTypes = ["Jacket", "Pants", "Shoes", "T-Shirt", "Dress Shirt", "Belt", "Hat", "Gloves", "Socks", "Underwear", "Other"]
 
-    init(detail: ProfileDetail, onSave: @escaping (ProfileDetail) -> Void) {
+    init(detail: ProfileDetail, onDismiss: (() -> Void)? = nil, onSave: @escaping (ProfileDetail) -> Void) {
         self.detail = detail
+        self.onDismiss = onDismiss
         self.onSave = onSave
         self._label = State(initialValue: detail.label)
         self._value = State(initialValue: detail.value)
+    }
+
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else if let sidePanelDismiss = sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
     }
 
     var body: some View {
@@ -692,7 +809,7 @@ struct EditClothingDetailView: View {
                 // Custom header with icons
                 HStack {
                     Button {
-                        dismiss()
+                        dismissView()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .bold))
@@ -805,12 +922,314 @@ struct EditClothingDetailView: View {
             let saved = try await appState.profileRepository.updateProfileDetail(updatedDetail)
             onSave(saved)
             NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": detail.profileId])
-            dismiss()
+            dismissView()
         } catch {
             errorMessage = "Failed to save. Please try again."
         }
 
         isLoading = false
+    }
+}
+
+// MARK: - Edit Clothing Panel Overlay (Full-screen for iPad)
+struct EditClothingPanelOverlay: View {
+    let detail: ProfileDetail
+    let onDismiss: () -> Void
+    let onSave: (ProfileDetail) -> Void
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var offsetX: CGFloat = 680
+    @State private var opacity: Double = 0
+
+    /// Panel width - wider on iPad
+    private var panelWidth: CGFloat {
+        horizontalSizeClass == .regular ? 550 : 350
+    }
+
+    /// Panel height
+    private var panelHeight: CGFloat {
+        horizontalSizeClass == .regular ? 600 : 500
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack {
+                Spacer()
+
+                EditClothingDetailView(
+                    detail: detail,
+                    onDismiss: onDismiss,
+                    onSave: onSave
+                )
+                .frame(width: panelWidth, height: min(panelHeight, geometry.size.height - 80))
+                .background(Color.appBackgroundLight)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
+                .offset(x: offsetX)
+                .opacity(opacity)
+                .padding(.top, 40)
+                .padding(.trailing, 20)
+            }
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                offsetX = 0
+                opacity = 1.0
+            }
+        }
+    }
+}
+
+// MARK: - Edit Gift Detail View
+struct EditGiftDetailView: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) var sidePanelDismiss
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    let detail: ProfileDetail
+    var onDismiss: (() -> Void)? = nil
+    let onSave: (ProfileDetail) -> Void
+
+    @State private var label: String
+    @State private var status: String
+    @State private var favouriteBrands: String
+    @State private var websiteUrl: String
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    init(detail: ProfileDetail, onDismiss: (() -> Void)? = nil, onSave: @escaping (ProfileDetail) -> Void) {
+        self.detail = detail
+        self.onDismiss = onDismiss
+        self.onSave = onSave
+        self._label = State(initialValue: detail.label)
+        self._status = State(initialValue: detail.status ?? "idea")
+        self._favouriteBrands = State(initialValue: detail.metadata?["favourite_brands"] ?? "")
+        self._websiteUrl = State(initialValue: detail.metadata?["website_url"] ?? "")
+    }
+
+    private func dismissView() {
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else if let sidePanelDismiss = sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
+                    }
+
+                    Spacer()
+
+                    Text("Edit Gift Idea")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        Task { await saveChanges() }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(label.isBlank || isLoading)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
+                .background(Color.appBackground)
+
+                ZStack {
+                    Color.appBackground.ignoresSafeArea()
+
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            AppTextField(placeholder: "Gift idea", text: $label)
+
+                            // Status picker in a row container
+                            HStack {
+                                Text("Status")
+                                    .font(.appBody)
+                                    .foregroundColor(.textSecondary)
+
+                                Spacer()
+
+                                HStack(spacing: 6) {
+                                    StatusButtonCompact(title: "Idea", isSelected: status == "idea") {
+                                        status = "idea"
+                                    }
+                                    StatusButtonCompact(title: "Bought", isSelected: status == "bought") {
+                                        status = "bought"
+                                    }
+                                    StatusButtonCompact(title: "Given", isSelected: status == "given") {
+                                        status = "given"
+                                    }
+                                }
+                            }
+                            .padding()
+                            .frame(height: AppDimensions.textFieldHeight)
+                            .background(Color.cardBackgroundSoft)
+                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                            )
+
+                            // Favourite brands field
+                            AppTextField(placeholder: "Favourite brands", text: $favouriteBrands)
+
+                            // Website URL field with open button
+                            HStack(spacing: 12) {
+                                AppTextField(placeholder: "Website URL", text: $websiteUrl)
+                                    .textInputAutocapitalization(.never)
+                                    .keyboardType(.URL)
+
+                                Button {
+                                    openWebsite()
+                                } label: {
+                                    Image(systemName: "safari")
+                                        .font(.system(size: 18, weight: .medium))
+                                        .foregroundColor(websiteUrl.isBlank ? .textSecondary : appAccentColor)
+                                        .frame(width: 48, height: 48)
+                                        .background(Color.cardBackgroundSoft)
+                                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                                }
+                                .disabled(websiteUrl.isBlank)
+                            }
+
+                            if let error = errorMessage {
+                                Text(error)
+                                    .font(.appCaption)
+                                    .foregroundColor(.medicalRed)
+                            }
+                        }
+                        .padding(AppDimensions.screenPadding)
+                    }
+                }
+            }
+            .background(Color.appBackground)
+            .navigationBarHidden(true)
+        }
+    }
+
+    private func openWebsite() {
+        var urlString = websiteUrl.trimmingCharacters(in: .whitespaces)
+
+        // Add https:// if no scheme is present
+        if !urlString.lowercased().hasPrefix("http://") && !urlString.lowercased().hasPrefix("https://") {
+            urlString = "https://" + urlString
+        }
+
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func saveChanges() async {
+        guard !label.isBlank else {
+            errorMessage = "Please enter a gift idea"
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        var updatedDetail = detail
+        updatedDetail.label = label
+        updatedDetail.value = label
+        updatedDetail.status = status
+
+        // Build metadata dictionary
+        var metadata: [String: String] = updatedDetail.metadata ?? [:]
+        if !favouriteBrands.isBlank {
+            metadata["favourite_brands"] = favouriteBrands.trimmingCharacters(in: .whitespaces)
+        } else {
+            metadata.removeValue(forKey: "favourite_brands")
+        }
+        if !websiteUrl.isBlank {
+            metadata["website_url"] = websiteUrl.trimmingCharacters(in: .whitespaces)
+        } else {
+            metadata.removeValue(forKey: "website_url")
+        }
+        updatedDetail.metadata = metadata.isEmpty ? nil : metadata
+
+        do {
+            let saved = try await appState.profileRepository.updateProfileDetail(updatedDetail)
+            onSave(saved)
+            NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": detail.profileId])
+            dismissView()
+        } catch {
+            errorMessage = "Failed to save. Please try again."
+        }
+
+        isLoading = false
+    }
+}
+
+// MARK: - Edit Gift Panel Overlay (Full-screen for iPad)
+struct EditGiftPanelOverlay: View {
+    let detail: ProfileDetail
+    let onDismiss: () -> Void
+    let onSave: (ProfileDetail) -> Void
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var offsetX: CGFloat = 680
+    @State private var opacity: Double = 0
+
+    /// Panel width - wider on iPad
+    private var panelWidth: CGFloat {
+        horizontalSizeClass == .regular ? 550 : 350
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack {
+                Spacer()
+
+                EditGiftDetailView(
+                    detail: detail,
+                    onDismiss: onDismiss,
+                    onSave: onSave
+                )
+                .frame(width: panelWidth, height: geometry.size.height - 80)
+                .background(Color.appBackgroundLight)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
+                .offset(x: offsetX)
+                .opacity(opacity)
+                .padding(.top, 40)
+                .padding(.trailing, 20)
+            }
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                offsetX = 0
+                opacity = 1.0
+            }
+        }
     }
 }
 
@@ -830,6 +1249,26 @@ struct StatusButton: View {
                 .padding(.vertical, 12)
                 .background(isSelected ? appAccentColor : Color.cardBackgroundSoft)
                 .cornerRadius(AppDimensions.buttonCornerRadius)
+        }
+    }
+}
+
+// MARK: - Status Button Compact (for Edit Gift modal)
+struct StatusButtonCompact: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.appCaption)
+                .foregroundColor(isSelected ? .black : .textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? appAccentColor : Color.appBackground)
+                .cornerRadius(AppDimensions.pillCornerRadius)
         }
     }
 }
@@ -886,6 +1325,8 @@ struct ProfileDetailRowView: View {
         case .like: return "hand.thumbsup.fill"
         case .dislike: return "hand.thumbsdown.fill"
         case .note: return "note.text"
+        case .hobby: return "heart.circle.fill"
+        case .activityIdea: return "figure.walk"
         }
     }
 
@@ -897,6 +1338,8 @@ struct ProfileDetailRowView: View {
         case .like: return .badgeGreen
         case .dislike: return .textSecondary
         case .note: return .accentYellow
+        case .hobby: return .hobbyOrange
+        case .activityIdea: return .activityGreen
         }
     }
 }
@@ -2345,271 +2788,47 @@ struct SizePickerSheet: View {
     .environmentObject(AppState())
 }
 
-// MARK: - Gift Card Frame Preference Key
-struct GiftCardFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [UUID: CGRect] = [:]
-
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
 // MARK: - Gift Card With Overlay Support
 struct GiftCardWithOverlay: View {
     let detail: ProfileDetail
     let status: GiftItemCard.GiftStatus
     let isActive: Bool
     let onStatusChange: (GiftItemCard.GiftStatus) -> Void
-    let onOptionsPressed: () -> Void
-
-    @Environment(\.appAccentColor) private var appAccentColor
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Gift")
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-
-                Text(detail.label)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-            }
-
-            Spacer()
-
-            // Status badge - tappable to toggle to Bought
-            Button {
-                if status == .idea {
-                    onStatusChange(.bought)
-                }
-            } label: {
-                Text(status.displayName)
-                    .font(.appCaption)
-                    .fontWeight(.medium)
-                    .foregroundColor(status.textColor)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(status.color(accent: appAccentColor))
-                    .cornerRadius(12)
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // Ellipsis button for options overlay
-            Button(action: onOptionsPressed) {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 32, height: 32)
-                    .rotationEffect(.degrees(90))
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .padding(AppDimensions.cardPadding)
-        .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-        .opacity(isActive ? 0 : 1)
-    }
-}
-
-// MARK: - Highlighted Gift Overlay
-struct HighlightedGiftOverlay: View {
-    let detail: ProfileDetail
-    let frame: CGRect
-    let status: GiftItemCard.GiftStatus
-    let onStatusChange: (GiftItemCard.GiftStatus) -> Void
+    let onEdit: () -> Void
     let onDelete: () -> Void
-    let onDismiss: () -> Void
 
     @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var menuScale: CGFloat = 0.8
-    @State private var menuOpacity: Double = 0
 
-    private let menuWidth: CGFloat = 200
-
-    var body: some View {
-        GeometryReader { geometry in
-            let overlayFrame = geometry.frame(in: .global)
-            let panelSize = geometry.size
-            let adaptiveScreenPadding = AppDimensions.screenPadding(for: horizontalSizeClass)
-            let cardWidth = panelSize.width - (adaptiveScreenPadding * 2)
-            // Convert global Y to local Y
-            let localCardMinY = frame.minY - overlayFrame.minY
-            let localCardMaxY = frame.maxY - overlayFrame.minY
-            let localCardY = localCardMinY + frame.height / 2
-            let menuYPosition = calculateMenuYPosition(localCardMinY: localCardMinY, localCardMaxY: localCardMaxY, screenHeight: panelSize.height)
-
-            ZStack(alignment: .topLeading) {
-                // Dark overlay
-                Color.cardBackgroundLight.opacity(0.9)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        onDismiss()
-                    }
-
-                // Highlighted card at captured position
-                HighlightedGiftCard(
-                    detail: detail,
-                    status: status,
-                    onStatusChange: onStatusChange
-                )
-                .frame(width: cardWidth, height: frame.height)
-                .position(
-                    x: panelSize.width / 2,
-                    y: localCardY
-                )
-                .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
-
-                // Options menu
-                VStack(spacing: 0) {
-                    // Mark as Idea
-                    Button(action: {
-                        onStatusChange(.idea)
-                    }) {
-                        HStack {
-                            Image(systemName: "tag")
-                                .font(.system(size: 16))
-                                .foregroundColor(.textPrimary)
-                                .frame(width: 24)
-                            Text("Not bought")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-
-                    Divider()
-                        .background(Color.textSecondary.opacity(0.2))
-
-                    // Mark as Given
-                    Button(action: {
-                        onStatusChange(.given)
-                    }) {
-                        HStack {
-                            Image(systemName: "gift")
-                                .font(.system(size: 16))
-                                .foregroundColor(.textPrimary)
-                                .frame(width: 24)
-                            Text("Given")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-
-                    Divider()
-                        .background(Color.textSecondary.opacity(0.2))
-
-                    // Delete
-                    Button(action: onDelete) {
-                        HStack {
-                            Image(systemName: "trash")
-                                .font(.system(size: 16))
-                                .foregroundColor(.red)
-                                .frame(width: 24)
-                            Text("Delete")
-                                .font(.appBody)
-                                .foregroundColor(.red)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-
-                    Divider()
-                        .background(Color.textSecondary.opacity(0.2))
-
-                    // Cancel
-                    Button(action: onDismiss) {
-                        HStack {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16))
-                                .foregroundColor(.textSecondary)
-                                .frame(width: 24)
-                            Text("Cancel")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-                }
-                .frame(width: menuWidth)
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-                .scaleEffect(menuScale)
-                .opacity(menuOpacity)
-                .position(
-                    x: panelSize.width - menuWidth / 2 - adaptiveScreenPadding,
-                    y: menuYPosition
-                )
-            }
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                menuScale = 1.0
-                menuOpacity = 1.0
-            }
+    private func nextStatus() -> GiftItemCard.GiftStatus {
+        switch status {
+        case .idea: return .bought
+        case .bought: return .given
+        case .given: return .idea
         }
     }
-
-    private func calculateMenuYPosition(localCardMinY: CGFloat, localCardMaxY: CGFloat, screenHeight: CGFloat) -> CGFloat {
-        // Estimate menu height based on number of buttons (4 buttons)
-        let estimatedMenuHeight: CGFloat = 52 * 4
-
-        let menuGap: CGFloat = 12
-        let topSafeArea: CGFloat = 60
-
-        // Try to position above the card first
-        let aboveCardY = localCardMinY - menuGap - (estimatedMenuHeight / 2)
-
-        if aboveCardY - (estimatedMenuHeight / 2) > topSafeArea {
-            return aboveCardY
-        } else {
-            return localCardMaxY + menuGap + (estimatedMenuHeight / 2)
-        }
-    }
-}
-
-// MARK: - Highlighted Gift Card
-struct HighlightedGiftCard: View {
-    let detail: ProfileDetail
-    let status: GiftItemCard.GiftStatus
-    let onStatusChange: (GiftItemCard.GiftStatus) -> Void
-
-    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Gift")
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
+            // Tappable content area for editing
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
 
-                Text(detail.label)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
+
+                    Text(detail.label)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
+                }
+
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onEdit()
             }
 
-            Spacer()
-
-            // Status badge - tappable to toggle to Bought
+            // Status badge - tappable to cycle through Idea → Bought → Given
             Button {
-                if status == .idea {
-                    onStatusChange(.bought)
-                }
+                onStatusChange(nextStatus())
             } label: {
                 Text(status.displayName)
                     .font(.appCaption)
@@ -2622,71 +2841,11 @@ struct HighlightedGiftCard: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // Ellipsis icon
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.textSecondary)
-                .frame(width: 32, height: 32)
-                .rotationEffect(.degrees(90))
-        }
-        .padding(AppDimensions.cardPadding)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .fill(Color.cardBackground)
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .stroke(appAccentColor, lineWidth: 3)
-            }
-        )
-    }
-}
-
-// MARK: - Clothing Card Frame Preference Key
-struct ClothingCardFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [UUID: CGRect] = [:]
-
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
-// MARK: - Clothing Card With Overlay Support
-struct ClothingCardWithOverlay: View {
-    let detail: ProfileDetail
-    let isActive: Bool
-    let onOptionsPressed: () -> Void
-
-    @Environment(\.appAccentColor) private var appAccentColor
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Clothing")
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-
-                Text(detail.label)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-            }
-
-            Spacer()
-
-            // Size value pill
-            Text(detail.value)
-                .font(.appValuePill)
-                .foregroundColor(.textPrimary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.pillCornerRadius)
-
-            // Ellipsis button for options overlay
-            Button(action: onOptionsPressed) {
-                Image(systemName: "ellipsis")
+            // Delete button
+            Button(action: onDelete) {
+                Image(systemName: "trash")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.textSecondary)
-                    .rotationEffect(.degrees(90))
+                    .foregroundColor(.red)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -2699,193 +2858,53 @@ struct ClothingCardWithOverlay: View {
     }
 }
 
-// MARK: - Highlighted Clothing Overlay
-struct HighlightedClothingOverlay: View {
+// MARK: - Clothing Card
+struct ClothingCardWithOverlay: View {
     let detail: ProfileDetail
-    let frame: CGRect
     let onEdit: () -> Void
     let onDelete: () -> Void
-    let onDismiss: () -> Void
 
     @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var menuScale: CGFloat = 0.8
-    @State private var menuOpacity: Double = 0
-
-    private let menuWidth: CGFloat = 200
 
     var body: some View {
-        GeometryReader { geometry in
-            let overlayFrame = geometry.frame(in: .global)
-            let panelSize = geometry.size
-            let adaptiveScreenPadding = AppDimensions.screenPadding(for: horizontalSizeClass)
-            let cardWidth = panelSize.width - (adaptiveScreenPadding * 2)
-            // Convert global Y to local Y
-            let localCardMinY = frame.minY - overlayFrame.minY
-            let localCardMaxY = frame.maxY - overlayFrame.minY
-            let localCardY = localCardMinY + frame.height / 2
-            let menuYPosition = calculateMenuYPosition(localCardMinY: localCardMinY, localCardMaxY: localCardMaxY, screenHeight: panelSize.height)
+        Button(action: onEdit) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Clothing")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
 
-            ZStack(alignment: .topLeading) {
-                // Dark overlay
-                Color.cardBackgroundLight.opacity(0.9)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        onDismiss()
-                    }
-
-                // Highlighted card at captured position
-                HighlightedClothingCard(detail: detail)
-                    .frame(width: cardWidth, height: frame.height)
-                    .position(
-                        x: panelSize.width / 2,
-                        y: localCardY
-                    )
-                    .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
-
-                // Options menu
-                VStack(spacing: 0) {
-                    // Edit
-                    Button(action: onEdit) {
-                        HStack {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 16))
-                                .foregroundColor(.textPrimary)
-                                .frame(width: 24)
-                            Text("Edit")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-
-                    Divider()
-                        .background(Color.textSecondary.opacity(0.2))
-
-                    // Delete
-                    Button(action: onDelete) {
-                        HStack {
-                            Image(systemName: "trash")
-                                .font(.system(size: 16))
-                                .foregroundColor(.red)
-                                .frame(width: 24)
-                            Text("Delete")
-                                .font(.appBody)
-                                .foregroundColor(.red)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-
-                    Divider()
-                        .background(Color.textSecondary.opacity(0.2))
-
-                    // Cancel
-                    Button(action: onDismiss) {
-                        HStack {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16))
-                                .foregroundColor(.textSecondary)
-                                .frame(width: 24)
-                            Text("Cancel")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
+                    Text(detail.label)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
                 }
-                .frame(width: menuWidth)
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-                .scaleEffect(menuScale)
-                .opacity(menuOpacity)
-                .position(
-                    x: panelSize.width - menuWidth / 2 - adaptiveScreenPadding,
-                    y: menuYPosition
-                )
-            }
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                menuScale = 1.0
-                menuOpacity = 1.0
-            }
-        }
-    }
 
-    private func calculateMenuYPosition(localCardMinY: CGFloat, localCardMaxY: CGFloat, screenHeight: CGFloat) -> CGFloat {
-        // Estimate menu height based on number of buttons (3 buttons)
-        let estimatedMenuHeight: CGFloat = 52 * 3
+                Spacer()
 
-        let menuGap: CGFloat = 12
-        let topSafeArea: CGFloat = 60
-
-        // Try to position above the card first
-        let aboveCardY = localCardMinY - menuGap - (estimatedMenuHeight / 2)
-
-        if aboveCardY - (estimatedMenuHeight / 2) > topSafeArea {
-            return aboveCardY
-        } else {
-            return localCardMaxY + menuGap + (estimatedMenuHeight / 2)
-        }
-    }
-}
-
-// MARK: - Highlighted Clothing Card
-struct HighlightedClothingCard: View {
-    let detail: ProfileDetail
-
-    @Environment(\.appAccentColor) private var appAccentColor
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Clothing")
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-
-                Text(detail.label)
-                    .font(.appCardTitle)
+                // Size value pill
+                Text(detail.value)
+                    .font(.appValuePill)
                     .foregroundColor(.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.pillCornerRadius)
+
+                // Delete button
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16))
+                        .foregroundColor(.medicalRed)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-
-            Spacer()
-
-            // Size value pill
-            Text(detail.value)
-                .font(.appValuePill)
-                .foregroundColor(.textPrimary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.pillCornerRadius)
-
-            // Ellipsis icon
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.textSecondary)
-                .rotationEffect(.degrees(90))
-                .frame(width: 44, height: 44)
+            .padding(AppDimensions.cardPadding)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
         }
-        .padding(AppDimensions.cardPadding)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .fill(Color.cardBackground)
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .stroke(appAccentColor, lineWidth: 3)
-            }
-        )
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

@@ -17,6 +17,12 @@ class ToDoListsViewModel: ObservableObject {
     private var repository: ToDoRepositoryProtocol?
     private var accountId: UUID?
 
+    /// Unique types derived from existing lists (for filtering)
+    var availableFilterTypes: [String] {
+        let types = lists.compactMap { $0.listType }
+        return Array(Set(types)).sorted()
+    }
+
     func loadData(appState: AppState) async {
         guard let accountId = appState.currentAccount?.id else { return }
         self.accountId = accountId

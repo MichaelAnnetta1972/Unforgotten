@@ -18,7 +18,7 @@ struct StickyReminderDetailView: View {
 
     var body: some View {
         ZStack {
-            Color.appBackgroundLight.ignoresSafeArea()
+            Color.appBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Title bar with close button
@@ -94,7 +94,7 @@ struct StickyReminderDetailView: View {
         }
         .padding(.horizontal, AppDimensions.screenPadding)
         .padding(.vertical, 12)
-        .background(Color.appBackgroundLight)
+        .background(Color.appBackground)
     }
 
     // MARK: - Status Card

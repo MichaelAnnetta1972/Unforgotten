@@ -77,16 +77,16 @@ struct NotesListView: View {
 
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
-                    // Search bar
-                    if !allNotes.isEmpty {
+                    // Search bar - only show if there are notes for this account
+                    if accountNoteCount > 0 {
                         searchBar
                     }
 
-                    if allNotes.isEmpty {
-                        // Empty state
+                    if accountNoteCount == 0 {
+                        // Empty state - no notes for this account
                         EmptyStateView(
                             icon: "note.text",
-                            title: "No Notes Yet",
+                            title: "No Notes",
                             message: "Create notes with themes for different occasions",
                             buttonTitle: "Create Note",
                             buttonAction: {
@@ -104,7 +104,7 @@ struct NotesListView: View {
                         )
                         .padding(.top, 40)
                     } else if displayedNotes.isEmpty {
-                        // No search results
+                        // No search results (has notes but filtered/searched to nothing)
                         VStack(spacing: 12) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 40))
@@ -382,8 +382,6 @@ struct NoteListCard: View {
     var onDelete: () -> Void = {}
     var onTogglePin: () -> Void = {}
 
-    @State private var showOptions = false
-
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .top, spacing: 16) {
@@ -414,13 +412,6 @@ struct NoteListCard: View {
                             .multilineTextAlignment(.leading)
                     }
 
-                    // Content preview or placeholder
-                    //Text(note.contentPlainText.isEmpty ? "No content" : note.previewContent)
-                      //  .font(.appCaption)
-                      //  .foregroundColor(.textSecondary)
-                      //  .italic(note.contentPlainText.isEmpty)
-                      //  .lineLimit(0)
-
                     Text(note.formattedDate)
                         .font(.system(size: 12))
                         .foregroundColor(.textSecondary.opacity(0.7))
@@ -428,33 +419,38 @@ struct NoteListCard: View {
 
                 Spacer()
 
-                // Options button (vertical dots)
-                Button {
-                    showOptions = true
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .rotationEffect(.degrees(90))
-                        .font(.system(size: 16))
-                        .foregroundColor(.textSecondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                // Action buttons
+                HStack(spacing: 8) {
+                    // Pin/Unpin button
+                    Button {
+                        onTogglePin()
+                    } label: {
+                        Image(systemName: note.isPinned ? "pin.slash.fill" : "pin.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(note.isPinned ? note.noteTheme.accentColor : .textSecondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    // Delete button
+                    Button {
+                        onDelete()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 16))
+                            .foregroundColor(.badgeRed)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(PlainButtonStyle())
             }
             .padding(AppDimensions.cardPadding)
             .background(Color.cardBackground)
             .cornerRadius(AppDimensions.cardCornerRadius)
         }
-        .buttonStyle(PlainButtonStyle())
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button(note.isPinned ? "Unpin" : "Pin to Top") {
-                onTogglePin()
-            }
-            Button("Delete", role: .destructive) {
-                onDelete()
-            }
-            Button("Cancel", role: .cancel) { }
-        }
+        .buttonStyle(.plain)
     }
 }
 

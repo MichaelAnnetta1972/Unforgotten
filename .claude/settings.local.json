@@ -31,7 +31,14 @@
       "Skill(frontend-design:frontend-design)",
       "Bash(ffprobe:*)",
       "Bash(mdls:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(node --check:*)",
+      "Bash(pkill:*)",
+      "Bash(swift -typecheck:*)",
+      "Bash(/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild:*)",
+      "Bash(swift build:*)",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

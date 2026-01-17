@@ -4,61 +4,71 @@ import SwiftUI
 struct AdminPanelView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
     @StateObject private var viewModel = AdminPanelViewModel()
     @State private var searchText = ""
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        VStack(spacing: 0) {
+            // Custom header with Done button
+            HStack {
+                Text("Admin Panel")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
 
-                VStack(spacing: 0) {
-                    // Search bar
-                    searchBar
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                        .padding(.vertical, 12)
+                Spacer()
 
-                    if viewModel.isLoading {
-                        Spacer()
-                        ProgressView()
-                            .tint(appAccentColor)
-                        Spacer()
-                    } else if filteredUsers.isEmpty {
-                        Spacer()
-                        EmptyStateView(
-                            icon: "person.2.slash",
-                            title: "No users found",
-                            message: searchText.isEmpty ? "No users in the system yet" : "No users match your search"
-                        )
-                        Spacer()
-                    } else {
-                        userList
-                    }
+                Button("Done") {
+                    dismissView()
                 }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
             }
-            .navigationTitle("Admin Panel")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(appAccentColor)
-                }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            // Search bar
+            searchBar
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 12)
+
+            if viewModel.isLoading {
+                Spacer()
+                ProgressView()
+                    .tint(appAccentColor)
+                Spacer()
+            } else if filteredUsers.isEmpty {
+                Spacer()
+                EmptyStateView(
+                    icon: "person.2.slash",
+                    title: "No users found",
+                    message: searchText.isEmpty ? "No users in the system yet" : "No users match your search"
+                )
+                Spacer()
+            } else {
+                userList
             }
-            .task {
-                await viewModel.loadUsers(appState: appState)
-            }
-            .refreshable {
-                await viewModel.loadUsers(appState: appState)
-            }
-            .alert("Error", isPresented: $viewModel.showError) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(viewModel.errorMessage ?? "An error occurred")
-            }
+        }
+        .background(Color.appBackground)
+        .task {
+            await viewModel.loadUsers(appState: appState)
+        }
+        .alert("Error", isPresented: $viewModel.showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.errorMessage ?? "An error occurred")
         }
     }
 

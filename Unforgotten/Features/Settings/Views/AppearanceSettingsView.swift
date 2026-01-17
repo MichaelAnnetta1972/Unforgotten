@@ -4,6 +4,7 @@ import PhotosUI
 // MARK: - Appearance Settings View
 struct AppearanceSettingsView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(UserPreferences.self) private var userPreferences
     @Environment(UserHeaderOverrides.self) private var headerOverrides
     @Environment(HeaderStyleManager.self) private var headerStyleManager
@@ -17,57 +18,71 @@ struct AppearanceSettingsView: View {
         }
     }
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        VStack(spacing: 0) {
+            // Custom header with Done button
+            HStack {
+                Text("Appearance")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        VStack(spacing: 8) {
-                            Image(systemName: "paintpalette.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(effectiveAccentColor)
+                Spacer()
 
-                            Text("Appearance")
-                                .font(.appLargeTitle)
-                                .foregroundColor(.textPrimary)
-
-                            Text("Personalize how Unforgotten looks")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                        }
-                        .padding(.top, 24)
-
-                        // Header Style Section
-                        HeaderStylePicker()
-                            .padding(.horizontal, AppDimensions.screenPadding)
-
-                        // Accent Color Section
-                        AccentColorPickerWithReset()
-                            .padding(.horizontal, AppDimensions.screenPadding)
-
-                        // Custom Headers Section
-                        CustomHeadersSection()
-                            .padding(.horizontal, AppDimensions.screenPadding)
-
-                        Spacer()
-                            .frame(height: 40)
-                    }
+                Button("Done") {
+                    dismissView()
                 }
+                .font(.appBody)
+                .foregroundColor(effectiveAccentColor)
             }
-            .navigationTitle("Appearance")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Image(systemName: "paintpalette.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(effectiveAccentColor)
+
+                        Text("Appearance")
+                            .font(.appLargeTitle)
+                            .foregroundColor(.textPrimary)
+
+                        Text("Personalize how Unforgotten looks")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
                     }
-                    .foregroundColor(effectiveAccentColor)
+                    .padding(.top, 24)
+
+                    // Header Style Section
+                    HeaderStylePicker()
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
+                    // Accent Color Section
+                    AccentColorPickerWithReset()
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
+                    // Custom Headers Section
+                    CustomHeadersSection()
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
+                    Spacer()
+                        .frame(height: 40)
                 }
             }
         }
+        .background(Color.appBackground)
     }
 }
 
@@ -171,59 +186,114 @@ struct AccentColorPickerWithReset: View {
 
 // MARK: - Custom Headers Section
 struct CustomHeadersSection: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.appAccentColor) private var appAccentColor
     @Environment(UserPreferences.self) private var userPreferences
     @Environment(UserHeaderOverrides.self) private var headerOverrides
     @State private var showClearAllConfirm = false
+    @State private var showUpgradeSheet = false
+
+    /// Check if user can use custom headers (Premium or Family Plus)
+    private var canUseCustomHeaders: Bool {
+        PremiumLimitsManager.shared.canUseCustomHeaderImages(appState: appState)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Section header
-            Text("Custom Header Images")
-                .font(.appCardTitle)
-                .foregroundColor(.textPrimary)
+            // Section header with Premium badge if needed
+            HStack {
+                Text("Custom Header Images")
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
 
-            Text("Tap the camera icon on any page header to set a custom background image")
-                .font(.appCaption)
-                .foregroundColor(.textSecondary)
-
-            // List of pages with custom headers
-            if !headerOverrides.pagesWithCustomHeaders.isEmpty {
-                VStack(spacing: 12) {
-                    ForEach(headerOverrides.pagesWithCustomHeaders) { page in
-                        CustomHeaderRow(page: page)
-                    }
+                if !canUseCustomHeaders {
+                    Text("Premium")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(appAccentColor)
+                        .cornerRadius(8)
                 }
-            } else {
-                HStack {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 24))
-                        .foregroundColor(.textSecondary)
-
-                    Text("No custom headers set")
-                        .font(.appBody)
-                        .foregroundColor(.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.smallCornerRadius)
             }
 
-            // Clear all button (only show if there are custom headers)
-            if !headerOverrides.pagesWithCustomHeaders.isEmpty {
-                Button {
-                    showClearAllConfirm = true
-                } label: {
-                    HStack {
-                        Image(systemName: "trash")
-                        Text("Clear All Custom Headers")
+            if canUseCustomHeaders {
+                // Full feature access for Premium+ users
+                Text("Tap the camera icon on any page header to set a custom background image")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                // List of pages with custom headers
+                if !headerOverrides.pagesWithCustomHeaders.isEmpty {
+                    VStack(spacing: 12) {
+                        ForEach(headerOverrides.pagesWithCustomHeaders) { page in
+                            CustomHeaderRow(page: page)
+                        }
                     }
-                    .font(.appBody)
-                    .foregroundColor(.medicalRed)
+                } else {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 24))
+                            .foregroundColor(.textSecondary)
+
+                        Text("No custom headers set")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                    }
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(Color.cardBackgroundSoft)
                     .cornerRadius(AppDimensions.smallCornerRadius)
+                }
+
+                // Clear all button (only show if there are custom headers)
+                if !headerOverrides.pagesWithCustomHeaders.isEmpty {
+                    Button {
+                        showClearAllConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("Clear All Custom Headers")
+                        }
+                        .font(.appBody)
+                        .foregroundColor(.medicalRed)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.smallCornerRadius)
+                    }
+                }
+            } else {
+                // Locked state for free users
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 24))
+                            .foregroundColor(.textSecondary)
+
+                        Text("Add your own photos to page headers")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.smallCornerRadius)
+
+                    Button {
+                        showUpgradeSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "crown.fill")
+                            Text("Upgrade to Premium")
+                        }
+                        .font(.appBodyMedium)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(appAccentColor)
+                        .cornerRadius(AppDimensions.smallCornerRadius)
+                    }
                 }
             }
         }
@@ -241,6 +311,9 @@ struct CustomHeadersSection: View {
             }
         } message: {
             Text("This will remove all custom header images and restore the defaults.")
+        }
+        .sheet(isPresented: $showUpgradeSheet) {
+            UpgradeView()
         }
     }
 }

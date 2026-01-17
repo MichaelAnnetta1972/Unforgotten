@@ -242,7 +242,7 @@ final class NotificationService: NSObject {
 
     // MARK: - Birthday Reminders
 
-    /// Schedule a birthday reminder for the day before
+    /// Schedule birthday reminders (day before and day of)
     func scheduleBirthdayReminder(
         profileId: UUID,
         name: String,
@@ -257,56 +257,267 @@ final class NotificationService: NSObject {
             return
         }
 
-        let content = UNMutableNotificationContent()
-        content.title = "Birthday Tomorrow!"
-        content.body = "\(name)'s birthday is tomorrow. Don't forget!"
-        content.sound = .default
-        content.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
-        content.userInfo = ["profileId": profileId.uuidString]
+        let calendar = Calendar.current
+
+        // MARK: Day Before Notification
+        let dayBeforeContent = UNMutableNotificationContent()
+        dayBeforeContent.title = "Birthday Tomorrow!"
+        dayBeforeContent.body = "\(name)'s birthday is tomorrow. Don't forget!"
+        dayBeforeContent.sound = .default
+        dayBeforeContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
+        dayBeforeContent.userInfo = ["profileId": profileId.uuidString]
 
         // Schedule for 9am the day before the birthday
-        let calendar = Calendar.current
-        var components = calendar.dateComponents([.month, .day], from: birthday)
-        components.hour = 9
-        components.minute = 0
+        var dayBeforeComponents = calendar.dateComponents([.month, .day], from: birthday)
+        dayBeforeComponents.hour = 9
+        dayBeforeComponents.minute = 0
 
         // Adjust to day before
-        if let day = components.day {
-            components.day = day - 1
-            if components.day == 0 {
+        if let day = dayBeforeComponents.day {
+            dayBeforeComponents.day = day - 1
+            if dayBeforeComponents.day == 0 {
                 // Handle month boundary
-                if let month = components.month {
-                    components.month = month - 1
-                    if components.month == 0 {
-                        components.month = 12
+                if let month = dayBeforeComponents.month {
+                    dayBeforeComponents.month = month - 1
+                    if dayBeforeComponents.month == 0 {
+                        dayBeforeComponents.month = 12
                     }
                     // Set to last day of previous month
-                    components.day = calendar.range(of: .day, in: .month, for: birthday)?.count ?? 28
+                    dayBeforeComponents.day = calendar.range(of: .day, in: .month, for: birthday)?.count ?? 28
                 }
             }
         }
 
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-
-        let identifier = "birthday-\(profileId.uuidString)"
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        let dayBeforeTrigger = UNCalendarNotificationTrigger(dateMatching: dayBeforeComponents, repeats: true)
+        let dayBeforeIdentifier = "birthday-daybefore-\(profileId.uuidString)"
+        let dayBeforeRequest = UNNotificationRequest(identifier: dayBeforeIdentifier, content: dayBeforeContent, trigger: dayBeforeTrigger)
 
         do {
-            try await notificationCenter.add(request)
+            try await notificationCenter.add(dayBeforeRequest)
             #if DEBUG
             print("📱 Scheduled birthday reminder for \(name) (day before birthday)")
             #endif
         } catch {
             #if DEBUG
-            print("Failed to schedule birthday reminder: \(error)")
+            print("Failed to schedule day-before birthday reminder: \(error)")
+            #endif
+        }
+
+        // MARK: Day Of Notification
+        let dayOfContent = UNMutableNotificationContent()
+        dayOfContent.title = "Happy Birthday!"
+        dayOfContent.body = "Today is \(name)'s birthday! 🎂"
+        dayOfContent.sound = .default
+        dayOfContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
+        dayOfContent.userInfo = ["profileId": profileId.uuidString]
+
+        // Schedule for 9am on the birthday
+        var dayOfComponents = calendar.dateComponents([.month, .day], from: birthday)
+        dayOfComponents.hour = 9
+        dayOfComponents.minute = 0
+
+        let dayOfTrigger = UNCalendarNotificationTrigger(dateMatching: dayOfComponents, repeats: true)
+        let dayOfIdentifier = "birthday-dayof-\(profileId.uuidString)"
+        let dayOfRequest = UNNotificationRequest(identifier: dayOfIdentifier, content: dayOfContent, trigger: dayOfTrigger)
+
+        do {
+            try await notificationCenter.add(dayOfRequest)
+            #if DEBUG
+            print("📱 Scheduled birthday reminder for \(name) (day of birthday)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("Failed to schedule day-of birthday reminder: \(error)")
             #endif
         }
     }
 
-    /// Cancel birthday reminder
+    /// Cancel birthday reminders
     func cancelBirthdayReminder(profileId: UUID) {
-        let identifier = "birthday-\(profileId.uuidString)"
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier])
+        let identifiers = [
+            "birthday-daybefore-\(profileId.uuidString)",
+            "birthday-dayof-\(profileId.uuidString)"
+        ]
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
+    // MARK: - Countdown Reminders
+
+    /// Schedule countdown reminders (advance reminder if set, plus day-of notification)
+    func scheduleCountdownReminder(
+        countdownId: UUID,
+        title: String,
+        countdownDate: Date,
+        reminderMinutesBefore: Int,
+        isRecurring: Bool
+    ) async {
+        // Check permission first
+        let status = await checkPermissionStatus()
+        guard status == .authorized else {
+            #if DEBUG
+            print("📱 Notifications not authorized, skipping countdown reminder")
+            #endif
+            return
+        }
+
+        let calendar = Calendar.current
+
+        // MARK: Advance Reminder (if not "On the day")
+        if reminderMinutesBefore > 0 {
+            let advanceContent = UNMutableNotificationContent()
+            advanceContent.title = "Upcoming Event"
+
+            // Create descriptive body based on reminder offset
+            let daysUntil = reminderMinutesBefore / 1440
+            if daysUntil == 1 {
+                advanceContent.body = "\(title) is tomorrow!"
+            } else if daysUntil > 1 {
+                advanceContent.body = "\(title) is in \(daysUntil) days"
+            } else {
+                advanceContent.body = title
+            }
+
+            advanceContent.sound = .default
+            advanceContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
+            advanceContent.userInfo = ["countdownId": countdownId.uuidString]
+
+            if isRecurring {
+                // For recurring events, use calendar trigger with month/day
+                var components = calendar.dateComponents([.month, .day], from: countdownDate)
+
+                let daysBefore = reminderMinutesBefore / 1440
+                if let day = components.day {
+                    components.day = day - daysBefore
+                    // Handle month boundary
+                    if let newDay = components.day, newDay <= 0 {
+                        // Need to go to previous month
+                        if let month = components.month {
+                            components.month = month - 1
+                            if components.month == 0 {
+                                components.month = 12
+                            }
+                            // Get days in previous month
+                            if let prevMonthDate = calendar.date(from: DateComponents(year: calendar.component(.year, from: countdownDate), month: components.month)),
+                               let daysInPrevMonth = calendar.range(of: .day, in: .month, for: prevMonthDate)?.count {
+                                components.day = daysInPrevMonth + newDay
+                            } else {
+                                components.day = 28 + newDay // Fallback
+                            }
+                        }
+                    }
+                }
+                components.hour = 9
+                components.minute = 0
+
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                let identifier = "countdown-advance-\(countdownId.uuidString)"
+                let request = UNNotificationRequest(identifier: identifier, content: advanceContent, trigger: trigger)
+
+                do {
+                    try await notificationCenter.add(request)
+                    #if DEBUG
+                    print("📱 Scheduled recurring advance countdown reminder for '\(title)'")
+                    #endif
+                } catch {
+                    #if DEBUG
+                    print("Failed to schedule advance countdown reminder: \(error)")
+                    #endif
+                }
+            } else {
+                // One-time countdown advance reminder
+                let startOfEventDay = calendar.startOfDay(for: countdownDate)
+                let reminderDate = startOfEventDay.addingTimeInterval(-Double(reminderMinutesBefore * 60))
+
+                if reminderDate > Date() {
+                    let trigger = UNTimeIntervalNotificationTrigger(
+                        timeInterval: reminderDate.timeIntervalSinceNow,
+                        repeats: false
+                    )
+
+                    let identifier = "countdown-advance-\(countdownId.uuidString)"
+                    let request = UNNotificationRequest(identifier: identifier, content: advanceContent, trigger: trigger)
+
+                    do {
+                        try await notificationCenter.add(request)
+                        #if DEBUG
+                        print("📱 Scheduled one-time advance countdown reminder for '\(title)' at \(reminderDate)")
+                        #endif
+                    } catch {
+                        #if DEBUG
+                        print("Failed to schedule advance countdown reminder: \(error)")
+                        #endif
+                    }
+                }
+            }
+        }
+
+        // MARK: Day-Of Notification (always scheduled)
+        let dayOfContent = UNMutableNotificationContent()
+        dayOfContent.title = "Today's Event"
+        dayOfContent.body = "\(title) is today!"
+        dayOfContent.sound = .default
+        dayOfContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
+        dayOfContent.userInfo = ["countdownId": countdownId.uuidString]
+
+        if isRecurring {
+            // Schedule for 9am on the event day, repeating yearly
+            var dayOfComponents = calendar.dateComponents([.month, .day], from: countdownDate)
+            dayOfComponents.hour = 9
+            dayOfComponents.minute = 0
+
+            let dayOfTrigger = UNCalendarNotificationTrigger(dateMatching: dayOfComponents, repeats: true)
+            let dayOfIdentifier = "countdown-dayof-\(countdownId.uuidString)"
+            let dayOfRequest = UNNotificationRequest(identifier: dayOfIdentifier, content: dayOfContent, trigger: dayOfTrigger)
+
+            do {
+                try await notificationCenter.add(dayOfRequest)
+                #if DEBUG
+                print("📱 Scheduled recurring day-of countdown reminder for '\(title)'")
+                #endif
+            } catch {
+                #if DEBUG
+                print("Failed to schedule day-of countdown reminder: \(error)")
+                #endif
+            }
+        } else {
+            // One-time day-of notification at 9am
+            var dayOfComponents = calendar.dateComponents([.year, .month, .day], from: countdownDate)
+            dayOfComponents.hour = 9
+            dayOfComponents.minute = 0
+
+            if let dayOfDate = calendar.date(from: dayOfComponents), dayOfDate > Date() {
+                let trigger = UNTimeIntervalNotificationTrigger(
+                    timeInterval: dayOfDate.timeIntervalSinceNow,
+                    repeats: false
+                )
+
+                let dayOfIdentifier = "countdown-dayof-\(countdownId.uuidString)"
+                let dayOfRequest = UNNotificationRequest(identifier: dayOfIdentifier, content: dayOfContent, trigger: trigger)
+
+                do {
+                    try await notificationCenter.add(dayOfRequest)
+                    #if DEBUG
+                    print("📱 Scheduled one-time day-of countdown reminder for '\(title)' at \(dayOfDate)")
+                    #endif
+                } catch {
+                    #if DEBUG
+                    print("Failed to schedule day-of countdown reminder: \(error)")
+                    #endif
+                }
+            }
+        }
+    }
+
+    /// Cancel countdown reminders (both advance and day-of)
+    func cancelCountdownReminder(countdownId: UUID) async {
+        let identifiers = [
+            "countdown-advance-\(countdownId.uuidString)",
+            "countdown-dayof-\(countdownId.uuidString)"
+        ]
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
+        #if DEBUG
+        print("📱 Cancelled countdown reminders for \(countdownId)")
+        #endif
     }
 
     // MARK: - Sticky Reminders

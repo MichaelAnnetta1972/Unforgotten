@@ -659,7 +659,7 @@ struct iPadProfileDetailPane: View {
                 showEditProfile = true
             }
         } label: {
-            Label("Edit Profile", systemImage: "pencil")
+            Label("Edit Profile", systemImage: "square.and.pencil")
                 .font(.appButtonText)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)

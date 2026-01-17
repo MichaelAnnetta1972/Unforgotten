@@ -6,6 +6,7 @@ struct MedicationListView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.navigateToRoot) var navigateToRoot
     @Environment(\.iPadHomeAction) private var iPadHomeAction
+    @Environment(\.iPadAddMedicationAction) private var iPadAddMedicationAction
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = MedicationListViewModel()
     @State private var showAddMedication = false
@@ -32,7 +33,8 @@ struct MedicationListView: View {
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
         }
-        .sidePanel(isPresented: $showAddMedication) {
+        // Only show sidePanel on iPhone - iPad handles this at iPadRootView level
+        .sidePanel(isPresented: iPadHomeAction == nil ? $showAddMedication : .constant(false)) {
             AddMedicationView(
                 onDismiss: { showAddMedication = false }
             ) { _ in
@@ -105,10 +107,16 @@ struct MedicationListView: View {
                         homeAction: iPadHomeAction,
                         showAddButton: canEdit,
                         addAction: canEdit ? {
-                            if canAddMedication {
-                                showAddMedication = true
+                            // On iPad, use the environment action to trigger the root-level panel
+                            if let iPadAddAction = iPadAddMedicationAction {
+                                iPadAddAction()
                             } else {
-                                showUpgradePrompt = true
+                                // On iPhone, use local state
+                                if canAddMedication {
+                                    showAddMedication = true
+                                } else {
+                                    showUpgradePrompt = true
+                                }
                             }
                         } : nil
                     )
@@ -166,10 +174,16 @@ struct MedicationListView: View {
                             message: "Add medications to track schedules and reminders",
                             buttonTitle: "Add Medication",
                             buttonAction: {
-                                if canAddMedication {
-                                    showAddMedication = true
+                                // On iPad, use the environment action to trigger the root-level panel
+                                if let iPadAddAction = iPadAddMedicationAction {
+                                    iPadAddAction()
                                 } else {
-                                    showUpgradePrompt = true
+                                    // On iPhone, use local state
+                                    if canAddMedication {
+                                        showAddMedication = true
+                                    } else {
+                                        showUpgradePrompt = true
+                                    }
                                 }
                             }
                         )
@@ -264,7 +278,7 @@ struct MedicationListRow: View {
 
     /// Adaptive thumbnail size: larger on iPad
     private var thumbnailSize: CGFloat {
-        horizontalSizeClass == .regular ? 60 : 50
+        horizontalSizeClass == .regular ? 52 : 44
     }
 
     var body: some View {
@@ -485,7 +499,7 @@ struct ReorderableMedicationRow: View {
             Image(systemName: "pills.fill")
                 .font(.title3)
                 .foregroundColor(medication.isPaused ? .textSecondary : .medicalRed)
-                .frame(width: 40)
+                .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(medication.displayName)
@@ -912,12 +926,13 @@ struct MedicationCalendarView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // Header scrolls with content
-                HeaderImageView(
-                    imageName: "header-medications",
+                // Header scrolls with content - uses style-based assets from HeaderStyleManager
+                CustomizableHeaderView(
+                    pageIdentifier: .medications,
                     title: "Medicine Calendar",
                     showBackButton: true,
-                    backAction: { dismiss() }
+                    backAction: { dismiss() },
+                    showCustomizeButton: false
                 )
 
                 // Content
@@ -997,7 +1012,7 @@ struct MedicationCalendarView: View {
                     medications: viewModel.medications,
                     futureScheduledItems: viewModel.isFutureDate(date) ? viewModel.getScheduledMedicationsForDate(date) : []
                 )
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
         }
@@ -1064,7 +1079,7 @@ struct MonthNavigationHeader: View {
             Button(action: onPreviousMonth) {
                 Image(systemName: "chevron.left")
                     .font(.title3)
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(.accentColor)
                     .frame(width: 44, height: 44)
             }
 
@@ -1080,10 +1095,10 @@ struct MonthNavigationHeader: View {
                 Button(action: onToday) {
                     Text("Today")
                         .font(.appCaption)
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(.accentColor)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Color.accentYellow.opacity(0.2))
+                        .background(Color.accentColor.opacity(0.2))
                         .cornerRadius(AppDimensions.pillCornerRadius)
                 }
             }
@@ -1091,7 +1106,7 @@ struct MonthNavigationHeader: View {
             Button(action: onNextMonth) {
                 Image(systemName: "chevron.right")
                     .font(.title3)
-                    .foregroundColor(isCurrentMonth ? .textSecondary.opacity(0.3) : .accentYellow)
+                    .foregroundColor(isCurrentMonth ? .textSecondary.opacity(0.3) : .accentColor)
                     .frame(width: 44, height: 44)
             }
             .disabled(isCurrentMonth)
@@ -1138,7 +1153,7 @@ struct FilterChip: View {
                 .foregroundColor(isSelected ? .black : .textPrimary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(isSelected ? Color.accentYellow : Color.cardBackgroundSoft)
+                .background(isSelected ? Color.accentColor : Color.cardBackgroundSoft)
                 .cornerRadius(AppDimensions.pillCornerRadius)
         }
     }
@@ -2828,6 +2843,9 @@ struct EditMedicationView: View {
                 medicationId: medication.id,
                 accountId: account.id
             )
+
+            // Notify other views that medications have changed
+            NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
 
             onSave(savedMedication)
             dismissView()

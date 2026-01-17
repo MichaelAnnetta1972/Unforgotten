@@ -6,16 +6,17 @@
 /* CSS Custom Properties */
 :root {
     /* Colors - Warm, inviting palette */
-    --color-bg: #FFFBF7;
-    --color-bg-warm: #FFF8F0;
-    --color-bg-cream: #FEF6ED;
+    --color-bg: #292929;
+    --color-bg-warm: #675a4c;
+    --ccreamolor-bg-: #776c5f;
     --color-bg-soft: #F9F5F0;
-    --color-bg-dark: #1A1612;
-    --color-bg-dark-soft: #2A2520;
+    --color-bg-dark: #252422;
+    --color-bg-dark-soft: #3e3937;
+    --color-bg-dark-lavender: #5c5068;
 
-    --color-text: #1A1612;
-    --color-text-soft: #5A524A;
-    --color-text-muted: #8A827A;
+    --color-text: #cccccc;
+    --color-text-soft: #d6d6d6;
+    --color-text-muted: #a9a6a4;
     --color-text-light: #FFFBF7;
 
     /* Primary accent - warm amber/gold from app's yellow */
@@ -200,7 +201,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .nav.scrolled {
-    background: rgba(255, 251, 247, 0.95);
+    background: rgba(29, 29, 28, 0.95);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     box-shadow: var(--shadow-soft);
@@ -242,6 +243,13 @@ h1, h2, h3, h4, h5, h6 {
     object-fit: contain;
 }
 
+.logo-img-footer {
+    height: 60px;
+    width: auto;
+    object-fit: contain;
+}
+
+
 @media (min-width: 768px) {
     .logo-img {
         height: 40px;
@@ -274,7 +282,7 @@ h1, h2, h3, h4, h5, h6 {
 .nav-cta {
     display: none;
     padding: var(--space-sm) var(--space-lg);
-    background: var(--color-text);
+    background: var(--color-accent);
     color: var(--color-text-light);
     font-size: 0.9375rem;
     font-weight: 600;
@@ -289,7 +297,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .nav-cta:hover {
-    background: var(--color-accent);
+    background: var(--color-accent-dark);
     transform: translateY(-1px);
 }
 
@@ -801,12 +809,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-primary {
-    background: var(--color-text);
+    background: var(--color-accent);
     color: var(--color-text-light);
 }
 
 .btn-primary:hover {
-    background: var(--color-accent);
+    background: var(--color-accent-dark);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
 }
@@ -828,24 +836,23 @@ h1, h2, h3, h4, h5, h6 {
 
 .problem-section {
     padding: var(--space-5xl) 0;
-    background: var(--color-bg-warm);
+    background: var(--color-bg-dark-soft);
 }
 
 .problem-grid {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-3xl);
-    align-items: center;
 }
 
-@media (min-width: 1024px) {
-    .problem-grid {
-        grid-template-columns: 1.2fr 1fr;
-    }
+.problem-text {
+    text-align: center;
+    max-width: 700px;
+    margin: 0 auto;
 }
 
 .problem-text .section-title {
-    max-width: 500px;
+    max-width: none;
 }
 
 .problem-stats {
@@ -865,7 +872,7 @@ h1, h2, h3, h4, h5, h6 {
 .stat-number {
     display: block;
     font-family: var(--font-display);
-    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-size: clamp(1.4rem, 3vw, 2rem);
     font-weight: 500;
     color: var(--color-accent);
     line-height: 1;
@@ -873,9 +880,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .stat-label {
-    font-size: 0.8125rem;
+    font-size: 1rem;
     color: var(--color-text-muted);
-    line-height: 1.4;
+    line-height: 1.2;
 }
 
 /* ========================================
@@ -906,7 +913,14 @@ h1, h2, h3, h4, h5, h6 {
 
 .feature-card {
     padding: var(--space-xl);
-    background: var(--color-bg-soft);
+    background: var(--color-bg-dark-soft);
+    border-radius: var(--radius-lg);
+    transition: var(--transition-base);
+}
+
+.feature-card-dark{
+    padding: var(--space-xl);
+    background: var(--color-bg-dark-lavender);
     border-radius: var(--radius-lg);
     transition: var(--transition-base);
 }
@@ -936,8 +950,29 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .feature-icon {
-    font-size: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: rgba(232, 160, 42, 0.15);
     margin-bottom: var(--space-md);
+}
+
+.feature-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: var(--color-accent);
+    stroke-width: 1.75;
+}
+
+.feature-highlight .feature-icon {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.feature-highlight .feature-icon svg {
+    stroke: #fff;
 }
 
 .feature-card h3 {
@@ -1047,7 +1082,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .how-section {
     padding: var(--space-5xl) 0;
-    background: var(--color-bg-cream);
+    background: var(--color-bg-dark-soft);
 }
 
 .steps {
@@ -1084,7 +1119,7 @@ h1, h2, h3, h4, h5, h6 {
     justify-content: center;
     width: 56px;
     height: 56px;
-    background: var(--color-text);
+    background: var(--color-bg-dark-lavender);
     color: var(--color-text-light);
     font-family: var(--font-display);
     font-size: 1.5rem;
@@ -1322,7 +1357,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .testimonials-section {
     padding: var(--space-5xl) 0;
-    background: var(--color-bg-warm);
+    background: var(--color-bg-dark-soft);
 }
 
 .testimonials-grid {
@@ -1468,7 +1503,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .gallery-ipad {
-    width: 480px;
+    width: 600px;
 }
 
 .gallery-frame {
@@ -1510,6 +1545,121 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--color-text-muted);
 }
 
+/* Gallery Navigation */
+.gallery-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.gallery-wrapper .gallery-track {
+    /* Ensure the track takes full width for proper scrolling */
+    flex: 1;
+    min-width: 0; /* Allow flex child to shrink */
+}
+
+.gallery-nav {
+    flex-shrink: 0;
+    z-index: 10;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(30, 26, 22, 0.95);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    color: var(--color-text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+    pointer-events: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Ensure icon inside button doesn't block clicks */
+.gallery-nav * {
+    pointer-events: none;
+}
+
+.gallery-nav:hover {
+    background: rgba(232, 160, 42, 0.95);
+    border-color: var(--color-accent);
+    color: #000;
+    transform: scale(1.05);
+}
+
+.gallery-nav:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.gallery-nav:disabled:hover {
+    background: rgba(30, 26, 22, 0.95);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--color-text);
+    transform: none;
+}
+
+.gallery-nav svg {
+    width: 28px;
+    height: 28px;
+    stroke-width: 2.5;
+}
+
+/* On mobile, position buttons below the gallery */
+@media (max-width: 900px) {
+    .gallery-wrapper {
+        flex-direction: column;
+    }
+
+    .gallery-wrapper .gallery-track {
+        order: 1;
+        width: 100%;
+    }
+
+    .gallery-nav-prev {
+        order: 2;
+    }
+
+    .gallery-nav-next {
+        order: 3;
+    }
+
+    /* Show buttons in a row below gallery on mobile */
+    .gallery-wrapper {
+        position: relative;
+    }
+
+    .gallery-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .gallery-nav-prev {
+        left: 8px;
+    }
+
+    .gallery-nav-next {
+        right: 8px;
+    }
+}
+
+/* On larger screens, arrows stay on sides */
+@media (min-width: 901px) {
+    .gallery-nav {
+        width: 60px;
+        height: 60px;
+    }
+
+    .gallery-nav svg {
+        width: 32px;
+        height: 32px;
+    }
+}
+
 /* ========================================
    PRICING SECTION
    ======================================== */
@@ -1541,13 +1691,13 @@ h1, h2, h3, h4, h5, h6 {
 .pricing-card {
     position: relative;
     padding: var(--space-2xl);
-    background: var(--color-bg-soft);
+    background: var(--color-bg-dark-soft);
     border-radius: var(--radius-xl);
     text-align: center;
 }
 
 .pricing-card.premium {
-    background: var(--color-bg-dark);
+    background: var(--color-bg-warm);
     color: var(--color-text-light);
     transform: scale(1.02);
 }
@@ -1630,7 +1780,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Family Collaboration Card */
 .pricing-card.family {
-    background: linear-gradient(135deg, var(--color-bg-soft) 0%, var(--color-lavender-soft) 100%);
+    background: var(--color-bg-dark-lavender);
     border: 2px solid var(--color-lavender);
 }
 
@@ -1644,7 +1794,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .pricing-card.family .btn-secondary:hover {
-    background: var(--color-lavender);
+    background: var(--color-bg-lavender);
     color: white;
 }
 
@@ -1745,7 +1895,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .footer {
     padding: var(--space-4xl) 0 var(--space-xl);
-    background: var(--color-bg-soft);
+    background: black;
 }
 
 .footer-grid {

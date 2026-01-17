@@ -225,10 +225,10 @@ struct ImportantAccountsListView: View {
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
                     // Section header card
-                    SectionHeaderCard(
-                        title: "Important Accounts",
-                        icon: "key.fill"
-                    )
+                    //SectionHeaderCard(
+                    //    title: "Important Accounts",
+                    //    icon: "key.fill"
+                    //)
 
                     // Security Notice Card (resets each session)
                     SecurityNoticeCard(hasSeenNotice: $hasSeenSecurityNotice)
@@ -482,7 +482,7 @@ struct ImportantAccountDetailPanel: View {
                 .padding(.top, AppDimensions.cardSpacing)
             }
         }
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
         .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {

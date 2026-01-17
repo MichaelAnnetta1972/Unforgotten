@@ -38,6 +38,7 @@ struct SettingsView: View {
     @State private var showUpgradeForJoin = false
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
+    @State private var userEmail: String = ""
 
     /// Helper/Viewer roles have limited access
     private var isLimitedAccess: Bool {
@@ -145,14 +146,22 @@ struct SettingsView: View {
                                     value: role.displayName
                                 )
                             }
+
+                            if !userEmail.isEmpty {
+                                SettingsRow(
+                                    icon: "envelope",
+                                    title: "Email",
+                                    value: userEmail
+                                )
+                            }
                         }
 
                         // Only show invite/manage if user can manage members
                         if appState.currentUserRole?.canManageMembers == true {
                             SettingsButtonRow(
-                                icon: canInviteMembers ? "person.badge.plus" : "crown.fill",
+                                icon: canInviteMembers ? "person.badge.plus" : "person.2.circle.fill",
                                 title: "Invite Family Member",
-                                value: canInviteMembers ? nil : "Premium",
+                                value: canInviteMembers ? nil : "Family Plus",
                                 action: {
                                     if canInviteMembers {
                                         if let action = iPadShowInviteMemberAction {
@@ -184,9 +193,9 @@ struct SettingsView: View {
                         }
 
                         SettingsButtonRow(
-                            icon: canJoinOtherAccounts ? "envelope.badge" : "crown.fill",
+                            icon: canJoinOtherAccounts ? "envelope.badge" : "person.2.circle.fill",
                             title: "Join Another Account",
-                            value: canJoinOtherAccounts ? nil : "Premium",
+                            value: canJoinOtherAccounts ? nil : "Family Plus",
                             action: {
                                 if canJoinOtherAccounts {
                                     if let action = iPadShowJoinAccountAction {
@@ -357,6 +366,11 @@ struct SettingsView: View {
         } message: {
             Text("Are you sure you want to sign out?")
         }
+        .task {
+            if let user = await SupabaseManager.shared.currentUser {
+                userEmail = user.email ?? ""
+            }
+        }
     }
 }
 
@@ -517,6 +531,7 @@ struct AccountSwitchRow: View {
 struct InviteMemberView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
     @State private var email = ""
@@ -528,98 +543,119 @@ struct InviteMemberView: View {
     @State private var showShareSheet = false
 
     private let availableRoles: [MemberRole] = [.admin, .helper, .viewer]
-    
+
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Explanation
-                        VStack(spacing: 12) {
-                            Image(systemName: "person.badge.plus")
-                                .font(.system(size: 50))
-                                .foregroundColor(appAccentColor)
-                            
-                            Text("Invite Family Member")
-                                .font(.appTitle)
-                                .foregroundColor(.textPrimary)
-                            
-                            Text("Share access to this account with a family member or carer.")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.top, 24)
-                        
-                        // Email input
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Email Address")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                            
-                            AppTextField(placeholder: "Enter email", text: $email, keyboardType: .emailAddress)
-                        }
-                        
-                        // Role picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Role")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                            
-                            ForEach(availableRoles, id: \.self) { role in
-                                RoleOption(
-                                    role: role,
-                                    isSelected: selectedRole == role,
-                                    action: { selectedRole = role }
-                                )
-                            }
-                        }
-                        
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                        }
-                        
-                        PrimaryButton(title: "Send Invitation", isLoading: isLoading) {
-                            Task { await sendInvite() }
-                        }
-                        .disabled(email.isBlank || !email.isValidEmail)
+        VStack(spacing: 0) {
+            // Custom header with Cancel button
+            HStack {
+                Button("Cancel") {
+                    dismissView()
+                }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
+
+                Spacer()
+
+                Text("Invite Member")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                // Invisible spacer for centering
+                Text("Cancel").opacity(0)
+                    .font(.appBody)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Explanation
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 50))
+                            .foregroundColor(appAccentColor)
+
+                        Text("Invite Family Member")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+
+                        Text("Share access to this account with a family member or carer.")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
                     }
-                    .padding(AppDimensions.screenPadding)
-                }
-            }
-            .navigationTitle("Invite Member")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
+                    .padding(.top, 24)
+
+                    // Email input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Email Address")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        AppTextField(placeholder: "Enter email", text: $email, keyboardType: .emailAddress)
                     }
-                }
-            }
-            .alert("Invitation Created", isPresented: $showSuccess) {
-                Button("Copy Code") {
-                    UIPasteboard.general.string = inviteCode
-                    dismiss()
-                }
-                Button("Share") {
-                    showShareSheet = true
-                }
-                Button("Done", role: .cancel) {
-                    dismiss()
-                }
-            } message: {
-                Text("Share this code with \(email):\n\n\(inviteCode)\n\nThe code expires in 7 days.")
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: [shareMessage])
-                    .onDisappear {
-                        dismiss()
+
+                    // Role picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Role")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        ForEach(availableRoles, id: \.self) { role in
+                            RoleOption(
+                                role: role,
+                                isSelected: selectedRole == role,
+                                action: { selectedRole = role }
+                            )
+                        }
                     }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
+
+                    PrimaryButton(title: "Send Invitation", isLoading: isLoading) {
+                        Task { await sendInvite() }
+                    }
+                    .disabled(email.isBlank || !email.isValidEmail)
+                }
+                .padding(AppDimensions.screenPadding)
             }
+        }
+        .background(Color.appBackground)
+        .alert("Invitation Created", isPresented: $showSuccess) {
+            Button("Copy Code") {
+                UIPasteboard.general.string = inviteCode
+                dismissView()
+            }
+            Button("Share") {
+                showShareSheet = true
+            }
+            Button("Done", role: .cancel) {
+                dismissView()
+            }
+        } message: {
+            Text("Share this code with \(email):\n\n\(inviteCode)\n\nThe code expires in 7 days.")
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: [shareMessage])
+                .onDisappear {
+                    dismissView()
+                }
         }
     }
 
@@ -699,74 +735,89 @@ struct RoleOption: View {
 struct MoodHistoryView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
     @StateObject private var viewModel = MoodHistoryViewModel()
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Summary
-                        if let average = viewModel.averageRating {
-                            VStack(spacing: 8) {
-                                Text("30-Day Average")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                                
-                                HStack(spacing: 4) {
-                                    ForEach(1...5, id: \.self) { rating in
-                                        Image(systemName: rating <= Int(average.rounded()) ? "star.fill" : "star")
-                                            .foregroundColor(appAccentColor)
-                                    }
+        VStack(spacing: 0) {
+            // Custom header with Done button
+            HStack {
+                Text("Mood History")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                Button("Done") {
+                    dismissView()
+                }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Summary
+                    if let average = viewModel.averageRating {
+                        VStack(spacing: 8) {
+                            Text("30-Day Average")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            HStack(spacing: 4) {
+                                ForEach(1...5, id: \.self) { rating in
+                                    Image(systemName: rating <= Int(average.rounded()) ? "star.fill" : "star")
+                                        .foregroundColor(appAccentColor)
                                 }
-                                
-                                Text(String(format: "%.1f", average))
-                                    .font(.appTitle)
-                                    .foregroundColor(.textPrimary)
                             }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.cardCornerRadius)
-                            .padding(.horizontal, AppDimensions.screenPadding)
+
+                            Text(String(format: "%.1f", average))
+                                .font(.appTitle)
+                                .foregroundColor(.textPrimary)
                         }
-                        
-                        // Entries list
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
-                            ForEach(viewModel.entries) { entry in
-                                MoodEntryRow(entry: entry)
-                            }
-                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
                         .padding(.horizontal, AppDimensions.screenPadding)
-                        
-                        if viewModel.entries.isEmpty && !viewModel.isLoading {
-                            EmptyStateView(
-                                icon: "face.smiling",
-                                title: "No mood entries yet",
-                                message: "Start tracking your mood to see history here"
-                            )
-                            .padding(.top, 40)
+                    }
+
+                    // Entries list
+                    LazyVStack(spacing: AppDimensions.cardSpacing) {
+                        ForEach(viewModel.entries) { entry in
+                            MoodEntryRow(entry: entry)
                         }
                     }
-                    .padding(.top, 16)
-                }
-            }
-            .navigationTitle("Mood History")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                    if viewModel.entries.isEmpty && !viewModel.isLoading {
+                        EmptyStateView(
+                            icon: "face.smiling",
+                            title: "No mood entries yet",
+                            message: "Start tracking your mood to see history here"
+                        )
+                        .padding(.top, 40)
                     }
-                    .foregroundColor(appAccentColor)
                 }
+                .padding(.top, 16)
             }
-            .task {
-                await viewModel.loadEntries(appState: appState)
-            }
+        }
+        .background(Color.appBackground)
+        .task {
+            await viewModel.loadEntries(appState: appState)
         }
     }
 }
@@ -868,137 +919,149 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct ManageMembersView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
     @StateObject private var viewModel = ManageMembersViewModel()
     @State private var memberToRemove: MemberWithEmail?
     @State private var showRemoveConfirm = false
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        VStack(spacing: 0) {
+            // Custom header with Done button
+            HStack {
+                Text("Manage Members")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        VStack(spacing: 12) {
-                            Image(systemName: "person.2.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(appAccentColor)
+                Spacer()
 
-                            Text("Manage Members")
-                                .font(.appTitle)
-                                .foregroundColor(.textPrimary)
+                Button("Done") {
+                    dismissView()
+                }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
 
-                            Text("View and manage who has access to this account.")
-                                .font(.appBody)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(appAccentColor)
+
+                        Text("Manage Members")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+
+                        Text("View and manage who has access to this account.")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 24)
+
+                    // Current Members Section
+                    if !viewModel.membersWithEmail.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("CURRENT MEMBERS")
+                                .font(.appCaption)
                                 .foregroundColor(.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.top, 24)
-
-                        // Current Members Section
-                        if !viewModel.membersWithEmail.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("CURRENT MEMBERS")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-
-                                VStack(spacing: 1) {
-                                    ForEach(viewModel.membersWithEmail) { memberWithEmail in
-                                        MemberRow(
-                                            memberWithEmail: memberWithEmail,
-                                            canRemove: memberWithEmail.member.role != .owner && !memberWithEmail.isCurrentUser,
-                                            onRemove: {
-                                                memberToRemove = memberWithEmail
-                                                showRemoveConfirm = true
-                                            }
-                                        )
-                                    }
-                                }
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
                                 .padding(.horizontal, AppDimensions.screenPadding)
-                            }
-                        }
 
-                        // Pending Invitations Section
-                        if !viewModel.pendingInvitations.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("PENDING INVITATIONS")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-
-                                VStack(spacing: 1) {
-                                    ForEach(viewModel.pendingInvitations) { invitation in
-                                        InvitationRow(
-                                            invitation: invitation,
-                                            onRevoke: {
-                                                Task {
-                                                    await viewModel.revokeInvitation(invitation, appState: appState)
-                                                }
-                                            }
-                                        )
-                                    }
+                            VStack(spacing: 1) {
+                                ForEach(viewModel.membersWithEmail) { memberWithEmail in
+                                    MemberRow(
+                                        memberWithEmail: memberWithEmail,
+                                        canRemove: memberWithEmail.member.role != .owner && !memberWithEmail.isCurrentUser,
+                                        onRemove: {
+                                            memberToRemove = memberWithEmail
+                                            showRemoveConfirm = true
+                                        }
+                                    )
                                 }
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
-                                .padding(.horizontal, AppDimensions.screenPadding)
                             }
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                            .padding(.horizontal, AppDimensions.screenPadding)
                         }
+                    }
 
-                        if viewModel.membersWithEmail.isEmpty && viewModel.pendingInvitations.isEmpty && !viewModel.isLoading {
-                            EmptyStateView(
-                                icon: "person.2",
-                                title: "No members yet",
-                                message: "Invite family members to share access to this account"
-                            )
+                    // Pending Invitations Section
+                    if !viewModel.pendingInvitations.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("PENDING INVITATIONS")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                                .padding(.horizontal, AppDimensions.screenPadding)
+
+                            VStack(spacing: 1) {
+                                ForEach(viewModel.pendingInvitations) { invitation in
+                                    InvitationRow(
+                                        invitation: invitation,
+                                        onRevoke: {
+                                            Task {
+                                                await viewModel.revokeInvitation(invitation, appState: appState)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                        }
+                    }
+
+                    if viewModel.membersWithEmail.isEmpty && viewModel.pendingInvitations.isEmpty && !viewModel.isLoading {
+                        EmptyStateView(
+                            icon: "person.2",
+                            title: "No members yet",
+                            message: "Invite family members to share access to this account"
+                        )
+                        .padding(.top, 40)
+                    }
+
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .tint(appAccentColor)
                             .padding(.top, 40)
-                        }
-
-                        if viewModel.isLoading {
-                            ProgressView()
-                                .tint(appAccentColor)
-                                .padding(.top, 40)
-                        }
                     }
-                    .padding(.bottom, 40)
                 }
+                .padding(.bottom, 40)
             }
-            .navigationTitle("Manage Members")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(appAccentColor)
-                }
+        }
+        .background(Color.appBackground)
+        .task {
+            await viewModel.loadData(appState: appState)
+        }
+        .alert("Remove Member", isPresented: $showRemoveConfirm) {
+            Button("Cancel", role: .cancel) {
+                memberToRemove = nil
             }
-            .task {
-                await viewModel.loadData(appState: appState)
-            }
-            .refreshable {
-                await viewModel.loadData(appState: appState)
-            }
-            .alert("Remove Member", isPresented: $showRemoveConfirm) {
-                Button("Cancel", role: .cancel) {
-                    memberToRemove = nil
-                }
-                Button("Remove", role: .destructive) {
-                    if let member = memberToRemove {
-                        Task {
-                            await viewModel.removeMember(member, appState: appState)
-                        }
-                    }
-                    memberToRemove = nil
-                }
-            } message: {
+            Button("Remove", role: .destructive) {
                 if let member = memberToRemove {
-                    Text("Are you sure you want to remove \(member.email) from this account? They will lose access immediately.")
+                    Task {
+                        await viewModel.removeMember(member, appState: appState)
+                    }
                 }
+                memberToRemove = nil
+            }
+        } message: {
+            if let member = memberToRemove {
+                Text("Are you sure you want to remove \(member.email) from this account? They will lose access immediately.")
             }
         }
     }
@@ -1224,65 +1287,80 @@ class ManageMembersViewModel: ObservableObject {
 struct SwitchAccountView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        VStack(spacing: 0) {
+            // Custom header with Done button
+            HStack {
+                Text("Switch Account")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        VStack(spacing: 12) {
-                            Image(systemName: "arrow.left.arrow.right.circle.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(appAccentColor)
+                Spacer()
 
-                            Text("Switch Account")
-                                .font(.appTitle)
-                                .foregroundColor(.textPrimary)
-
-                            Text("Select which account you would like to view")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.top, 24)
-
-                        // Account List
-                        VStack(spacing: 8) {
-                            ForEach(appState.allAccounts) { accountWithRole in
-                                AccountSwitchRow(
-                                    accountWithRole: accountWithRole,
-                                    isSelected: appState.currentAccount?.id == accountWithRole.account.id,
-                                    onSelect: {
-                                        Task {
-                                            await appState.switchAccount(to: accountWithRole)
-                                            dismiss()
-                                        }
-                                    }
-                                )
-                            }
-                        }
-
-                        Spacer()
-                            .frame(height: 40)
-                    }
-                    .padding(.horizontal, AppDimensions.screenPadding)
+                Button("Done") {
+                    dismissView()
                 }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
             }
-            .navigationTitle("Switch Account")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 12) {
+                        Image(systemName: "arrow.left.arrow.right.circle.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(appAccentColor)
+
+                        Text("Switch Account")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+
+                        Text("Select which account you would like to view")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
                     }
-                    .foregroundColor(appAccentColor)
+                    .padding(.top, 24)
+
+                    // Account List
+                    VStack(spacing: 8) {
+                        ForEach(appState.allAccounts) { accountWithRole in
+                            AccountSwitchRow(
+                                accountWithRole: accountWithRole,
+                                isSelected: appState.currentAccount?.id == accountWithRole.account.id,
+                                onSelect: {
+                                    Task {
+                                        await appState.switchAccount(to: accountWithRole)
+                                        dismissView()
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer()
+                        .frame(height: 40)
                 }
+                .padding(.horizontal, AppDimensions.screenPadding)
             }
         }
+        .background(Color.appBackground)
     }
 }
 
@@ -1290,6 +1368,7 @@ struct SwitchAccountView: View {
 struct JoinAccountView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
     @State private var inviteCode = ""
@@ -1298,86 +1377,107 @@ struct JoinAccountView: View {
     @State private var showSuccess = false
     @State private var joinedAccountName: String = ""
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        VStack(spacing: 0) {
+            // Custom header with Cancel button
+            HStack {
+                Button("Cancel") {
+                    dismissView()
+                }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        VStack(spacing: 12) {
-                            Image(systemName: "envelope.badge")
-                                .font(.system(size: 50))
-                                .foregroundColor(appAccentColor)
+                Spacer()
 
-                            Text("Join Another Account")
-                                .font(.appTitle)
-                                .foregroundColor(.textPrimary)
+                Text("Join Account")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
 
-                            Text("Enter the invitation code you received to join a family account.")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.top, 24)
+                Spacer()
 
-                        // Code input
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Invitation Code")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                // Invisible spacer for centering
+                Text("Cancel").opacity(0)
+                    .font(.appBody)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
 
-                            TextField("", text: $inviteCode)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 24, weight: .bold, design: .monospaced))
-                                .multilineTextAlignment(.center)
-                                .textInputAutocapitalization(.characters)
-                                .autocorrectionDisabled()
-                                .padding()
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                                        .stroke(appAccentColor.opacity(0.3), lineWidth: 1)
-                                )
-                                .onChange(of: inviteCode) { _, newValue in
-                                    // Limit to 6 characters and uppercase
-                                    inviteCode = String(newValue.uppercased().prefix(6))
-                                }
-                        }
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 12) {
+                        Image(systemName: "envelope.badge")
+                            .font(.system(size: 50))
+                            .foregroundColor(appAccentColor)
 
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                                .multilineTextAlignment(.center)
-                        }
+                        Text("Join Another Account")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
 
-                        PrimaryButton(title: "Join Account", isLoading: isLoading) {
-                            Task { await joinAccount() }
-                        }
-                        .disabled(inviteCode.count != 6)
+                        Text("Enter the invitation code you received to join a family account.")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
                     }
-                    .padding(AppDimensions.screenPadding)
-                }
-            }
-            .navigationTitle("Join Account")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
+                    .padding(.top, 24)
+
+                    // Code input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Invitation Code")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        TextField("", text: $inviteCode)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 24, weight: .bold, design: .monospaced))
+                            .multilineTextAlignment(.center)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .padding()
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                                    .stroke(appAccentColor.opacity(0.3), lineWidth: 1)
+                            )
+                            .onChange(of: inviteCode) { _, newValue in
+                                // Limit to 6 characters and uppercase
+                                inviteCode = String(newValue.uppercased().prefix(6))
+                            }
                     }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    PrimaryButton(title: "Join Account", isLoading: isLoading) {
+                        Task { await joinAccount() }
+                    }
+                    .disabled(inviteCode.count != 6)
                 }
+                .padding(AppDimensions.screenPadding)
             }
-            .alert("Account Joined!", isPresented: $showSuccess) {
-                Button("OK") {
-                    dismiss()
-                }
-            } message: {
-                Text("You have successfully joined \"\(joinedAccountName)\". You can now access this account from the home screen.")
+        }
+        .background(Color.appBackground)
+        .alert("Account Joined!", isPresented: $showSuccess) {
+            Button("OK") {
+                dismissView()
             }
+        } message: {
+            Text("You have successfully joined \"\(joinedAccountName)\". You can now access this account from the home screen.")
         }
     }
 
@@ -1436,72 +1536,94 @@ struct JoinAccountView: View {
 struct EditAccountNameView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
     @State private var accountName: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        VStack(spacing: 12) {
-                            Image(systemName: "person.circle")
-                                .font(.system(size: 50))
-                                .foregroundColor(appAccentColor)
-
-                            Text("Edit Account Name")
-                                .font(.appTitle)
-                                .foregroundColor(.textPrimary)
-
-                            Text("This name helps identify the account for family members.")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.top, 24)
-
-                        // Name input
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Account Name")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            AppTextField(placeholder: "Enter account name", text: $accountName)
-                        }
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                                .multilineTextAlignment(.center)
-                        }
-
-                        PrimaryButton(title: "Save", isLoading: isLoading) {
-                            Task { await saveAccountName() }
-                        }
-                        .disabled(accountName.isBlank)
-                    }
-                    .padding(AppDimensions.screenPadding)
+        VStack(spacing: 0) {
+            // Custom header with Cancel button
+            HStack {
+                Button("Cancel") {
+                    dismissView()
                 }
+                .font(.appBody)
+                .foregroundColor(appAccentColor)
+
+                Spacer()
+
+                Text("Edit Account Name")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                // Invisible spacer for centering
+                Text("Cancel").opacity(0)
+                    .font(.appBody)
             }
-            .navigationTitle("Edit Account Name")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.circle")
+                            .font(.system(size: 50))
+                            .foregroundColor(appAccentColor)
+
+                        Text("Edit Account Name")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+
+                        Text("This name helps identify the account for family members.")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
                     }
+                    .padding(.top, 24)
+
+                    // Name input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Account Name")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        AppTextField(placeholder: "Enter account name", text: $accountName)
+                    }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    PrimaryButton(title: "Save", isLoading: isLoading) {
+                        Task { await saveAccountName() }
+                    }
+                    .disabled(accountName.isBlank)
                 }
+                .padding(AppDimensions.screenPadding)
             }
-            .onAppear {
-                accountName = appState.currentAccount?.displayName ?? ""
-            }
+        }
+        .background(Color.appBackground)
+        .onAppear {
+            accountName = appState.currentAccount?.displayName ?? ""
         }
     }
 
@@ -1548,7 +1670,7 @@ struct EditAccountNameView: View {
             }
 
             isLoading = false
-            dismiss()
+            dismissView()
         } catch {
             isLoading = false
             errorMessage = "Failed to update account name: \(error.localizedDescription)"
@@ -1561,15 +1683,6 @@ struct UpgradeSettingsSection: View {
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadShowUpgradeAction) private var iPadShowUpgradeAction
     @State private var showUpgradeSheet = false
-
-    private let premiumFeatures = [
-        "Unlimited friends",
-        "Unlimited reminders",
-        "Unlimited notes",
-        "Unlimited medications",
-        "Priority support",
-        "Family sharing"
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1592,11 +1705,11 @@ struct UpgradeSettingsSection: View {
                             .foregroundColor(appAccentColor)
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Upgrade to Premium")
+                            Text("Upgrade Your Plan")
                                 .font(.appBodyMedium)
                                 .foregroundColor(.textPrimary)
 
-                            Text("Unlock all features")
+                            Text("Get unlimited features and more")
                                 .font(.appCaption)
                                 .foregroundColor(.textSecondary)
                         }
@@ -1607,17 +1720,34 @@ struct UpgradeSettingsSection: View {
                             .foregroundColor(.textSecondary)
                     }
 
-                    // Feature highlights
+                    // Tier highlights
                     HStack(spacing: 8) {
-                        ForEach(["Unlimited", "Priority Support", "Family Sharing"], id: \.self) { feature in
-                            Text(feature)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(appAccentColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(appAccentColor.opacity(0.15))
-                                .cornerRadius(8)
+                        // Premium badge
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 8))
+                            Text("Premium $4.99")
                         }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(appAccentColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(appAccentColor.opacity(0.15))
+                        .cornerRadius(8)
+
+                        // Family Plus badge
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 8))
+                            Text("Family Plus $7.99")
+                        }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.purple)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.purple.opacity(0.15))
+                        .cornerRadius(8)
+
                         Spacer()
                     }
                 }
@@ -1640,12 +1770,15 @@ struct UpgradeSettingsSection: View {
 
 // MARK: - Upgrade View
 struct UpgradeView: View {
+    @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
     @State private var products: [Product] = []
     @State private var selectedProduct: Product? = nil
     @State private var purchaseState: PurchaseState = .idle
     @State private var errorMessage: String? = nil
+    @State private var selectedTier: SelectedTier = .premium
 
     /// When true, the view is embedded in a panel and should not show NavigationStack or cancel button
     var isEmbedded: Bool = false
@@ -1657,42 +1790,87 @@ struct UpgradeView: View {
         case success
     }
 
+    private enum SelectedTier {
+        case premium
+        case familyPlus
+    }
+
     private let productIds = [
         "com.unforgotten.premium.monthly",
-        "com.unforgotten.premium.annual"
+        "com.unforgotten.premium.annual",
+        "com.unforgotten.family.monthly",
+        "com.unforgotten.family.annual"
     ]
 
-    private let premiumFeatures = [
-        ("infinity", "Unlimited friends"),
-        ("bell.badge", "Unlimited reminders"),
-        ("note.text", "Unlimited notes"),
-        ("pill", "Unlimited medications"),
-        ("star.fill", "Priority support"),
-        ("person.2", "Family sharing")
+    // Premium features list
+    private let premiumFeatures: [(icon: String, text: String)] = [
+        ("infinity", "Unlimited profiles, medications, notes & more"),
+        ("calendar", "Unlimited appointments (no 30-day limit)"),
+        ("photo.on.rectangle", "Custom header images"),
+        ("bell.badge", "Unlimited reminders & countdowns")
     ]
+
+    // Family Plus features list
+    private let familyPlusFeatures: [(icon: String, text: String)] = [
+        ("checkmark.circle.fill", "Everything in Premium"),
+        ("person.badge.plus", "Invite family members"),
+        ("arrow.left.arrow.right", "Switch between family accounts"),
+        ("person.2", "Manage account members")
+    ]
+
+    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+    private func dismissView() {
+        if let sidePanelDismiss {
+            sidePanelDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
+    private var tierColor: Color {
+        selectedTier == .premium ? appAccentColor : .purple
+    }
 
     var body: some View {
         Group {
             if isEmbedded {
                 upgradeContent
             } else {
-                NavigationStack {
-                    upgradeContent
-                        .navigationTitle("Premium")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Cancel") {
-                                    dismiss()
-                                }
-                            }
+                VStack(spacing: 0) {
+                    // Custom header with Cancel button
+                    HStack {
+                        Button("Cancel") {
+                            dismissView()
                         }
+                        .font(.appBody)
+                        .foregroundColor(appAccentColor)
+
+                        Spacer()
+
+                        Text("Upgrade")
+                            .font(.appTitle2)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        // Invisible spacer for centering
+                        Text("Cancel").opacity(0)
+                            .font(.appBody)
+                    }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.vertical, 16)
+                    .background(Color.appBackground)
+
+                    upgradeContent
                 }
             }
         }
         .task {
             await loadProducts()
         }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationSizing(.fitted)
     }
 
     private var upgradeContent: some View {
@@ -1700,157 +1878,241 @@ struct UpgradeView: View {
             Color.appBackground.ignoresSafeArea()
 
             ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        VStack(spacing: 12) {
-                            Image(systemName: "crown.fill")
-                                .font(.system(size: 60))
-                                .foregroundColor(appAccentColor)
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(spacing: 12) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(tierColor)
 
-                            Text("Upgrade to Premium")
-                                .font(.appLargeTitle)
-                                .foregroundColor(.textPrimary)
+                        Text("Upgrade Your Plan")
+                            .font(.appLargeTitle)
+                            .foregroundColor(.textPrimary)
 
-                            Text("Get the most out of Unforgotten")
-                                .font(.appBody)
+                        Text("Get the most out of Unforgotten")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .padding(.top, 24)
+
+                    // Tier selector
+                    tierSelector
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
+                    // Features list for selected tier
+                    VStack(spacing: 10) {
+                        let features = selectedTier == .premium ? premiumFeatures : familyPlusFeatures
+                        ForEach(features, id: \.text) { feature in
+                            HStack(spacing: 12) {
+                                Image(systemName: feature.icon)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(tierColor)
+                                    .frame(width: 24)
+
+                                Text(feature.text)
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Spacer()
+
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.badgeGreen)
+                            }
+                            .padding()
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                    }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                    // Pricing
+                    if purchaseState == .loading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: tierColor))
+                            .padding()
+                    } else {
+                        pricingSection
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                    }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                    }
+
+                    // Subscribe button
+                    VStack(spacing: 12) {
+                        if purchaseState == .success {
+                            PrimaryButton(
+                                title: "Done",
+                                backgroundColor: tierColor,
+                                action: { dismissView() }
+                            )
+                        } else {
+                            PrimaryButton(
+                                title: "Subscribe to \(selectedTier == .premium ? "Premium" : "Family Plus")",
+                                isLoading: purchaseState == .purchasing,
+                                backgroundColor: tierColor,
+                                action: purchase
+                            )
+
+                            Button {
+                                Task {
+                                    await restorePurchases()
+                                }
+                            } label: {
+                                Text("Restore Purchases")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                    // Terms
+                    VStack(spacing: 8) {
+                        Text("Subscription auto-renews unless cancelled at least 24 hours before the end of the current period.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.textMuted)
+                            .multilineTextAlignment(.center)
+
+                        HStack(spacing: 16) {
+                            Button("Terms of Use") { }
+                                .font(.system(size: 10))
+                                .foregroundColor(.textSecondary)
+
+                            Button("Privacy Policy") { }
+                                .font(.system(size: 10))
                                 .foregroundColor(.textSecondary)
                         }
-                        .padding(.top, 24)
-
-                        // Features list
-                        VStack(spacing: 12) {
-                            ForEach(premiumFeatures, id: \.1) { icon, feature in
-                                HStack(spacing: 14) {
-                                    Image(systemName: icon)
-                                        .font(.system(size: 18))
-                                        .foregroundColor(appAccentColor)
-                                        .frame(width: 28)
-
-                                    Text(feature)
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-
-                                    Spacer()
-
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(.badgeGreen)
-                                }
-                                .padding()
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
-                            }
-                        }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-
-                        // Pricing
-                        if purchaseState == .loading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: appAccentColor))
-                                .padding()
-                        } else if products.isEmpty {
-                            // Fallback pricing
-                            VStack(spacing: 12) {
-                                upgradePricingCard(
-                                    title: "Monthly",
-                                    price: "$4.99/month",
-                                    isSelected: true,
-                                    isBestValue: false
-                                )
-
-                                upgradePricingCard(
-                                    title: "Annual",
-                                    price: "$39.99/year",
-                                    subtitle: "Save 33%",
-                                    isSelected: false,
-                                    isBestValue: true
-                                )
-                            }
-                            .padding(.horizontal, AppDimensions.screenPadding)
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(products.sorted { $0.price < $1.price }) { product in
-                                    let isSelected = selectedProduct?.id == product.id
-                                    let isAnnual = product.id.contains("annual")
-
-                                    Button {
-                                        selectedProduct = product
-                                    } label: {
-                                        upgradePricingCard(
-                                            title: isAnnual ? "Annual" : "Monthly",
-                                            price: product.displayPrice + (isAnnual ? "/year" : "/month"),
-                                            subtitle: isAnnual ? "Save 33%" : nil,
-                                            isSelected: isSelected,
-                                            isBestValue: isAnnual
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, AppDimensions.screenPadding)
-                        }
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, AppDimensions.screenPadding)
-                        }
-
-                        // Subscribe button
-                        VStack(spacing: 12) {
-                            if purchaseState == .success {
-                                PrimaryButton(
-                                    title: "Done",
-                                    backgroundColor: appAccentColor,
-                                    action: { dismiss() }
-                                )
-                            } else {
-                                PrimaryButton(
-                                    title: "Subscribe",
-                                    isLoading: purchaseState == .purchasing,
-                                    backgroundColor: appAccentColor,
-                                    action: purchase
-                                )
-
-                                Button {
-                                    Task {
-                                        await restorePurchases()
-                                    }
-                                } label: {
-                                    Text("Restore Purchases")
-                                        .font(.appCaption)
-                                        .foregroundColor(.textSecondary)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-
-                        // Terms
-                        VStack(spacing: 8) {
-                            Text("Subscription auto-renews unless cancelled at least 24 hours before the end of the current period.")
-                                .font(.system(size: 10))
-                                .foregroundColor(.textMuted)
-                                .multilineTextAlignment(.center)
-
-                            HStack(spacing: 16) {
-                                Button("Terms of Use") { }
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.textSecondary)
-
-                                Button("Privacy Policy") { }
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.textSecondary)
-                            }
-                        }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                        .padding(.bottom, 40)
                     }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.bottom, 40)
                 }
             }
         }
+    }
 
+    // MARK: - Tier Selector
+    private var tierSelector: some View {
+        HStack(spacing: 0) {
+            // Premium tab
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selectedTier = .premium
+                    updateSelectedProduct()
+                }
+            } label: {
+                VStack(spacing: 4) {
+                    Text("Premium")
+                        .font(.appBodyMedium)
+                        .foregroundColor(selectedTier == .premium ? .textPrimary : .textSecondary)
+                    Text("$4.99/mo")
+                        .font(.appCaption)
+                        .foregroundColor(selectedTier == .premium ? appAccentColor : .textMuted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(selectedTier == .premium ? appAccentColor.opacity(0.15) : Color.clear)
+                .cornerRadius(12)
+            }
+
+            // Family Plus tab
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selectedTier = .familyPlus
+                    updateSelectedProduct()
+                }
+            } label: {
+                VStack(spacing: 4) {
+                    Text("Family Plus")
+                        .font(.appBodyMedium)
+                        .foregroundColor(selectedTier == .familyPlus ? .textPrimary : .textSecondary)
+                    Text("$7.99/mo")
+                        .font(.appCaption)
+                        .foregroundColor(selectedTier == .familyPlus ? .purple : .textMuted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(selectedTier == .familyPlus ? Color.purple.opacity(0.15) : Color.clear)
+                .cornerRadius(12)
+            }
+        }
+        .padding(4)
+        .background(Color.cardBackground)
+        .cornerRadius(16)
+    }
+
+    // MARK: - Pricing Section
+    private var pricingSection: some View {
+        VStack(spacing: 12) {
+            let tierProducts = productsForSelectedTier
+            if tierProducts.isEmpty {
+                // Fallback pricing
+                if selectedTier == .premium {
+                    upgradePricingCard(
+                        title: "Monthly",
+                        price: "$4.99/month",
+                        isSelected: true,
+                        isBestValue: false
+                    )
+                    upgradePricingCard(
+                        title: "Annual",
+                        price: "$39.99/year",
+                        subtitle: "Save 33%",
+                        isSelected: false,
+                        isBestValue: true
+                    )
+                } else {
+                    upgradePricingCard(
+                        title: "Monthly",
+                        price: "$7.99/month",
+                        isSelected: true,
+                        isBestValue: false
+                    )
+                    upgradePricingCard(
+                        title: "Annual",
+                        price: "$63.99/year",
+                        subtitle: "Save 33%",
+                        isSelected: false,
+                        isBestValue: true
+                    )
+                }
+            } else {
+                ForEach(tierProducts.sorted { $0.price < $1.price }) { product in
+                    let isSelected = selectedProduct?.id == product.id
+                    let isAnnual = product.id.contains("annual")
+
+                    Button {
+                        selectedProduct = product
+                    } label: {
+                        upgradePricingCard(
+                            title: isAnnual ? "Annual" : "Monthly",
+                            price: product.displayPrice + (isAnnual ? "/year" : "/month"),
+                            subtitle: isAnnual ? "Save 33%" : nil,
+                            isSelected: isSelected,
+                            isBestValue: isAnnual
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var productsForSelectedTier: [Product] {
+        let prefix = selectedTier == .premium ? "com.unforgotten.premium" : "com.unforgotten.family"
+        return products.filter { $0.id.hasPrefix(prefix) }
+    }
+
+    private func updateSelectedProduct() {
+        let tierProducts = productsForSelectedTier
+        selectedProduct = tierProducts.first { $0.id.contains("annual") } ?? tierProducts.first
+    }
 
     private func upgradePricingCard(
         title: String,
@@ -1866,7 +2128,7 @@ struct UpgradeView: View {
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
-                    .background(appAccentColor)
+                    .background(tierColor)
                     .clipShape(Capsule())
                     .offset(y: 12)
                     .zIndex(1)
@@ -1885,7 +2147,7 @@ struct UpgradeView: View {
                     if let subtitle = subtitle {
                         Text(subtitle)
                             .font(.appCaption)
-                            .foregroundColor(appAccentColor)
+                            .foregroundColor(tierColor)
                     }
                 }
 
@@ -1894,7 +2156,7 @@ struct UpgradeView: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 24))
-                        .foregroundColor(appAccentColor)
+                        .foregroundColor(tierColor)
                 }
             }
             .padding(20)
@@ -1902,7 +2164,7 @@ struct UpgradeView: View {
             .cornerRadius(AppDimensions.cardCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .stroke(isSelected ? appAccentColor : Color.cardBackgroundLight, lineWidth: isSelected ? 2 : 1)
+                    .stroke(isSelected ? tierColor : Color.cardBackgroundLight, lineWidth: isSelected ? 2 : 1)
             )
         }
     }
@@ -1913,7 +2175,9 @@ struct UpgradeView: View {
             let storeProducts = try await Product.products(for: productIds)
             await MainActor.run {
                 products = storeProducts
-                selectedProduct = storeProducts.first { $0.id.contains("annual") } ?? storeProducts.first
+                // Select annual premium by default
+                selectedProduct = storeProducts.first { $0.id == "com.unforgotten.premium.annual" }
+                    ?? storeProducts.first { $0.id.contains("premium") }
                 purchaseState = .idle
             }
         } catch {
@@ -1927,8 +2191,8 @@ struct UpgradeView: View {
     }
 
     private func purchase() {
-        guard let product = selectedProduct ?? products.first else {
-            dismiss()
+        guard let product = selectedProduct ?? productsForSelectedTier.first else {
+            dismissView()
             return
         }
 
@@ -1945,7 +2209,9 @@ struct UpgradeView: View {
                     case .verified(let transaction):
                         await transaction.finish()
                         await MainActor.run {
-                            UserDefaults.standard.set(true, forKey: "user_has_premium")
+                            // Determine tier from product ID and save it
+                            let tier: SubscriptionTier = product.id.contains("family") ? .familyPlus : .premium
+                            appState.setSubscriptionTier(tier)
                             UserDefaults.standard.set(product.id, forKey: "user_subscription_product_id")
                             purchaseState = .success
                         }
@@ -1996,8 +2262,10 @@ struct UpgradeView: View {
                 if case .verified(let transaction) = result {
                     if productIds.contains(transaction.productID) {
                         await MainActor.run {
-                            UserDefaults.standard.set(true, forKey: "user_has_premium")
+                            let tier: SubscriptionTier = transaction.productID.contains("family") ? .familyPlus : .premium
+                            appState.setSubscriptionTier(tier)
                             UserDefaults.standard.set(transaction.productID, forKey: "user_subscription_product_id")
+                            selectedTier = tier == .familyPlus ? .familyPlus : .premium
                             purchaseState = .success
                         }
                         return

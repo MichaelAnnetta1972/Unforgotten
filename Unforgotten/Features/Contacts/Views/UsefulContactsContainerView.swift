@@ -75,6 +75,7 @@ struct iPadUsefulContactsView: View {
                     selectedContact = newContact
                 }
             }
+            .presentationBackground(Color.appBackgroundLight)
         }
         .task {
             await viewModel.loadContacts(appState: appState)

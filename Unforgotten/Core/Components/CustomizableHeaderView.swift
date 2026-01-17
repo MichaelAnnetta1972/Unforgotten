@@ -148,7 +148,12 @@ struct CustomizableHeaderView: View {
                         if let subtitle = subtitle {
                             Text(subtitle.uppercased())
                                 .font(.appCaption)
-                                .foregroundColor(.white.opacity(0.8))
+                                .fontWeight(.semibold)
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(effectiveAccentColor)
+                                .cornerRadius(8)
                         }
 
                         if useLogo, let logoName = logoImageName, let logoImage = UIImage(named: logoName) {

@@ -112,6 +112,7 @@ struct ToDoListsView: View {
                                 NavigationLink(destination: ToDoListDetailView(list: list)) {
                                     ToDoListCard(list: list)
                                 }
+                                .buttonStyle(.plain)
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button(role: .destructive) {
                                         viewModel.deleteList(list)
@@ -148,7 +149,7 @@ struct ToDoListsView: View {
             // Type filter overlay when modal is shown
             if showingTypeFilter {
                 ZStack {
-                    Color.cardBackgroundLight.opacity(0.9)
+                    Color.cardBackground.opacity(0.8)
                         .ignoresSafeArea()
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -157,9 +158,8 @@ struct ToDoListsView: View {
                         }
 
                     TypeFilterSheetOverlay(
-                        types: viewModel.listTypes,
+                        types: viewModel.availableFilterTypes,
                         selectedType: $selectedType,
-                        viewModel: viewModel,
                         isShowing: showingTypeFilter,
                         onDismiss: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -177,6 +177,7 @@ struct ToDoListsView: View {
             AddToDoListSheet(viewModel: viewModel) { createdList in
                 newlyCreatedList = createdList
             }
+            .environmentObject(appState)
         }
         .sidePanel(isPresented: $showUpgradePrompt) {
             UpgradeView()
@@ -295,119 +296,109 @@ struct ToDoListsView: View {
 
 // MARK: - Type Filter Sheet Overlay
 private struct TypeFilterSheetOverlay: View {
-    let types: [ToDoListType]
+    let types: [String]
     @Binding var selectedType: String?
-    @ObservedObject var viewModel: ToDoListsViewModel
     let isShowing: Bool
     let onDismiss: () -> Void
     @Environment(\.appAccentColor) private var appAccentColor
-    @State private var scale: CGFloat = 0.8
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var offsetX: CGFloat = 320
     @State private var opacity: Double = 0
-    @State private var typeToDelete: ToDoListType?
-    @State private var showDeleteConfirmation = false
 
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text("Filter by Type")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-                Spacer()
-            }
-            .padding(.top, AppDimensions.cardPadding)
-            .padding(.horizontal, AppDimensions.cardPadding)
-
-            VStack(spacing: 8) {
-                // All option
-                Button {
-                    selectedType = nil
-                    onDismiss()
-                } label: {
-                    HStack {
-                        Text("All")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                        Spacer()
-                        if selectedType == nil {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(appAccentColor)
-                        }
-                    }
-                    .padding(AppDimensions.cardPadding)
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-
-                // Type options
-                ForEach(types) { type in
-                    HStack(spacing: 0) {
-                        Button {
-                            selectedType = type.name
-                            onDismiss()
-                        } label: {
-                            HStack {
-                                Text(type.name)
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-                                Spacer()
-                                if selectedType == type.name {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(appAccentColor)
-                                }
-                            }
-                        }
-
-                        Button {
-                            typeToDelete = type
-                            showDeleteConfirmation = true
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 16))
-                                .foregroundColor(.red)
-                                .frame(width: 44, height: 44)
-                        }
-                    }
-                    .padding(.leading, AppDimensions.cardPadding)
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(8)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-        }
-        .frame(width: 250)
-        .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-        .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
-        .scaleEffect(scale)
-        .opacity(opacity)
-        .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                scale = 1.0
-                opacity = 1.0
-            }
-        }
-        .alert("Delete Type", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                if let type = typeToDelete {
-                    deleteType(type)
-                }
-            }
-        } message: {
-            if let type = typeToDelete {
-                Text("Are you sure you want to delete the type '\(type.name)'? This will not delete any lists.")
-            }
-        }
+    /// Panel width - slightly wider on iPad
+    private var panelWidth: CGFloat {
+        horizontalSizeClass == .regular ? 300 : 250
     }
 
-    private func deleteType(_ type: ToDoListType) {
-        Task {
-            await viewModel.deleteType(type)
-            // If the deleted type was selected, clear the filter
-            if selectedType == type.name {
-                selectedType = nil
+    var body: some View {
+        GeometryReader { geometry in
+            HStack {
+                Spacer()
+
+                VStack(spacing: 16) {
+                    HStack {
+                        Text("Filter by Type")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                        Spacer()
+
+                        // Close button
+                        Button {
+                            onDismiss()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+                    .padding(.top, AppDimensions.cardPadding)
+                    .padding(.horizontal, AppDimensions.cardPadding)
+
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            // All option
+                            Button {
+                                selectedType = nil
+                                onDismiss()
+                            } label: {
+                                HStack {
+                                    Text("All")
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+                                    Spacer()
+                                    if selectedType == nil {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(appAccentColor)
+                                    }
+                                }
+                                .padding(AppDimensions.cardPadding)
+                                .background(Color.cardBackgroundSoft)
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+
+                            // Type options (derived from existing lists)
+                            ForEach(types, id: \.self) { typeName in
+                                Button {
+                                    selectedType = typeName
+                                    onDismiss()
+                                } label: {
+                                    HStack {
+                                        Text(typeName)
+                                            .font(.appBody)
+                                            .foregroundColor(.textPrimary)
+                                        Spacer()
+                                        if selectedType == typeName {
+                                            Image(systemName: "checkmark")
+                                                .foregroundColor(appAccentColor)
+                                        }
+                                    }
+                                    .padding(AppDimensions.cardPadding)
+                                    .background(Color.cardBackgroundSoft)
+                                    .cornerRadius(8)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                    }
+                    .frame(maxHeight: 400)
+                }
+                .frame(width: panelWidth)
+                .background(Color.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
+                .offset(x: offsetX)
+                .opacity(opacity)
+                .padding(.vertical, 40)
+                .padding(.trailing, 20)
+            }
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                offsetX = 0
+                opacity = 1.0
             }
         }
     }

@@ -7,6 +7,9 @@ struct AppointmentListView: View {
     @Environment(\.navigateToRoot) var navigateToRoot
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadHomeAction) private var iPadHomeAction
+    @Environment(\.iPadAddAppointmentAction) private var iPadAddAppointmentAction
+    @Environment(\.iPadAppointmentFilterAction) private var iPadAppointmentFilterAction
+    @Environment(\.iPadAppointmentFilterBinding) private var iPadAppointmentFilterBinding
     @StateObject private var viewModel = AppointmentListViewModel()
     @State private var showAddAppointment = false
     @State private var showUpgradePrompt = false
@@ -14,8 +17,6 @@ struct AppointmentListView: View {
     @State private var showDeleteConfirmation = false
     @State private var selectedTypeFilter: AppointmentType? = nil
     @State private var showingTypeFilter = false
-    @State private var activeOptionsMenuItemId: UUID?
-    @State private var cardFrames: [UUID: CGRect] = [:]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Check if we're in iPad mode (regular size class)
@@ -23,26 +24,19 @@ struct AppointmentListView: View {
         horizontalSizeClass == .regular
     }
 
-    /// Check if user can add more appointments
-    private var canAddAppointment: Bool {
-        PremiumLimitsManager.shared.canCreateAppointment(
-            appState: appState,
-            currentCount: viewModel.appointments.count
-        )
+    /// Check if user has premium access for unlimited appointments
+    /// Note: Free tier users can still add appointments but only within 30 days
+    private var hasPremiumAppointments: Bool {
+        PremiumLimitsManager.shared.hasPremiumAccess(appState: appState)
     }
 
-    private var activeAppointment: Appointment? {
-        guard let activeId = activeOptionsMenuItemId else { return nil }
-        return viewModel.appointments.first(where: { $0.id == activeId })
-    }
-
-    private var activeFrame: CGRect? {
-        guard let activeId = activeOptionsMenuItemId else { return nil }
-        return cardFrames[activeId]
+    /// Get the active type filter - uses iPad binding if available, otherwise local state
+    private var activeTypeFilter: AppointmentType? {
+        iPadAppointmentFilterBinding?.wrappedValue ?? selectedTypeFilter
     }
 
     private var filteredAppointments: [Appointment] {
-        guard let typeFilter = selectedTypeFilter else {
+        guard let typeFilter = activeTypeFilter else {
             return viewModel.appointments
         }
         return viewModel.appointments.filter { $0.type == typeFilter }
@@ -67,10 +61,12 @@ struct AppointmentListView: View {
                     homeAction: iPadHomeAction,
                     showAddButton: canEdit,
                     addAction: canEdit ? {
-                        if canAddAppointment {
-                            showAddAppointment = true
+                        // On iPad, use the environment action to trigger the root-level panel
+                        if let iPadAddAction = iPadAddAppointmentAction {
+                            iPadAddAction()
                         } else {
-                            showUpgradePrompt = true
+                            // On iPhone, use local state
+                            showAddAppointment = true
                         }
                     } : nil
                 )
@@ -99,13 +95,19 @@ struct AppointmentListView: View {
                             }
 
                             Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    showingTypeFilter = true
+                                // On iPad, use the environment action to trigger the root-level overlay
+                                if let iPadFilterAction = iPadAppointmentFilterAction {
+                                    iPadFilterAction()
+                                } else {
+                                    // On iPhone, use local state
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        showingTypeFilter = true
+                                    }
                                 }
                             }) {
-                                Image(systemName: selectedTypeFilter != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                Image(systemName: activeTypeFilter != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                                     .font(.system(size: 20))
-                                    .foregroundColor(selectedTypeFilter != nil ? appAccentColor : .textSecondary)
+                                    .foregroundColor(activeTypeFilter != nil ? appAccentColor : .textSecondary)
                                     .frame(width: 44, height: 44)
                                     .background(Color.cardBackground)
                                     .cornerRadius(AppDimensions.cardCornerRadius)
@@ -121,20 +123,9 @@ struct AppointmentListView: View {
                                     onToggleCompleted: {
                                         viewModel.toggleAppointmentCompleted(appointmentId: appointment.id, appState: appState)
                                     },
-                                    onOptionsMenu: {
-                                        activeOptionsMenuItemId = appointment.id
-                                    },
                                     onDelete: {
                                         appointmentToDelete = appointment
                                         showDeleteConfirmation = true
-                                    }
-                                )
-                                .background(
-                                    GeometryReader { geo in
-                                        Color.clear.preference(
-                                            key: AppointmentCardFramePreferenceKey.self,
-                                            value: [appointment.id: geo.frame(in: .global)]
-                                        )
                                     }
                                 )
                             }
@@ -153,24 +144,26 @@ struct AppointmentListView: View {
                                     .font(.system(size: 60))
                                     .foregroundColor(.textSecondary)
 
-                                Text(selectedTypeFilter != nil ? "No \(selectedTypeFilter!.displayName.lowercased()) appointments" : "No Appointments")
+                                Text(activeTypeFilter != nil ? "No \(activeTypeFilter!.displayName.lowercased()) appointments" : "No Appointments")
                                     .font(.appTitle)
                                     .foregroundColor(.textPrimary)
 
-                                Text(selectedTypeFilter != nil ? "Try selecting a different filter" : "Keep track of upcoming appointments and events")
+                                Text(activeTypeFilter != nil ? "Try selecting a different filter" : "Keep track of upcoming appointments and events")
                                     .font(.appBody)
                                     .foregroundColor(.textSecondary)
                                     .multilineTextAlignment(.center)
 
-                                if selectedTypeFilter == nil && canEdit {
+                                if activeTypeFilter == nil && canEdit {
                                     PrimaryButton(
                                         title: "Add Appointment",
                                         backgroundColor: appAccentColor
                                     ) {
-                                        if canAddAppointment {
-                                            showAddAppointment = true
+                                        // On iPad, use the environment action to trigger the root-level panel
+                                        if let iPadAddAction = iPadAddAppointmentAction {
+                                            iPadAddAction()
                                         } else {
-                                            showUpgradePrompt = true
+                                            // On iPhone, use local state
+                                            showAddAppointment = true
                                         }
                                     }
                                     .padding(.horizontal, 32)
@@ -182,12 +175,35 @@ struct AppointmentListView: View {
                             .padding(.vertical, 60)
                         }
 
-                        // Premium limit reached banner
-                        if !viewModel.appointments.isEmpty && !canAddAppointment {
-                            PremiumFeatureLockBanner(
-                                feature: .appointments,
-                                onUpgrade: { showUpgradePrompt = true }
-                            )
+                        // Info banner for free users about 30-day limit
+                        if !hasPremiumAppointments && !viewModel.appointments.isEmpty {
+                            HStack(spacing: 12) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(appAccentColor)
+
+                                Text("Free plan: appointments limited to next 30 days")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+
+                                Spacer()
+
+                                Button {
+                                    showUpgradePrompt = true
+                                } label: {
+                                    Text("Upgrade")
+                                        .font(.appCaption)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(appAccentColor)
+                                        .cornerRadius(16)
+                                }
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
                         }
 
                         // Bottom spacing for nav bar
@@ -200,36 +216,10 @@ struct AppointmentListView: View {
         }
         .ignoresSafeArea(edges: .top)
         .navigationBarHidden(true)
-        .onPreferenceChange(AppointmentCardFramePreferenceKey.self) { frames in
-            cardFrames = frames
-        }
-
-            // Options menu overlay
-            if let appointment = activeAppointment, let frame = activeFrame {
-                AppointmentOptionsOverlay(
-                    appointment: appointment,
-                    frame: frame,
-                    onToggleCompleted: {
-                        viewModel.toggleAppointmentCompleted(appointmentId: appointment.id, appState: appState)
-                    },
-                    onDelete: {
-                        appointmentToDelete = appointment
-                        showDeleteConfirmation = true
-                    },
-                    onDismiss: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            activeOptionsMenuItemId = nil
-                        }
-                    }
-                )
-                .zIndex(20)
-                .transition(.opacity)
-            }
-
-            // Type filter overlay when modal is shown
-            if showingTypeFilter {
+            // Type filter overlay when modal is shown - only on iPhone, iPad handles at root level
+            if showingTypeFilter && iPadAppointmentFilterAction == nil {
                 ZStack {
-                    Color.cardBackgroundLight.opacity(0.9)
+                    Color.cardBackground.opacity(0.8)
                         .ignoresSafeArea()
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -253,8 +243,10 @@ struct AppointmentListView: View {
         }
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
+                .presentationBackground(Color.appBackgroundLight)
         }
-        .sidePanel(isPresented: $showAddAppointment) {
+        // Only show sidePanel on iPhone - iPad handles this at iPadRootView level
+        .sidePanel(isPresented: iPadAddAppointmentAction == nil ? $showAddAppointment : .constant(false)) {
             AddAppointmentView(
                 onDismiss: { showAddAppointment = false }
             ) { _ in
@@ -370,7 +362,6 @@ struct AppointmentListRow: View {
     let appointment: Appointment
     let isCompleted: Bool
     let onToggleCompleted: () -> Void
-    let onOptionsMenu: () -> Void
     let onDelete: () -> Void
 
     @Environment(\.appAccentColor) private var appAccentColor
@@ -447,14 +438,13 @@ struct AppointmentListRow: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // Options button (vertical dots)
+            // Delete button
             Button {
-                onOptionsMenu()
+                onDelete()
             } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
+                Image(systemName: "trash")
                     .font(.system(size: horizontalSizeClass == .regular ? 18 : 16))
-                    .foregroundColor(.textSecondary)
+                    .foregroundColor(.medicalRed)
                     .frame(width: buttonSize, height: buttonSize)
                     .contentShape(Rectangle())
             }
@@ -829,6 +819,22 @@ struct AddAppointmentView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    // Premium check for date restrictions
+    private var hasPremiumAccess: Bool {
+        PremiumLimitsManager.shared.hasPremiumAccess(appState: appState)
+    }
+
+    // Maximum allowed date for appointments (unlimited for premium, 30 days for free)
+    private var maximumDate: Date {
+        if hasPremiumAccess {
+            // Far future date for premium users
+            return Calendar.current.date(byAdding: .year, value: 10, to: Date()) ?? Date()
+        } else {
+            // 30 days from today for free users
+            return Calendar.current.date(byAdding: .day, value: PremiumLimitsManager.FreeTierLimits.appointmentDaysLimit, to: Date().startOfDay) ?? Date()
+        }
+    }
+
     private let reminderOptions = [
         (0, "At time of event"),
         (15, "15 minutes before"),
@@ -913,11 +919,19 @@ struct AddAppointmentView: View {
                             DatePicker(
                                 "Date",
                                 selection: $date,
+                                in: Date()...maximumDate,
                                 displayedComponents: .date
                             )
                             .datePickerStyle(.compact)
                             .tint(appAccentColor)
                             .labelsHidden()
+
+                            // Show limit info for free users
+                            if !hasPremiumAccess {
+                                Text("Free plan: limited to next 30 days")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textMuted)
+                            }
                         }
 
                         // Time toggle and picker
@@ -1003,6 +1017,13 @@ struct AddAppointmentView: View {
             return
         }
 
+        // Validate date against premium limits
+        if !PremiumLimitsManager.shared.canCreateAppointment(appState: appState, forDate: date) {
+            errorMessage = "Free plan appointments are limited to the next 30 days. Upgrade to Premium for unlimited scheduling."
+            isLoading = false
+            return
+        }
+
         let insert = AppointmentInsert(
             accountId: account.id,
             profileId: profile.id,
@@ -1060,6 +1081,20 @@ struct EditAppointmentView: View {
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    // Premium check for date restrictions
+    private var hasPremiumAccess: Bool {
+        PremiumLimitsManager.shared.hasPremiumAccess(appState: appState)
+    }
+
+    // Maximum allowed date for appointments (unlimited for premium, 30 days for free)
+    private var maximumDate: Date {
+        if hasPremiumAccess {
+            return Calendar.current.date(byAdding: .year, value: 10, to: Date()) ?? Date()
+        } else {
+            return Calendar.current.date(byAdding: .day, value: PremiumLimitsManager.FreeTierLimits.appointmentDaysLimit, to: Date().startOfDay) ?? Date()
+        }
+    }
 
     private let reminderOptions = [
         (0, "At time of event"),
@@ -1157,11 +1192,19 @@ struct EditAppointmentView: View {
                         DatePicker(
                             "",
                             selection: $date,
+                            in: Date()...maximumDate,
                             displayedComponents: .date
                         )
                         .datePickerStyle(.compact)
                         .labelsHidden()
                         .tint(appAccentColor)
+
+                        // Show limit info for free users
+                        if !hasPremiumAccess {
+                            Text("Free plan: limited to next 30 days")
+                                .font(.appCaption)
+                                .foregroundColor(.textMuted)
+                        }
                     }
 
                     // Time toggle and picker
@@ -1226,6 +1269,13 @@ struct EditAppointmentView: View {
     private func updateAppointment() async {
         isLoading = true
         errorMessage = nil
+
+        // Validate date against premium limits
+        if !PremiumLimitsManager.shared.canCreateAppointment(appState: appState, forDate: date) {
+            errorMessage = "Free plan appointments are limited to the next 30 days. Upgrade to Premium for unlimited scheduling."
+            isLoading = false
+            return
+        }
 
         var updatedAppointment = appointment
         updatedAppointment.title = title
@@ -1364,6 +1414,7 @@ struct AppointmentCalendarView: View {
                 )
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .presentationBackground(Color.appBackgroundLight)
             }
         }
     }
@@ -1918,104 +1969,127 @@ class AppointmentCalendarViewModel: ObservableObject {
 }
 
 // MARK: - Appointment Type Filter Overlay
-private struct AppointmentTypeFilterOverlay: View {
+struct AppointmentTypeFilterOverlay: View {
     @Binding var selectedType: AppointmentType?
     let isShowing: Bool
     let onDismiss: () -> Void
     @Environment(\.appAccentColor) private var appAccentColor
-    @State private var scale: CGFloat = 0.8
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var offsetX: CGFloat = 350
     @State private var opacity: Double = 0
 
     private let columns = [
         GridItem(.adaptive(minimum: 80, maximum: 120), spacing: 8)
     ]
 
+    /// Panel width - slightly wider on iPad
+    private var panelWidth: CGFloat {
+        horizontalSizeClass == .regular ? 360 : 320
+    }
+
     var body: some View {
-        VStack(spacing: 16) {
+        GeometryReader { geometry in
             HStack {
-                Text("Filter by Type")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
                 Spacer()
-            }
-            .padding(.top, AppDimensions.cardPadding)
-            .padding(.horizontal, AppDimensions.cardPadding)
 
-            ScrollView {
-                VStack(spacing: 8) {
-                    // All option - full width
-                    Button {
-                        selectedType = nil
-                        onDismiss()
-                    } label: {
-                        HStack {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 16))
-                                .foregroundColor(selectedType == nil ? appAccentColor : .textSecondary)
-                                .frame(width: 24)
+                VStack(spacing: 16) {
+                    HStack {
+                        Text("Filter by Type")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                        Spacer()
 
-                            Text("All")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                            Spacer()
-                            if selectedType == nil {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(appAccentColor)
-                            }
+                        // Close button
+                        Button {
+                            onDismiss()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.textSecondary)
                         }
-                        .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(8)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.top, AppDimensions.cardPadding)
+                    .padding(.horizontal, AppDimensions.cardPadding)
 
-                    // Type options in grid
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(AppointmentType.allCases, id: \.self) { type in
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            // All option - full width
                             Button {
-                                selectedType = type
+                                selectedType = nil
                                 onDismiss()
                             } label: {
-                                VStack(spacing: 6) {
-                                    Image(systemName: type.icon)
-                                        .font(.system(size: 20))
-                                        .foregroundColor(selectedType == type ? appAccentColor : .textSecondary)
+                                HStack {
+                                    Image(systemName: "calendar")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(selectedType == nil ? appAccentColor : .textSecondary)
+                                        .frame(width: 24)
 
-                                    Text(type.displayName)
-                                        .font(.caption)
+                                    Text("All")
+                                        .font(.appBody)
                                         .foregroundColor(.textPrimary)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.center)
-                                        .minimumScaleFactor(0.8)
+                                    Spacer()
+                                    if selectedType == nil {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(appAccentColor)
+                                    }
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 8)
-                                .background(selectedType == type ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft)
+                                .padding(AppDimensions.cardPadding)
+                                .background(Color.cardBackgroundSoft)
                                 .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(selectedType == type ? appAccentColor : Color.clear, lineWidth: 2)
-                                )
                             }
                             .buttonStyle(.plain)
+
+                            // Type options in grid
+                            LazyVGrid(columns: columns, spacing: 8) {
+                                ForEach(AppointmentType.allCases, id: \.self) { type in
+                                    Button {
+                                        selectedType = type
+                                        onDismiss()
+                                    } label: {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: type.icon)
+                                                .font(.system(size: 20))
+                                                .foregroundColor(selectedType == type ? appAccentColor : .textSecondary)
+
+                                            Text(type.displayName)
+                                                .font(.caption)
+                                                .foregroundColor(.textPrimary)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.center)
+                                                .minimumScaleFactor(0.8)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 8)
+                                        .background(selectedType == type ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft)
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(selectedType == type ? appAccentColor : Color.clear, lineWidth: 2)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
                     }
+                    .frame(maxHeight: 400)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+                .frame(width: panelWidth)
+                .background(Color.appBackground)
+                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
+                .offset(x: offsetX)
+                .opacity(opacity)
+                .padding(.vertical, 40)
+                .padding(.trailing, 20)
             }
-            .frame(maxHeight: 400)
         }
-        .frame(width: 320)
-        .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-        .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
-        .scaleEffect(scale)
-        .opacity(opacity)
         .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                scale = 1.0
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                offsetX = 0
                 opacity = 1.0
             }
         }
@@ -2133,248 +2207,6 @@ struct AppointmentTypeBadge: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
-    }
-}
-
-// MARK: - Appointment Card Frame Preference Key
-struct AppointmentCardFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [UUID: CGRect] = [:]
-
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
-// MARK: - Highlighted Appointment Card
-struct HighlightedAppointmentCard: View {
-    let appointment: Appointment
-    let frame: CGRect
-    let overlayFrame: CGRect
-    let panelSize: CGSize
-    let cardWidth: CGFloat
-    let isCompleted: Bool
-    let onToggleCompleted: () -> Void
-
-    @Environment(\.appAccentColor) private var appAccentColor
-
-    private var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        return formatter
-    }
-
-    private var timeFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter
-    }
-
-    var body: some View {
-        // Convert the captured global Y to local Y by subtracting overlay's global origin
-        let localCardY = (frame.minY - overlayFrame.minY) + frame.height / 2
-
-        HStack {
-            // Type icon with background
-            Image(systemName: appointment.type.icon)
-                .font(.system(size: 18))
-                .foregroundColor(appAccentColor)
-                .frame(width: 40, height: 40)
-                .background(appAccentColor.opacity(0.15))
-                .cornerRadius(8)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(appointment.title)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-
-                HStack(spacing: 8) {
-                    Text(dateFormatter.string(from: appointment.date))
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-
-                    if let time = appointment.time {
-                        Text("at \(timeFormatter.string(from: time))")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-                    }
-                }
-
-                if let location = appointment.location {
-                    HStack(spacing: 4) {
-                        Image(systemName: "mappin")
-                            .font(.caption2)
-                        Text(location)
-                            .font(.appCaption)
-                    }
-                    .foregroundColor(.textSecondary)
-                }
-            }
-
-            Spacer()
-
-            // Toggleable check icon
-            Button {
-                onToggleCompleted()
-            } label: {
-                Image(systemName: isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
-                    .font(.system(size: 24))
-                    .foregroundColor(isCompleted ? appAccentColor : .textSecondary.opacity(0.4))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // Ellipsis icon to match original card
-            Image(systemName: "ellipsis")
-                .rotationEffect(.degrees(90))
-                .font(.system(size: 16))
-                .foregroundColor(.textSecondary)
-                .frame(width: 44, height: 44)
-        }
-        .padding(AppDimensions.cardPadding)
-        .frame(width: cardWidth, height: frame.height)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .fill(Color.cardBackground)
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .stroke(appAccentColor, lineWidth: 3)
-            }
-        )
-        .position(x: panelSize.width / 2, y: localCardY)
-        .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
-    }
-}
-
-// MARK: - Appointment Options Overlay
-struct AppointmentOptionsOverlay: View {
-    let appointment: Appointment
-    let frame: CGRect
-    let onToggleCompleted: () -> Void
-    let onDelete: () -> Void
-    let onDismiss: () -> Void
-
-    @EnvironmentObject var appState: AppState
-    @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var menuScale: CGFloat = 0.8
-    @State private var menuOpacity: Double = 0
-    @State private var menuHeight: CGFloat = 0
-
-    private let menuWidth: CGFloat = 200
-
-    private var isCompleted: Bool {
-        appointment.isCompleted
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            let overlayFrame = geometry.frame(in: .global)
-            let panelSize = geometry.size
-            let adaptiveScreenPadding = AppDimensions.screenPadding(for: horizontalSizeClass)
-            let cardWidth = panelSize.width - (adaptiveScreenPadding * 2)
-            // Convert global Y to local Y
-            let localCardMinY = frame.minY - overlayFrame.minY
-            let localCardMaxY = frame.maxY - overlayFrame.minY
-            let menuYPosition = calculateMenuYPosition(localCardMinY: localCardMinY, localCardMaxY: localCardMaxY, screenHeight: panelSize.height)
-
-            ZStack(alignment: .topLeading) {
-                // Dark overlay
-                Color.cardBackgroundLight.opacity(0.9)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        onDismiss()
-                    }
-
-                // Highlighted card at captured position
-                HighlightedAppointmentCard(
-                    appointment: appointment,
-                    frame: frame,
-                    overlayFrame: overlayFrame,
-                    panelSize: panelSize,
-                    cardWidth: cardWidth,
-                    isCompleted: isCompleted,
-                    onToggleCompleted: onToggleCompleted
-                )
-
-                // Options menu - positioned above or below card based on available space
-                VStack(spacing: 0) {
-                    Button(action: {
-                        onDelete()
-                        onDismiss()
-                    }) {
-                        HStack {
-                            Image(systemName: "trash")
-                                .font(.system(size: 16))
-                                .foregroundColor(.red)
-                                .frame(width: 24)
-                            Text("Delete")
-                                .font(.appBody)
-                                .foregroundColor(.red)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-
-                    Divider()
-                        .background(Color.textSecondary.opacity(0.2))
-
-                    Button(action: onDismiss) {
-                        HStack {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16))
-                                .foregroundColor(.textSecondary)
-                                .frame(width: 24)
-                            Text("Cancel")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, AppDimensions.cardPadding)
-                        .padding(.vertical, 16)
-                        .background(Color.cardBackground)
-                    }
-                }
-                .frame(width: menuWidth)
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
-                .scaleEffect(menuScale)
-                .opacity(menuOpacity)
-                .position(
-                    x: panelSize.width - menuWidth / 2 - adaptiveScreenPadding,
-                    y: menuYPosition
-                )
-            }
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                menuScale = 1.0
-                menuOpacity = 1.0
-            }
-        }
-    }
-
-    private func calculateMenuYPosition(localCardMinY: CGFloat, localCardMaxY: CGFloat, screenHeight: CGFloat) -> CGFloat {
-        // Estimate menu height based on number of buttons (Delete and Cancel)
-        let estimatedMenuHeight: CGFloat = 52 * 2
-
-        let menuGap: CGFloat = 12
-        let topSafeArea: CGFloat = 60 // Account for header/safe area
-
-        // Try to position above the card first
-        let aboveCardY = localCardMinY - menuGap - (estimatedMenuHeight / 2)
-
-        // Check if there's enough room above
-        if aboveCardY - (estimatedMenuHeight / 2) > topSafeArea {
-            return aboveCardY
-        } else {
-            // Not enough room above, position below
-            return localCardMaxY + menuGap + (estimatedMenuHeight / 2)
-        }
     }
 }
 

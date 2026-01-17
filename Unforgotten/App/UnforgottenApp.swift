@@ -192,24 +192,59 @@ final class AppState: ObservableObject {
     let importantAccountRepository = ImportantAccountRepository()
     let stickyReminderRepository = StickyReminderRepository()
     let appUserRepository = AppUserRepository()
+    let countdownRepository = CountdownRepository()
     // Note: Notes feature now uses SwiftData (see Features/Notes/)
 
     // MARK: - App Admin State
     @Published var isAppAdmin = false
     @Published var currentAppUser: AppUser?
 
-    /// Whether the current user has premium access (either paid subscription or complimentary)
-    var hasPremiumAccess: Bool {
-        // Check for paid subscription
-        if UserDefaults.standard.bool(forKey: "user_has_premium") {
-            return true
-        }
-        // Check for complimentary access
-        return currentAppUser?.hasComplimentaryAccess ?? false
-    }
-
     // MARK: - UserDefaults Keys
     private let selectedAccountIdKey = "selectedAccountId"
+    private let subscriptionTierKey = "user_subscription_tier"
+    private let legacyPremiumKey = "user_has_premium" // For migration from old system
+
+    // MARK: - Subscription Tier
+
+    /// The user's current subscription tier
+    var subscriptionTier: SubscriptionTier {
+        // Check for complimentary access first (grants Family Plus)
+        if currentAppUser?.hasComplimentaryAccess == true {
+            return .familyPlus
+        }
+
+        // Check stored subscription tier
+        if let tierString = UserDefaults.standard.string(forKey: subscriptionTierKey),
+           let tier = SubscriptionTier(rawValue: tierString) {
+            return tier
+        }
+
+        // Migration: Check legacy premium key for users upgrading from old system
+        if UserDefaults.standard.bool(forKey: legacyPremiumKey) {
+            // Assume old premium users get Premium tier (not Family Plus)
+            return .premium
+        }
+
+        return .free
+    }
+
+    /// Whether the current user has premium access (Premium or Family Plus tier)
+    var hasPremiumAccess: Bool {
+        return subscriptionTier.hasPremiumFeatures
+    }
+
+    /// Whether the current user has Family Plus access
+    var hasFamilyAccess: Bool {
+        return subscriptionTier.hasFamilyFeatures
+    }
+
+    /// Update the user's subscription tier (called after successful purchase)
+    func setSubscriptionTier(_ tier: SubscriptionTier) {
+        UserDefaults.standard.set(tier.rawValue, forKey: subscriptionTierKey)
+        // Clear legacy key if present
+        UserDefaults.standard.removeObject(forKey: legacyPremiumKey)
+        objectWillChange.send()
+    }
 
     // MARK: - Initialization
     init() {

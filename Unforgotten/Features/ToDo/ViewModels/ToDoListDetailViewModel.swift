@@ -236,6 +236,21 @@ class ToDoListDetailViewModel: ObservableObject {
         }
     }
 
+    func deleteType(_ type: ToDoListType) async {
+        guard let repository = repository else { return }
+
+        do {
+            try await repository.deleteListType(id: type.id)
+            availableTypes.removeAll { $0.id == type.id }
+            // If the deleted type was selected, clear the selection
+            if selectedType == type.name {
+                selectedType = nil
+            }
+        } catch {
+            self.error = error
+        }
+    }
+
     func moveItemUp(_ item: ToDoItem) {
         let sorted = sortedItems
         guard let currentIndex = sorted.firstIndex(where: { $0.id == item.id }),

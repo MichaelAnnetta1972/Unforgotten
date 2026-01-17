@@ -94,11 +94,11 @@ extension HeaderStyle {
     /// Default style (Style One)
     static let defaultStyle = styleOne
 
-    /// Style One - Yellow accent
+    /// Style One - Blue accent
     static let styleOne = HeaderStyle(
         id: "style_one",
         name: "Style One",
-        defaultAccentColorHex: "FFC93A", // Yellow
+        defaultAccentColorHex: "52b3c4", // Blue
         assets: HeaderStyleAssets(
             home: HeaderAsset(fileName: "style_one_home", type: .video),
             familyAndFriends: HeaderAsset(fileName: "style_one_family", type: .image),

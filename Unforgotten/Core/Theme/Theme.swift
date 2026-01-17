@@ -59,6 +59,8 @@ extension Color {
     static let clothingBlue = Color(hex: "365A9C")
     static let connectionsGreen = Color(hex: "2E7D5A")
     static let accountsTeal = Color(hex: "00897B")
+    static let hobbyOrange = Color(hex: "E67E22")
+    static let activityGreen = Color(hex: "27AE60")
 
     // Header gradient
     static let headerGradientStart = Color(hex: "283C96")

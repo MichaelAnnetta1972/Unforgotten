@@ -7,9 +7,15 @@ struct UsefulContactsListView: View {
     @Environment(\.navigateToRoot) var navigateToRoot
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadHomeAction) private var iPadHomeAction
+    @Environment(\.iPadAddContactAction) private var iPadAddContactAction
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = UsefulContactsViewModel()
     @State private var showAddContact = false
+
+    /// Check if we're in iPad mode (regular size class)
+    private var isiPad: Bool {
+        horizontalSizeClass == .regular
+    }
     @State private var showUpgradePrompt = false
     @State private var selectedCategory: ContactCategory? = nil
     @State private var contactToDelete: UsefulContact?
@@ -79,7 +85,12 @@ struct UsefulContactsListView: View {
                     showAddButton: true,
                     addAction: {
                         if canAddContact {
-                            showAddContact = true
+                            // On iPad, use the centralized add contact action
+                            if isiPad, let addContactAction = iPadAddContactAction {
+                                addContactAction()
+                            } else {
+                                showAddContact = true
+                            }
                         } else {
                             showUpgradePrompt = true
                         }
@@ -179,7 +190,12 @@ struct UsefulContactsListView: View {
                                 buttonTitle: "Add Contact",
                                 buttonAction: {
                                     if canAddContact {
-                                        showAddContact = true
+                                        // On iPad, use the centralized add contact action
+                                        if isiPad, let addContactAction = iPadAddContactAction {
+                                            addContactAction()
+                                        } else {
+                                            showAddContact = true
+                                        }
                                     } else {
                                         showUpgradePrompt = true
                                     }
@@ -226,7 +242,7 @@ struct UsefulContactsListView: View {
         // Category filter overlay
         if showingCategoryFilter {
             ZStack {
-                Color.cardBackgroundLight.opacity(0.9)
+                Color.cardBackground.opacity(0.8)
                     .ignoresSafeArea()
                     .onTapGesture {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -251,8 +267,10 @@ struct UsefulContactsListView: View {
         .navigationBarHidden(true)
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
+                .presentationBackground(Color.appBackgroundLight)
         }
-        .sidePanel(isPresented: $showAddContact) {
+        // iPhone: Use sheet for adding contacts (iPad uses centralized side panel)
+        .sheet(isPresented: isiPad ? .constant(false) : $showAddContact) {
             AddUsefulContactView(
                 onDismiss: { showAddContact = false }
             ) { _ in
@@ -260,6 +278,7 @@ struct UsefulContactsListView: View {
                     await viewModel.loadContacts(appState: appState)
                 }
             }
+            .presentationBackground(Color.appBackgroundLight)
         }
         .task {
             await viewModel.loadContacts(appState: appState)
@@ -462,14 +481,13 @@ struct UsefulContactRow: View {
                     .buttonStyle(PlainButtonStyle())
                 }
 
-                // Options button (vertical dots)
+                // Delete button
                 Button {
-                    onOptionsMenu()
+                    onDelete()
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .rotationEffect(.degrees(90))
+                    Image(systemName: "trash")
                         .font(.system(size: 16))
-                        .foregroundColor(.textSecondary)
+                        .foregroundColor(.red)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -757,99 +775,122 @@ private struct ContactCategoryFilterOverlay: View {
     let isShowing: Bool
     let onDismiss: () -> Void
     @Environment(\.appAccentColor) private var appAccentColor
-    @State private var scale: CGFloat = 0.8
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var offsetX: CGFloat = 320
     @State private var opacity: Double = 0
+
+    /// Panel width - slightly wider on iPad
+    private var panelWidth: CGFloat {
+        horizontalSizeClass == .regular ? 320 : 280
+    }
 
     private let columns = [
         GridItem(.adaptive(minimum: 80, maximum: 120), spacing: 8)
     ]
 
     var body: some View {
-        VStack(spacing: 16) {
+        GeometryReader { geometry in
             HStack {
-                Text("Filter by Category")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
                 Spacer()
-            }
-            .padding(.top, AppDimensions.cardPadding)
-            .padding(.horizontal, AppDimensions.cardPadding)
 
-            ScrollView {
-                VStack(spacing: 8) {
-                    // All option - full width
-                    Button {
-                        selectedCategory = nil
-                        onDismiss()
-                    } label: {
-                        HStack {
-                            Image(systemName: "phone.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(selectedCategory == nil ? appAccentColor : .textSecondary)
-                                .frame(width: 24)
+                VStack(spacing: 16) {
+                    HStack {
+                        Text("Filter by Category")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                        Spacer()
 
-                            Text("All")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                            Spacer()
-                            if selectedCategory == nil {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(appAccentColor)
-                            }
+                        // Close button
+                        Button {
+                            onDismiss()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.textSecondary)
                         }
-                        .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(8)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.top, AppDimensions.cardPadding)
+                    .padding(.horizontal, AppDimensions.cardPadding)
 
-                    // Category options in grid
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(ContactCategory.allCases, id: \.self) { category in
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            // All option - full width
                             Button {
-                                selectedCategory = category
+                                selectedCategory = nil
                                 onDismiss()
                             } label: {
-                                VStack(spacing: 6) {
-                                    Image(systemName: category.icon)
-                                        .font(.system(size: 20))
-                                        .foregroundColor(selectedCategory == category ? appAccentColor : .textSecondary)
+                                HStack {
+                                    Image(systemName: "phone.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(selectedCategory == nil ? appAccentColor : .textSecondary)
+                                        .frame(width: 24)
 
-                                    Text(category.displayName)
-                                        .font(.caption)
+                                    Text("All")
+                                        .font(.appBody)
                                         .foregroundColor(.textPrimary)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.center)
-                                        .minimumScaleFactor(0.8)
+                                    Spacer()
+                                    if selectedCategory == nil {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(appAccentColor)
+                                    }
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 8)
-                                .background(selectedCategory == category ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft)
+                                .padding(AppDimensions.cardPadding)
+                                .background(Color.cardBackgroundSoft)
                                 .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(selectedCategory == category ? appAccentColor : Color.clear, lineWidth: 2)
-                                )
                             }
                             .buttonStyle(.plain)
+
+                            // Category options in grid
+                            LazyVGrid(columns: columns, spacing: 8) {
+                                ForEach(ContactCategory.allCases, id: \.self) { category in
+                                    Button {
+                                        selectedCategory = category
+                                        onDismiss()
+                                    } label: {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: category.icon)
+                                                .font(.system(size: 20))
+                                                .foregroundColor(selectedCategory == category ? appAccentColor : .textSecondary)
+
+                                            Text(category.displayName)
+                                                .font(.caption)
+                                                .foregroundColor(.textPrimary)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.center)
+                                                .minimumScaleFactor(0.8)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 8)
+                                        .background(selectedCategory == category ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft)
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(selectedCategory == category ? appAccentColor : Color.clear, lineWidth: 2)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
                     }
+                    .frame(maxHeight: 400)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+                .frame(width: panelWidth)
+                .background(Color.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
+                .offset(x: offsetX)
+                .opacity(opacity)
+                .padding(.vertical, 40)
+                .padding(.trailing, 20)
             }
-            .frame(maxHeight: 400)
         }
-        .frame(width: 320)
-        .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-        .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
-        .scaleEffect(scale)
-        .opacity(opacity)
         .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                scale = 1.0
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                offsetX = 0
                 opacity = 1.0
             }
         }

@@ -211,6 +211,114 @@ struct RichTextEditor: UIViewRepresentable {
             // This ensures newly typed text inherits formatting from cursor position
         }
 
+        /// Handle return key to continue bullet/numbered lists
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            // Only handle newline (Return key)
+            guard text == "\n" else { return true }
+
+            let nsText = (textView.text ?? "") as NSString
+            let cursorPosition = range.location
+
+            // Find start of current line
+            var lineStart = cursorPosition
+            while lineStart > 0 && nsText.character(at: lineStart - 1) != unichar(10) { // 10 = newline
+                lineStart -= 1
+            }
+
+            // Get the current line content
+            let currentLineLength = cursorPosition - lineStart
+            let currentLine = nsText.substring(with: NSRange(location: lineStart, length: currentLineLength))
+
+            // Check for bullet point: "•  " (bullet + two spaces)
+            if currentLine.hasPrefix("•  ") {
+                // If line only has the bullet prefix (empty list item), remove it instead
+                if currentLine.trimmingCharacters(in: .whitespaces) == "•" {
+                    // Remove the bullet prefix and don't add newline
+                    let mutableAttr = NSMutableAttributedString(attributedString: textView.attributedText)
+                    mutableAttr.deleteCharacters(in: NSRange(location: lineStart, length: currentLineLength))
+                    textView.attributedText = mutableAttr
+                    textView.selectedRange = NSRange(location: lineStart, length: 0)
+
+                    DispatchQueue.main.async { [weak self] in
+                        self?.parent.attributedText = textView.attributedText
+                        self?.parent.onTextChange?()
+                    }
+                    return false
+                }
+
+                // Insert newline + bullet prefix
+                let prefixToInsert = "\n•  "
+                insertTextAtCursor(textView, text: prefixToInsert, range: range)
+                return false
+            }
+
+            // Check for numbered list: "1. ", "2. ", etc.
+            if let match = currentLine.range(of: #"^(\d+)\.\s"#, options: .regularExpression) {
+                let numberStr = String(currentLine[match].dropLast(2)) // Remove ". "
+                if let currentNumber = Int(numberStr) {
+                    // If line only has the number prefix (empty list item), remove it
+                    if currentLine.trimmingCharacters(in: .whitespaces) == "\(currentNumber)." {
+                        // Remove the number prefix and don't add newline
+                        let mutableAttr = NSMutableAttributedString(attributedString: textView.attributedText)
+                        mutableAttr.deleteCharacters(in: NSRange(location: lineStart, length: currentLineLength))
+                        textView.attributedText = mutableAttr
+                        textView.selectedRange = NSRange(location: lineStart, length: 0)
+
+                        DispatchQueue.main.async { [weak self] in
+                            self?.parent.attributedText = textView.attributedText
+                            self?.parent.onTextChange?()
+                        }
+                        return false
+                    }
+
+                    // Insert newline + next number prefix
+                    let nextNumber = currentNumber + 1
+                    let prefixToInsert = "\n\(nextNumber). "
+                    insertTextAtCursor(textView, text: prefixToInsert, range: range)
+                    return false
+                }
+            }
+
+            // Check for dash list: "- " (dash + space)
+            if currentLine.hasPrefix("- ") {
+                // If line only has the dash prefix (empty list item), remove it
+                if currentLine.trimmingCharacters(in: .whitespaces) == "-" {
+                    let mutableAttr = NSMutableAttributedString(attributedString: textView.attributedText)
+                    mutableAttr.deleteCharacters(in: NSRange(location: lineStart, length: currentLineLength))
+                    textView.attributedText = mutableAttr
+                    textView.selectedRange = NSRange(location: lineStart, length: 0)
+
+                    DispatchQueue.main.async { [weak self] in
+                        self?.parent.attributedText = textView.attributedText
+                        self?.parent.onTextChange?()
+                    }
+                    return false
+                }
+
+                // Insert newline + dash prefix
+                let prefixToInsert = "\n- "
+                insertTextAtCursor(textView, text: prefixToInsert, range: range)
+                return false
+            }
+
+            // No list prefix found, let normal newline behavior occur
+            return true
+        }
+
+        /// Helper to insert text at cursor position with proper attributes
+        private func insertTextAtCursor(_ textView: UITextView, text: String, range: NSRange) {
+            let mutableAttr = NSMutableAttributedString(attributedString: textView.attributedText)
+            let insertAttr = NSAttributedString(string: text, attributes: defaultAttributes)
+            mutableAttr.replaceCharacters(in: range, with: insertAttr)
+            textView.attributedText = mutableAttr
+            textView.selectedRange = NSRange(location: range.location + text.count, length: 0)
+
+            DispatchQueue.main.async { [weak self] in
+                self?.parent.attributedText = textView.attributedText
+                self?.parent.onTextChange?()
+            }
+        }
+
         // MARK: - Formatting Actions
         @objc func boldTapped() {
             applyFontTrait(.traitBold)

@@ -165,9 +165,10 @@ final class OnboardingService {
             }
         }
 
-        // 4. Store subscription status locally (premium status persisted via StoreKit receipts)
+        // 4. Store subscription status locally (subscription tier persisted via StoreKit receipts)
         if data.isPremium {
-            UserDefaults.standard.set(true, forKey: "user_has_premium")
+            // Save the subscription tier
+            UserDefaults.standard.set(data.subscriptionTier.rawValue, forKey: "user_subscription_tier")
             if let productId = data.subscriptionProductId {
                 UserDefaults.standard.set(productId, forKey: "user_subscription_product_id")
             }
@@ -179,9 +180,27 @@ final class OnboardingService {
 
 // MARK: - Subscription Status
 extension OnboardingService {
-    /// Check if user has an active premium subscription
+    /// Check if user has an active premium subscription (Premium or Family Plus)
     var isPremiumUser: Bool {
-        UserDefaults.standard.bool(forKey: "user_has_premium")
+        if let tierString = UserDefaults.standard.string(forKey: "user_subscription_tier"),
+           let tier = SubscriptionTier(rawValue: tierString) {
+            return tier.hasPremiumFeatures
+        }
+        // Fallback to legacy key for migration
+        return UserDefaults.standard.bool(forKey: "user_has_premium")
+    }
+
+    /// Get the current subscription tier
+    var subscriptionTier: SubscriptionTier {
+        if let tierString = UserDefaults.standard.string(forKey: "user_subscription_tier"),
+           let tier = SubscriptionTier(rawValue: tierString) {
+            return tier
+        }
+        // Fallback to legacy key for migration
+        if UserDefaults.standard.bool(forKey: "user_has_premium") {
+            return .premium
+        }
+        return .free
     }
 
     /// Get the current subscription product ID

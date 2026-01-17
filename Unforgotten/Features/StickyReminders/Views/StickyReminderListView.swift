@@ -31,6 +31,16 @@ struct StickyReminderListView: View {
         )
     }
 
+    /// Check if user has premium access
+    private var hasPremiumAccess: Bool {
+        PremiumLimitsManager.shared.hasPremiumAccess(appState: appState)
+    }
+
+    /// Check if user has reached the free tier limit (exactly 5 reminders on free plan)
+    private var hasReachedFreeLimit: Bool {
+        !hasPremiumAccess && reminders.count >= PremiumLimitsManager.FreeTierLimits.stickyReminders
+    }
+
     private var activeReminders: [StickyReminder] {
         reminders.filter { !$0.isDismissed && $0.isActive }
     }
@@ -66,6 +76,14 @@ struct StickyReminderListView: View {
                     } else if reminders.isEmpty {
                         emptyStateView
                     } else {
+                        // Premium limit reached card - show at top when limit reached
+                        if hasReachedFreeLimit {
+                            PremiumFeatureLockBanner(
+                                feature: .stickyReminders,
+                                onUpgrade: { showUpgradePrompt = true }
+                            )
+                        }
+
                         // Active Reminders Section
                         if !activeReminders.isEmpty {
                             sectionHeader("Active Reminders", count: activeReminders.count)
@@ -86,14 +104,6 @@ struct StickyReminderListView: View {
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
-                        }
-
-                        // Premium limit reached banner
-                        if !reminders.isEmpty && !canAddReminder {
-                            PremiumFeatureLockBanner(
-                                feature: .stickyReminders,
-                                onUpgrade: { showUpgradePrompt = true }
-                            )
                         }
                     }
 

@@ -415,7 +415,8 @@ struct ProfileDetailInsert: Encodable {
     let value: String
     let status: String?
     let occasion: String?
-    
+    let metadata: [String: String]?
+
     enum CodingKeys: String, CodingKey {
         case accountId = "account_id"
         case profileId = "profile_id"
@@ -424,8 +425,9 @@ struct ProfileDetailInsert: Encodable {
         case value
         case status
         case occasion
+        case metadata
     }
-    
+
     init(
         accountId: UUID,
         profileId: UUID,
@@ -433,7 +435,8 @@ struct ProfileDetailInsert: Encodable {
         label: String,
         value: String,
         status: String? = nil,
-        occasion: String? = nil
+        occasion: String? = nil,
+        metadata: [String: String]? = nil
     ) {
         self.accountId = accountId
         self.profileId = profileId
@@ -442,6 +445,7 @@ struct ProfileDetailInsert: Encodable {
         self.value = value
         self.status = status
         self.occasion = occasion
+        self.metadata = metadata
     }
 }
 

@@ -307,7 +307,9 @@ enum DetailCategory: String, Codable, CaseIterable {
     case like
     case dislike
     case note
-    
+    case hobby
+    case activityIdea = "activity_idea"
+
     var displayName: String {
         switch self {
         case .clothing: return "Clothing"
@@ -317,9 +319,11 @@ enum DetailCategory: String, Codable, CaseIterable {
         case .like: return "Like"
         case .dislike: return "Dislike"
         case .note: return "Note"
+        case .hobby: return "Hobby"
+        case .activityIdea: return "Activity"
         }
     }
-    
+
     var icon: String {
         switch self {
         case .clothing: return "tshirt.fill"
@@ -329,6 +333,8 @@ enum DetailCategory: String, Codable, CaseIterable {
         case .like: return "heart.fill"
         case .dislike: return "hand.thumbsdown.fill"
         case .note: return "note.text"
+        case .hobby: return "heart.circle.fill"
+        case .activityIdea: return "figure.walk"
         }
     }
 }
@@ -1575,5 +1581,184 @@ enum AccountCategory: String, Codable, CaseIterable {
         case .work: return .gray
         case .other: return Color.textSecondary
         }
+    }
+}
+
+// MARK: - Countdown Type
+enum CountdownType: String, Codable, CaseIterable, Identifiable {
+    case anniversary
+    case holiday
+    case countdown
+    case task
+    case custom
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .anniversary: return "Anniversary"
+        case .holiday: return "Holiday"
+        case .countdown: return "Countdown"
+        case .task: return "Task"
+        case .custom: return "Custom"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .anniversary: return "heart.fill"
+        case .holiday: return "star.fill"
+        case .countdown: return "clock.fill"
+        case .task: return "checklist"
+        case .custom: return "tag.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .anniversary: return .pink
+        case .holiday: return .yellow
+        case .countdown: return .blue
+        case .task: return .green
+        case .custom: return .purple
+        }
+    }
+}
+
+// MARK: - Countdown
+/// A custom countdown event for tracking anniversaries, holidays, tasks, and other important dates
+struct Countdown: Codable, Identifiable, Equatable, Hashable {
+    let id: UUID
+    let accountId: UUID
+    var title: String
+    var date: Date
+    var type: CountdownType
+    var customType: String?
+    var notes: String?
+    var reminderOffsetMinutes: Int?
+    var isRecurring: Bool
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case title
+        case date
+        case type
+        case customType = "custom_type"
+        case notes
+        case reminderOffsetMinutes = "reminder_offset_minutes"
+        case isRecurring = "is_recurring"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    // Memberwise initializer
+    init(
+        id: UUID = UUID(),
+        accountId: UUID,
+        title: String,
+        date: Date,
+        type: CountdownType = .countdown,
+        customType: String? = nil,
+        notes: String? = nil,
+        reminderOffsetMinutes: Int? = nil,
+        isRecurring: Bool = false,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.title = title
+        self.date = date
+        self.type = type
+        self.customType = customType
+        self.notes = notes
+        self.reminderOffsetMinutes = reminderOffsetMinutes
+        self.isRecurring = isRecurring
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    // Custom decoder to provide defaults for optional fields
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        title = try container.decode(String.self, forKey: .title)
+        date = try container.decode(Date.self, forKey: .date)
+        type = try container.decodeIfPresent(CountdownType.self, forKey: .type) ?? .countdown
+        customType = try container.decodeIfPresent(String.self, forKey: .customType)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        reminderOffsetMinutes = try container.decodeIfPresent(Int.self, forKey: .reminderOffsetMinutes)
+        isRecurring = try container.decodeIfPresent(Bool.self, forKey: .isRecurring) ?? false
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    /// The display name for the type (uses customType if type is .custom)
+    var displayTypeName: String {
+        if type == .custom, let customName = customType, !customName.isEmpty {
+            return customName
+        }
+        return type.displayName
+    }
+
+    /// Calculate days until the next occurrence of this countdown
+    var daysUntilNextOccurrence: Int {
+        if isRecurring {
+            return date.daysUntilNextOccurrence()
+        } else {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            let eventDate = calendar.startOfDay(for: date)
+            let components = calendar.dateComponents([.day], from: today, to: eventDate)
+            return max(0, components.day ?? 0)
+        }
+    }
+
+    /// Whether this countdown has already passed (for non-recurring countdowns)
+    var hasPassed: Bool {
+        if isRecurring { return false }
+        return date < Date()
+    }
+}
+
+// MARK: - Upcoming Event
+/// A unified type for displaying both birthdays and countdowns in a single list
+enum UpcomingEvent: Identifiable {
+    case birthday(UpcomingBirthday)
+    case countdown(Countdown)
+
+    var id: UUID {
+        switch self {
+        case .birthday(let birthday): return birthday.id
+        case .countdown(let countdown): return countdown.id
+        }
+    }
+
+    var daysUntil: Int {
+        switch self {
+        case .birthday(let birthday): return birthday.daysUntil
+        case .countdown(let countdown): return countdown.daysUntilNextOccurrence
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .birthday(let birthday): return birthday.profile.displayName
+        case .countdown(let countdown): return countdown.title
+        }
+    }
+
+    var isBirthday: Bool {
+        if case .birthday = self { return true }
+        return false
+    }
+
+    var isCountdown: Bool {
+        if case .countdown = self { return true }
+        return false
     }
 }

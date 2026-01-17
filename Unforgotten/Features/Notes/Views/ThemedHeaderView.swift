@@ -84,7 +84,7 @@ struct ThemedHeaderView: View {
 /// Smaller header for compact displays
 struct MiniThemeHeader: View {
     let theme: NoteTheme
-    var height: CGFloat = 80
+    var height: CGFloat = 120
 
     var body: some View {
         ZStack(alignment: .bottom) {

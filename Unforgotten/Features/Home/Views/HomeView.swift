@@ -110,7 +110,7 @@ struct HomeView: View {
                                 NavigationLink(value: HomeDestination.appointments) {
                                     NavigationCardContent(title: "Appointments", icon: "calendar")
                                 }
-                                .matchedTransitionSource(id: HomeDestination.appointments, in: namespace)
+                                .matchedTransitionSource(id: HomeDestination.appointments, in: namespace)       
                             }
 
                             if shouldShowFeature(.stickyReminders) {
@@ -144,7 +144,7 @@ struct HomeView: View {
 
                             if shouldShowFeature(.birthdays) {
                                 NavigationLink(value: HomeDestination.birthdays) {
-                                    NavigationCardContent(title: "Birthdays", icon: "gift")
+                                    NavigationCardContent(title: "Birthdays & Countdowns", icon: "gift")
                                 }
                                 .matchedTransitionSource(id: HomeDestination.birthdays, in: namespace)
                             }
@@ -224,6 +224,11 @@ struct HomeView: View {
                 viewModel.handleAppointmentChange(notification: notification)
             }
             // Also reload in case appointment was created or we need fresh data
+            Task {
+                await viewModel.loadData(appState: appState)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .countdownsDidChange)) { _ in
             Task {
                 await viewModel.loadData(appState: appState)
             }
@@ -325,6 +330,8 @@ struct TodayCard: View {
                         TodayAppointmentRow(appointment: appointment, viewModel: viewModel)
                     case .birthday(let profile):
                         TodayBirthdayRow(profile: profile)
+                    case .countdown(let countdown):
+                        TodayCountdownRow(countdown: countdown)
                     }
                 }
             }
@@ -364,12 +371,14 @@ enum TodayItem: Identifiable {
     case medication(MedicationLog)
     case appointment(Appointment)
     case birthday(Profile)
+    case countdown(Countdown)
 
     var id: String {
         switch self {
         case .medication(let log): return "med-\(log.id)"
         case .appointment(let apt): return "apt-\(apt.id)"
         case .birthday(let profile): return "bday-\(profile.id)"
+        case .countdown(let countdown): return "countdown-\(countdown.id)"
         }
     }
 }
@@ -599,12 +608,62 @@ struct TodayBirthdayRow: View {
     }
 }
 
+// MARK: - Today Countdown Row
+struct TodayCountdownRow: View {
+    let countdown: Countdown
+    @State private var showOptions = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon - use the countdown type's icon and color
+            Image(systemName: countdown.type.icon)
+                .font(.system(size: 18))
+                .foregroundColor(countdown.type.color)
+                .frame(width: 32, height: 32)
+
+            // Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(countdown.title)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+
+                Text(countdown.displayTypeName)
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+            }
+
+            Spacer()
+
+            // Options button (vertical dots)
+            Button {
+                showOptions = true
+            } label: {
+                Image(systemName: "ellipsis")
+                    .rotationEffect(.degrees(90))
+                    .font(.system(size: 16))
+                    .foregroundColor(.textSecondary)
+                    .frame(width: 32, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(AppDimensions.cardPadding)
+        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
+            Button("View details") {
+                // Navigate to birthdays & countdowns
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+    }
+}
+
 // MARK: - Home View Model
 @MainActor
 class HomeViewModel: ObservableObject {
     @Published var todayMedications: [MedicationLog] = []
     @Published var todayAppointments: [Appointment] = []
     @Published var todayBirthdays: [Profile] = []
+    @Published var todayCountdowns: [Countdown] = []
     @Published var medications: [Medication] = []
     @Published var isLoading = false
     @Published var error: String?
@@ -690,10 +749,10 @@ class HomeViewModel: ObservableObject {
     }
 
     var hasTodayItems: Bool {
-        !todayMedications.isEmpty || !todayAppointments.isEmpty || !todayBirthdays.isEmpty
+        !todayMedications.isEmpty || !todayAppointments.isEmpty || !todayBirthdays.isEmpty || !todayCountdowns.isEmpty
     }
 
-    /// Check if there are today items, optionally excluding birthdays
+    /// Check if there are today items, optionally excluding birthdays/countdowns
     func hasTodayItems(showBirthdays: Bool) -> Bool {
         if showBirthdays {
             return hasTodayItems
@@ -705,13 +764,14 @@ class HomeViewModel: ObservableObject {
         allTodayItems(includeBirthdays: true)
     }
 
-    /// Get all today items, optionally filtering out birthdays (for Helper/Viewer roles)
+    /// Get all today items, optionally filtering out birthdays/countdowns (for Helper/Viewer roles)
     func allTodayItems(includeBirthdays: Bool) -> [TodayItem] {
         var items: [TodayItem] = []
         items.append(contentsOf: todayMedications.map { .medication($0) })
         items.append(contentsOf: todayAppointments.map { .appointment($0) })
         if includeBirthdays {
             items.append(contentsOf: todayBirthdays.map { .birthday($0) })
+            items.append(contentsOf: todayCountdowns.map { .countdown($0) })
         }
         return items
     }
@@ -767,6 +827,10 @@ class HomeViewModel: ObservableObject {
                 guard let birthday = profile.birthday else { return false }
                 return birthday.daysUntilNextOccurrence() == 0
             }
+
+            // Load today's countdowns
+            let allCountdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: accountId, days: 365)
+            todayCountdowns = allCountdowns.filter { $0.daysUntilNextOccurrence == 0 }
 
         } catch {
             self.error = error.localizedDescription

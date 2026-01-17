@@ -10,12 +10,16 @@ struct OnboardingFreeTierView: View {
     @State private var hasAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Feature data for easy iteration
+    // Feature data for easy iteration - updated with new free tier limits
     private let features: [(icon: String, title: String, description: String)] = [
-        ("person.fill", "Add one Friend profile", "Add one family member or friend to your network"),
-        ("bell.fill", "Add a Reminder", "Set up a Sticky Reminder to help you remember important tasks"),
-        ("note.text", "Make one Note", "Keep one important note for quick reference"),
-        ("pills.fill", "Add one Medication", "Track one medication with schedule and history"),
+        ("pill.fill", "5 Medications", "Track up to 5 medications with schedules and reminders"),
+        ("calendar", "30 Days of Appointments", "Schedule appointments within the next 30 days"),
+        ("person.2.fill", "2 Family Profiles", "Add up to 2 family members or friends"),
+        ("checklist", "2 To-Do Lists", "Create up to 2 to-do lists to stay organized"),
+        ("note.text", "5 Notes", "Keep up to 5 important notes for quick reference"),
+        ("pin.fill", "5 Sticky Reminders", "Set up to 5 sticky reminders for important tasks"),
+        ("phone.circle.fill", "5 Useful Contacts", "Store up to 5 important contacts"),
+        ("calendar.badge.clock", "2 Countdowns", "Track up to 2 upcoming events or occasions"),
         ("paintpalette.fill", "All themes included", "Personalize the app with any theme you like")
     ]
 
@@ -40,7 +44,7 @@ struct OnboardingFreeTierView: View {
                         .opacity(hasAppeared ? 1 : 0)
                         .offset(y: hasAppeared ? 0 : 10)
 
-                    Text("Try out all of the features for yourself before committing to a subscription.")
+                    Text("Try out the features for yourself before committing to a subscription.")
                         .font(.appBody)
                         .foregroundColor(.textSecondary)
                         .multilineTextAlignment(.center)
@@ -50,7 +54,7 @@ struct OnboardingFreeTierView: View {
                 .padding(.horizontal, AppDimensions.screenPadding)
 
                 // Feature list with staggered animation
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     ForEach(Array(features.enumerated()), id: \.offset) { index, feature in
                         OnboardingFeatureRow(
                             icon: feature.icon,
@@ -61,7 +65,7 @@ struct OnboardingFreeTierView: View {
                         .opacity(hasAppeared ? 1 : 0)
                         .offset(y: hasAppeared ? 0 : 20)
                         .animation(
-                            reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.1 + 0.2),
+                            reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.05 + 0.2),
                             value: hasAppeared
                         )
                     }
@@ -69,7 +73,7 @@ struct OnboardingFreeTierView: View {
                 .padding(.horizontal, AppDimensions.screenPadding)
 
                 // Upgrade note
-                Text("Ready for more? Upgrade anytime to add unlimited friends, reminders, and more.")
+                Text("Need more? Upgrade to Premium for unlimited everything, or Family Plus to share with caregivers.")
                     .font(.appCaption)
                     .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
@@ -89,7 +93,7 @@ struct OnboardingFreeTierView: View {
                 VStack(spacing: 12) {
                     // See Premium button
                     PrimaryButton(
-                        title: "See Premium options",
+                        title: "See subscription options",
                         backgroundColor: accentColor,
                         action: onSeePremium
                     )

@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct AddToDoListSheet: View {
+    @EnvironmentObject var appState: AppState
     @ObservedObject var viewModel: ToDoListsViewModel
     @Environment(\.dismiss) var dismiss
     @Environment(\.appAccentColor) private var appAccentColor
@@ -20,7 +21,16 @@ struct AddToDoListSheet: View {
     @State private var showingTypeSelector = false
     @State private var showingAddType = false
     @State private var newTypeName = ""
+    @State private var errorMessage: String?
     @FocusState private var titleFieldFocused: Bool
+
+    /// Check if user can add more to-do lists
+    private var canAddList: Bool {
+        PremiumLimitsManager.shared.canCreateToDoList(
+            appState: appState,
+            currentCount: viewModel.lists.count
+        )
+    }
 
     private func dismissView() {
         if let onDismiss = onDismiss {
@@ -105,6 +115,14 @@ struct AddToDoListSheet: View {
                                 .background(Color.cardBackground)
                                 .cornerRadius(AppDimensions.cardCornerRadius)
                         }
+
+                        // Error message
+                        if let error = errorMessage {
+                            Text(error)
+                                .font(.appCaption)
+                                .foregroundColor(.medicalRed)
+                                .multilineTextAlignment(.center)
+                        }
                     }
                     .padding(AppDimensions.screenPadding)
 
@@ -162,6 +180,12 @@ struct AddToDoListSheet: View {
     }
 
     private func createList() {
+        // Validate premium limit before creating
+        guard canAddList else {
+            errorMessage = "Free plan is limited to \(PremiumLimitsManager.FreeTierLimits.todoLists) to-do lists. Upgrade to Premium for unlimited lists."
+            return
+        }
+
         Task {
             let newList = await viewModel.createListAsync(title: title, type: selectedType)
             dismissView()

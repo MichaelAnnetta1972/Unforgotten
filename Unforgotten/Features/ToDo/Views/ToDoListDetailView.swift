@@ -28,7 +28,6 @@ struct ToDoListDetailView: View {
         horizontalSizeClass == .regular
     }
 
-    private let compactHeaderHeight: CGFloat = AppDimensions.headerHeight
     let isNewList: Bool
 
     init(list: ToDoList, isNewList: Bool = false) {
@@ -42,177 +41,138 @@ struct ToDoListDetailView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 16) {
-                        // Compact Header
-                    ZStack(alignment: .bottom) {
-                        // Background
-                        GeometryReader { geometry in
-                            // Use todo_header_default image
-                            if let uiImage = UIImage(named: "todo_header_default") {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: geometry.size.width, height: geometry.size.height)
-                            } else {
-                                // Final fallback gradient
-                                LinearGradient(
-                                    colors: [headerStyleManager.defaultAccentColor.opacity(0.8), headerStyleManager.defaultAccentColor.opacity(0.4)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                            }
-                        }
-                        .frame(height: compactHeaderHeight)
-                        .clipped()
-
-                        // Gradient overlay
-                        LinearGradient(
-                            colors: [.clear, .black.opacity(0.8)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-
-                        // Header content
-                        VStack {
-                            HStack {
-                                Button(action: { dismiss() }) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 20, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .frame(width: 36, height: 36)
-                                        .background(Color.white.opacity(0.2))
-                                        .clipShape(Circle())
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, AppDimensions.screenPadding)
-                            .padding(.top, 60)
-
-                            Spacer()
-                        }
-                    }
-                    .frame(height: compactHeaderHeight)
-
                     VStack(spacing: AppDimensions.cardSpacing) {
-                    // Title Edit Field with Type Icon and Delete Button
-                    VStack(alignment: .leading, spacing: 12) {
+                        // Close button row
                         HStack {
-                            Text("List Title")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
                             Spacer()
-
-                            if let type = viewModel.selectedType {
-                                Button(action: {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        showingTypeSelector = true
-                                    }
-                                }) {
-                                    Text(type)
-                                        .font(.caption)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 4)
-                                        .background(appAccentColor)
-                                        .cornerRadius(6)
-                                }
+                            Button(action: { dismiss() }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.textSecondary)
+                                    .frame(width: 40, height: 40)
+                                    .background(Color.cardBackground)
+                                    .clipShape(Circle())
                             }
                         }
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .padding(.top, AppDimensions.screenPadding)
 
-                        HStack(alignment: .top, spacing: 12) {
-                            TextField("Enter title", text: $viewModel.listTitle, axis: .vertical)
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .lineLimit(1...5)
-                                .multilineTextAlignment(.leading)
-                                .onChange(of: viewModel.listTitle) { _, _ in
-                                    viewModel.saveTitle()
-                                }
+                        // Title Edit Field with Type Icon and Delete Button
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("List Title")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
 
-                            HStack(spacing: 16) {
-                                Button(action: {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        showingTypeSelector = true
-                                    }
-                                }) {
-                                    Image(systemName: viewModel.selectedType != nil ? "tag.fill" : "tag")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(viewModel.selectedType != nil ? appAccentColor : .textSecondary)
-                                }
+                                Spacer()
 
-                                Button(action: { showDeleteConfirmation = true }) {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-                        .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-                    }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-
-                    // To Do Items
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Items")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-                            .padding(.horizontal, AppDimensions.screenPadding)
-
-                        LazyVStack(spacing: 12) {
-                            ForEach(viewModel.sortedItems) { item in
-                                ToDoItemCard(
-                                    item: item,
-                                    focusedItemId: $focusedItemId,
-                                    onToggle: {
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            viewModel.toggleItem(item)
-                                        }
-                                    },
-                                    onTextChange: { newText in
-                                        viewModel.updateItemText(item, text: newText)
-                                    },
-                                    onDelete: { viewModel.deleteItem(item) }
-                                )
-                                .padding(.horizontal, AppDimensions.screenPadding)
-                                .id(item.id)
-                            }
-                            .animation(.easeInOut(duration: 0.3), value: viewModel.sortedItems.map { $0.id })
-
-                            // iPad inline add button - placed after items to avoid overlap with bottom nav
-                            if isiPad && !showKeyboardToolbar {
-                                HStack {
-                                    Spacer()
+                                if let type = viewModel.selectedType {
                                     Button(action: {
-                                        showKeyboardToolbar = true
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                            newItemFocused = true
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                            showingTypeSelector = true
                                         }
                                     }) {
-                                        Image(systemName: "plus")
-                                            .font(.title2.weight(.semibold))
+                                        Text(type)
+                                            .font(.caption)
                                             .foregroundColor(.white)
-                                            .frame(width: 56, height: 56)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 4)
                                             .background(appAccentColor)
-                                            .clipShape(Circle())
-                                            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                                            .cornerRadius(6)
                                     }
                                 }
+                            }
+
+                            HStack(alignment: .top, spacing: 12) {
+                                TextField("Enter title", text: $viewModel.listTitle, axis: .vertical)
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                                    .lineLimit(1...5)
+                                    .multilineTextAlignment(.leading)
+                                    .onChange(of: viewModel.listTitle) { _, _ in
+                                        viewModel.saveTitle()
+                                    }
+
+                                HStack(spacing: 16) {
+                                    Button(action: {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                            showingTypeSelector = true
+                                        }
+                                    }) {
+                                        Image(systemName: viewModel.selectedType != nil ? "tag.fill" : "tag")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(viewModel.selectedType != nil ? appAccentColor : .textSecondary)
+                                    }
+
+                                    Button(action: { showDeleteConfirmation = true }) {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(.red)
+                                    }
+                                }
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.appBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
+                        // To Do Items
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Items")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
                                 .padding(.horizontal, AppDimensions.screenPadding)
-                                .padding(.top, 8)
+
+                            LazyVStack(spacing: 12) {
+                                ForEach(viewModel.sortedItems) { item in
+                                    ToDoItemCard(
+                                        item: item,
+                                        focusedItemId: $focusedItemId,
+                                        onToggle: {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                viewModel.toggleItem(item)
+                                            }
+                                        },
+                                        onTextChange: { newText in
+                                            viewModel.updateItemText(item, text: newText)
+                                        },
+                                        onDelete: { viewModel.deleteItem(item) }
+                                    )
+                                    .padding(.horizontal, AppDimensions.screenPadding)
+                                    .id(item.id)
+                                }
+                                .animation(.easeInOut(duration: 0.3), value: viewModel.sortedItems.map { $0.id })
+
+                                // iPad inline add button - placed after items to avoid overlap with bottom nav
+                                if isiPad && !showKeyboardToolbar {
+                                    HStack {
+                                        Spacer()
+                                        Button(action: {
+                                            showKeyboardToolbar = true
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                newItemFocused = true
+                                            }
+                                        }) {
+                                            Image(systemName: "plus")
+                                                .font(.title2.weight(.semibold))
+                                                .foregroundColor(.white)
+                                                .frame(width: 56, height: 56)
+                                                .background(appAccentColor)
+                                                .clipShape(Circle())
+                                                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                                        }
+                                    }
+                                    .padding(.horizontal, AppDimensions.screenPadding)
+                                    .padding(.top, 8)
+                                }
                             }
                         }
-                    }
 
-                    Spacer().frame(height: isiPad ? 150 : 300)
-                    }
-                    .padding(.top, AppDimensions.cardSpacing)
+                        Spacer().frame(height: isiPad ? 150 : 300)
                     }
                 }
-                .ignoresSafeArea(edges: .top)
+                .scrollIndicators(.hidden)
                 .onChange(of: focusedItemId) { _, newValue in
                     if let itemId = newValue {
                         withAnimation {
@@ -282,6 +242,11 @@ struct ToDoListDetailView: View {
                         types: viewModel.availableTypes,
                         selectedType: $viewModel.selectedType,
                         onAddNewType: { showingAddType = true },
+                        onDeleteType: { type in
+                            Task {
+                                await viewModel.deleteType(type)
+                            }
+                        },
                         onDismiss: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                 showingTypeSelector = false
@@ -396,11 +361,14 @@ private struct TypeSelectorSheetOverlay: View {
     let types: [ToDoListType]
     @Binding var selectedType: String?
     let onAddNewType: () -> Void
+    let onDeleteType: (ToDoListType) -> Void
     let onDismiss: () -> Void
     let isShowing: Bool
     @Environment(\.appAccentColor) private var appAccentColor
     @State private var scale: CGFloat = 0.8
     @State private var opacity: Double = 0
+    @State private var typeToDelete: ToDoListType?
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -420,40 +388,19 @@ private struct TypeSelectorSheetOverlay: View {
             .padding(.top, AppDimensions.cardPadding)
             .padding(.horizontal, AppDimensions.cardPadding)
 
-            VStack(spacing: 8) {
-                // None option
-                Button {
-                    selectedType = nil
-                    onDismiss()
-                } label: {
-                    HStack {
-                        Text("None")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                        Spacer()
-                        if selectedType == nil {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(appAccentColor)
-                        }
-                    }
-                    .padding(AppDimensions.cardPadding)
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-
-                // Type options
-                ForEach(types) { type in
+            ScrollView {
+                VStack(spacing: 8) {
+                    // None option
                     Button {
-                        selectedType = type.name
+                        selectedType = nil
                         onDismiss()
                     } label: {
                         HStack {
-                            Text(type.name)
+                            Text("None")
                                 .font(.appBody)
                                 .foregroundColor(.textPrimary)
                             Spacer()
-                            if selectedType == type.name {
+                            if selectedType == nil {
                                 Image(systemName: "checkmark")
                                     .foregroundColor(appAccentColor)
                             }
@@ -463,12 +410,48 @@ private struct TypeSelectorSheetOverlay: View {
                         .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
+
+                    // Type options with delete button
+                    ForEach(types) { type in
+                        HStack(spacing: 0) {
+                            Button {
+                                selectedType = type.name
+                                onDismiss()
+                            } label: {
+                                HStack {
+                                    Text(type.name)
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+                                    Spacer()
+                                    if selectedType == type.name {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(appAccentColor)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                typeToDelete = type
+                                showDeleteConfirmation = true
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.red)
+                                    .frame(width: 44, height: 44)
+                            }
+                        }
+                        .padding(.leading, AppDimensions.cardPadding)
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(8)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .frame(maxHeight: 300)
         }
-        .frame(width: 250)
+        .frame(width: 280)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
         .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
@@ -478,6 +461,18 @@ private struct TypeSelectorSheetOverlay: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 scale = 1.0
                 opacity = 1.0
+            }
+        }
+        .alert("Delete Type", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let type = typeToDelete {
+                    onDeleteType(type)
+                }
+            }
+        } message: {
+            if let type = typeToDelete {
+                Text("Are you sure you want to delete the type '\(type.name)'? This will not delete any lists.")
             }
         }
     }

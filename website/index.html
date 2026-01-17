@@ -53,6 +53,9 @@
     <!-- Stylesheet -->
     <link rel="stylesheet" href="styles.css">
 
+    <!-- Lucide Icons (loaded with defer to not block rendering) -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
     <!-- Structured Data - Organization -->
     <script type="application/ld+json">
     {
@@ -184,7 +187,7 @@
     <nav class="nav" id="nav" role="navigation" aria-label="Main navigation">
         <div class="nav-container">
             <a href="#" class="nav-logo" aria-label="Unforgotten Home">
-                <img src="assets/unforgotten-app-logo.png" alt="Unforgotten" class="logo-img">
+                <img src="assets/unforgotten-app-logo-white.png" alt="Unforgotten" class="logo-img">
             </a>
             <div class="nav-links">
                 <a href="#features">Features</a>
@@ -234,9 +237,15 @@
                     <span class="title-accent">close</span>
                 </h1>
                 <p class="hero-subtitle">
-                    Unforgotten helps you manage care for loved ones with memory conditions.
+                    Unforgotten is a simple, secure way to keep track of your life.
                     Track medications, appointments, birthdays, and precious details—all in one
-                    beautiful, accessible app designed for the whole family.
+                    beautiful, accessible app designed for the whole family.                </p>
+                <p class="hero-subtitle">
+                    Whether you’re managing a busy family, supporting someone you love, or just want a smarter way to stay organised.
+                    Unforgotten helps everything stay in one place.
+                </p>
+                <p class="hero-subtitle">
+                    Remember more. Stress less. Live freely.
                 </p>
                 <div class="hero-actions">
                     <a href="#download" class="btn btn-primary" aria-label="Download Unforgotten for iOS">
@@ -335,30 +344,31 @@
             <div class="problem-grid">
                 <div class="problem-text">
                     <h2 id="problem-title" class="section-title">
-                        Caring for someone shouldn't mean <em>endless</em> sticky notes
+                        What is <em>Unforgotten</em>?
                     </h2>
                     <p class="section-body">
-                        When a loved one has memory challenges, families juggle medication schedules,
-                        doctor appointments, emergency contacts, and a thousand small but crucial details.
-                        It's overwhelming. Important things slip through the cracks.
+                        Unforgotten started as a tool to help people who struggle with memory — but it quickly became something more.
+                        Today, it’s a personal life management app designed for anyone who wants clarity, organisation, and peace of mind.
                     </p>
                     <p class="section-body">
                         <strong>Unforgotten brings it all together</strong>—one app that the whole family
                         can access, whether you're the primary caregiver or helping from across the country.
                     </p>
+
+                    </article>
                 </div>
                 <div class="problem-stats">
                     <div class="stat">
-                        <span class="stat-number">6.7M</span>
-                        <span class="stat-label">Americans living with Alzheimer's</span>
+                        <span class="stat-number">Seniors</span>
+                        <span class="stat-label">Stay independent with gentle reminders for medications, appointments, and daily routines — all in a simple, easy-to-use app, with optional family support when needed.</span>
                     </div>
                     <div class="stat">
-                        <span class="stat-number">11M</span>
-                        <span class="stat-label">Unpaid family caregivers</span>
+                        <span class="stat-number">Families</span>
+                        <span class="stat-label">Keep everyone organised in one shared place. Manage profiles, important dates, reminders, and key information for the people who matter most.</span>
                     </div>
                     <div class="stat">
-                        <span class="stat-number">70%</span>
-                        <span class="stat-label">Report feeling overwhelmed</span>
+                        <span class="stat-number">Individuals</span>
+                        <span class="stat-label">A calm, personal organiser for modern life. Capture tasks, reminders, and important details in one place — and free your mind from mental clutter.</span>
                     </div>
                 </div>
             </div>
@@ -375,7 +385,9 @@
 
             <div class="features-grid">
                 <article class="feature-card feature-large">
-                    <div class="feature-icon" aria-hidden="true">💊</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="pill"></i>
+                    </div>
                     <h3>Medication Management</h3>
                     <p>Track every medication with schedules, dosages, and reminders. Log when doses are taken, missed, or skipped. Get alerts so nothing falls through the cracks.</p>
                     <div class="feature-visual med-visual">
@@ -391,43 +403,57 @@
                 </article>
 
                 <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">👨‍👩‍👧‍👦</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="heart-handshake"></i>
+                    </div>
                     <h3>Family Profiles</h3>
                     <p>Build rich profiles for everyone important. Track relationships, birthdays, preferences, and those special details that matter most.</p>
                 </article>
 
                 <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">📅</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="calendar-check"></i>
+                    </div>
                     <h3>Appointments</h3>
                     <p>Never miss a doctor visit, therapy session, or important meeting. Set reminders and see everything at a glance.</p>
                 </article>
 
                 <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">🎂</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="cake"></i>
+                    </div>
                     <h3>Birthdays & Dates</h3>
                     <p>Keep track of birthdays, anniversaries, and special occasions. Unforgotten reminds you so your loved one can celebrate too.</p>
                 </article>
 
                 <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">📱</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="contact"></i>
+                    </div>
                     <h3>Useful Contacts</h3>
                     <p>Store doctors, pharmacies, emergency contacts, and service providers. Everything your family needs, one tap away.</p>
                 </article>
 
                 <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">😊</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="smile"></i>
+                    </div>
                     <h3>Mood Tracking</h3>
                     <p>Log daily moods to spot patterns and share insights with healthcare providers. Understand trends over time.</p>
                 </article>
 
                 <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">📝</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="sticky-note"></i>
+                    </div>
                     <h3>Notes & Reminders</h3>
                     <p>Capture important information, create to-do lists, and set sticky reminders that repeat until acknowledged.</p>
                 </article>
 
                 <article class="feature-card feature-highlight">
-                    <div class="feature-icon" aria-hidden="true">👥</div>
+                    <div class="feature-icon" aria-hidden="true">
+                        <i data-lucide="users"></i>
+                    </div>
                     <h3>Family Collaboration</h3>
                     <p>Invite family members with different roles—owners, admins, helpers, or viewers. Everyone stays in sync, no matter where they are.</p>
                     <div class="role-badges">
@@ -453,8 +479,14 @@
                 </div>
             </div>
 
-            <!-- iPhone Screenshots -->
-            <div class="gallery-track" data-device="iphone" id="iphone-gallery" role="tabpanel" aria-label="iPhone screenshots">
+            <!-- Gallery Navigation Wrapper -->
+            <div class="gallery-wrapper">
+                <button class="gallery-nav gallery-nav-prev" aria-label="Scroll left" type="button">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+
+                <!-- iPhone Screenshots -->
+                <div class="gallery-track" data-device="iphone" id="iphone-gallery" role="tabpanel" aria-label="iPhone screenshots">
                 <!-- iPhone Screenshot 1 -->
                 <div class="gallery-item gallery-phone">
                     <div class="gallery-frame">
@@ -607,6 +639,11 @@
                     </div>
                     <p class="gallery-label">Settings</p>
                 </div>
+            </div>
+
+                <button class="gallery-nav gallery-nav-next" aria-label="Scroll right" type="button">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
             </div>
         </div>
     </section>
@@ -808,7 +845,6 @@
                         <li>Unlimited Reminders</li>
                         <li>Unlimited Useful contacts</li>
                         <li>Custom themes & headers</li>
-                        <li>Priority support</li>
                     </ul>
                     <a href="#download" class="btn btn-primary">Start Free Trial</a>
                 </article>
@@ -827,8 +863,6 @@
                         <li>Role-based access control</li>
                         <li>Owner, Admin, Helper & Viewer roles</li>
                         <li>Real-time sync across all devices</li>
-                        <li>Activity history & audit log</li>
-                        <li>Shared notifications</li>
                         <li>Priority family support</li>
                     </ul>
                     <a href="#download" class="btn btn-secondary">Start Free Trial</a>
@@ -868,7 +902,7 @@
             <div class="footer-grid">
                 <div class="footer-brand">
                     <a href="#" class="footer-logo" aria-label="Unforgotten Home">
-                        <img src="assets/unforgotten-app-logo.png" alt="Unforgotten" class="logo-img">
+                        <img src="assets/unforgotten-app-logo-stacked-white.png" alt="Unforgotten" class="logo-img-footer">
                     </a>
                     <p>Helping families keep what matters close.</p>
                 </div>
@@ -902,5 +936,17 @@
     </footer>
 
     <script src="script.js"></script>
+    <script>
+        // Initialize Lucide icons after deferred scripts load
+        window.addEventListener('load', function() {
+            try {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            } catch (e) {
+                console.warn('Lucide icons failed to initialize:', e);
+            }
+        });
+    </script>
 </body>
 </html>

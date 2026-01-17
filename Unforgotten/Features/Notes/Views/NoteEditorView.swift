@@ -37,8 +37,10 @@ struct NoteEditorView: View {
         horizontalSizeClass == .regular
     }
 
-    /// Reduced header height for notes (50% of standard)
-    private let noteHeaderHeight: CGFloat = AppDimensions.headerHeight / 2
+    /// Header height - full height on iPad, 50% on iPhone
+    private var noteHeaderHeight: CGFloat {
+        isiPad ? AppDimensions.headerHeight : AppDimensions.headerHeight / 2
+    }
 
     // Store original values to detect changes
     private let originalTitle: String
@@ -113,17 +115,18 @@ struct NoteEditorView: View {
                         Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.cardBackground)
+                    .background(Color.appBackground)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(edges: .top)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Close button (only shown when onClose is provided, e.g., in side panels)
-                if onClose != nil {
-                    ToolbarItem(placement: .topBarLeading) {
+            .safeAreaInset(edge: .top) {
+                // Custom toolbar with proper spacing from top
+                HStack {
+                    // Close button (only shown when onClose is provided)
+                    if onClose != nil {
                         Button {
                             // Save changes before closing
                             if hasUnsavedChanges && hasContent {
@@ -133,44 +136,60 @@ struct NoteEditorView: View {
                             }
                             onClose?()
                         } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.white.opacity(0.3))
-                                    .frame(width: 44, height: 44)
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
+                            Circle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(width: 36, height: 36)
+                                .overlay(
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(.white)
+                                )
                         }
                         .buttonStyle(.plain)
                     }
-                }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 12) {
-                        // Theme picker
+                    Spacer()
+
+                    HStack(alignment: .center, spacing: 12) {
+                        // Theme picker (36x36 circle)
                         CompactThemePicker(selectedTheme: $selectedTheme)
 
-                        // More menu
-                        Menu {
-                            moreMenuContent
+                        // Share button
+                        Button {
+                            showShareSheet = true
                         } label: {
-                            Image(systemName: "ellipsis.circle")
-                                .font(.system(size: 24))
-                                .foregroundColor(.white)
+                            Circle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(width: 36, height: 36)
+                                .overlay(
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.white)
+                                )
                         }
+                        .buttonStyle(.plain)
 
                         // Save button (checkmark)
                         Button {
                             saveAndDismiss()
                         } label: {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(appAccentColor)
+                            Circle()
+                                .fill(appAccentColor)
+                                .frame(width: 36, height: 36)
+                                .overlay(
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundColor(.white)
+                                )
                         }
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
             }
+            .toolbar(.hidden, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .onAppear {
                 if isNewNote {
@@ -261,7 +280,7 @@ struct NoteEditorView: View {
     // MARK: - Header Section
 
     private var noteHeaderSection: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             // Theme-based header image - use GeometryReader to constrain fill properly
             GeometryReader { geometry in
                 noteHeaderBackground
@@ -270,13 +289,29 @@ struct NoteEditorView: View {
             .frame(height: noteHeaderHeight)
             .clipped()
 
-            // Gradient overlay for text readability
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.4)],
-                startPoint: .center,
-                endPoint: .bottom
-            )
-            .frame(height: noteHeaderHeight)
+            // Top gradient overlay for icon visibility
+            VStack {
+                LinearGradient(
+                    colors: [.black.opacity(0.4), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: noteHeaderHeight * 0.4)
+
+                Spacer()
+            }
+
+            // Bottom gradient overlay for text readability
+            VStack {
+                Spacer()
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.4)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: noteHeaderHeight * 0.4)
+            }
         }
         .frame(height: noteHeaderHeight)
     }
@@ -297,34 +332,6 @@ struct NoteEditorView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-        }
-    }
-
-    // MARK: - More Menu
-
-    @ViewBuilder
-    private var moreMenuContent: some View {
-        Button {
-            isPinned.toggle()
-        } label: {
-            Label(
-                isPinned ? "Unpin" : "Pin to Top",
-                systemImage: isPinned ? "pin.slash" : "pin"
-            )
-        }
-
-        Button {
-            showShareSheet = true
-        } label: {
-            Label("Share", systemImage: "square.and.arrow.up")
-        }
-
-        Divider()
-
-        Button(role: .destructive) {
-            showDeleteConfirmation = true
-        } label: {
-            Label("Delete", systemImage: "trash")
         }
     }
 
