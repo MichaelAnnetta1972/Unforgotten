@@ -169,6 +169,8 @@ enum TableName {
     static let appUsers = "app_users"
     static let userPreferences = "user_preferences"
     static let countdowns = "countdowns"
+    static let familyCalendarShares = "family_calendar_shares"
+    static let familyCalendarShareMembers = "family_calendar_share_members"
 }
 
 // MARK: - Supabase Error

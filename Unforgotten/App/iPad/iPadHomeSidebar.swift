@@ -74,6 +74,17 @@ struct iPadHomeSidebar: View {
 
                         // Navigation Items
                         VStack(spacing: AppDimensions.cardSpacing) {
+
+                            if shouldShowFeature(.calendar) {
+                                iPadSidebarNavItem(
+                                    title: "Calendar",
+                                    icon: "calendar.badge.clock",
+                                    isSelected: selectedContent == .calendar
+                                ) {
+                                    selectedContent = .calendar
+                                }
+                            }
+                            
                             if shouldShowFeature(.aboutMe) {
                                 iPadSidebarNavItem(
                                     title: "About Me",

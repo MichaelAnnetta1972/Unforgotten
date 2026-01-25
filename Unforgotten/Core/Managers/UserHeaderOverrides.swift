@@ -7,6 +7,7 @@ enum PageIdentifier: String, Codable, CaseIterable, Identifiable {
     case birthdays
     case medications
     case appointments
+    case calendar
     case contacts
     case profiles
     case notes
@@ -29,6 +30,7 @@ enum PageIdentifier: String, Codable, CaseIterable, Identifiable {
         case .birthdays: return "Birthdays"
         case .medications: return "Medications"
         case .appointments: return "Appointments"
+        case .calendar: return "Calendar"
         case .contacts: return "Contacts"
         case .profiles: return "Family & Friends"
         case .notes: return "Notes"
@@ -50,6 +52,7 @@ enum PageIdentifier: String, Codable, CaseIterable, Identifiable {
         case .birthdays: return "header-birthdays"
         case .medications: return "header-medications"
         case .appointments: return "header-appointments"
+        case .calendar: return "header-appointments" // Reuse appointments header for now
         case .contacts: return "header-contacts"
         case .profiles: return "header-profiles"
         case .notes: return "header-notes"

@@ -68,6 +68,17 @@ enum ProfileCategoryType: Identifiable {
     }
 }
 
+// MARK: - Brand/Website Entry for Gift Ideas
+struct BrandWebsiteEntry: Identifiable {
+    let id = UUID()
+    var brand: String = ""
+    var website: String = ""
+
+    var isEmpty: Bool {
+        brand.isBlank && website.isBlank
+    }
+}
+
 // MARK: - Profile Category List View
 struct ProfileCategoryListView: View {
     @EnvironmentObject var appState: AppState
@@ -434,6 +445,7 @@ struct CategoryHeaderView: View {
 struct AddProfileDetailView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.sidePanelDismiss) var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
     let profile: Profile
@@ -444,11 +456,12 @@ struct AddProfileDetailView: View {
     @State private var label = ""
     @State private var value = ""
     @State private var status = "idea"
-    @State private var favouriteBrands = ""
-    @State private var websiteUrl = ""
+    @State private var brandWebsiteEntries: [BrandWebsiteEntry] = [BrandWebsiteEntry()]
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSizePicker = false
+    @State private var favouriteBrands: [String] = []
+    @State private var newBrandInput = ""
 
     // Preset options for clothing
     private let clothingTypes = ["Jacket", "Pants", "Shoes", "T-Shirt", "Dress Shirt", "Belt", "Hat", "Gloves", "Socks", "Underwear", "Other"]
@@ -456,88 +469,90 @@ struct AddProfileDetailView: View {
     private func dismissView() {
         if let onDismiss = onDismiss {
             onDismiss()
+        } else if let sidePanelDismiss = sidePanelDismiss {
+            sidePanelDismiss()
         } else {
             dismiss()
         }
     }
-    
+
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Add \(category.title)")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveDetail() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(label.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
-                .background(Color.appBackground)
 
-                ZStack {
-                    Color.appBackground.ignoresSafeArea()
+                Spacer()
 
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            // Category-specific form
-                            switch category {
-                            case .clothing:
-                                clothingForm
-                            case .gifts:
-                                giftForm
-                            case .medical:
-                                medicalForm
-                            case .hobbies, .activities:
-                                // Hobbies and activities use SectionBasedCategoryView
-                                EmptyView()
-                            }
+                Text("Add \(category.title)")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                            if let error = errorMessage {
-                                Text(error)
-                                    .font(.appCaption)
-                                    .foregroundColor(.medicalRed)
-                            }
+                Spacer()
+
+                Button {
+                    Task { await saveDetail() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(label.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ZStack {
+                Color.appBackground.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Category-specific form
+                        switch category {
+                        case .clothing:
+                            clothingForm
+                        case .gifts:
+                            giftForm
+                        case .medical:
+                            medicalForm
+                        case .hobbies, .activities:
+                            // Hobbies and activities use SectionBasedCategoryView
+                            EmptyView()
                         }
-                        .padding(AppDimensions.screenPadding)
+
+                        if let error = errorMessage {
+                            Text(error)
+                                .font(.appCaption)
+                                .foregroundColor(.medicalRed)
+                        }
                     }
+                    .padding(AppDimensions.screenPadding)
                 }
             }
-            .background(Color.appBackground)
-            .navigationBarHidden(true)
+        }
+        .background(Color.appBackground)
+        .fitContentSidePanel(isPresented: $showSizePicker) {
+            SizePickerSheet(selectedSize: $value, isPresented: $showSizePicker)
         }
     }
-    
+
     // MARK: - Clothing Form
     private var clothingForm: some View {
         VStack(spacing: 16) {
@@ -575,12 +590,15 @@ struct AddProfileDetailView: View {
 
                 SizeFieldWithPicker(size: $value, showPicker: $showSizePicker)
             }
-        }
-        .sheet(isPresented: $showSizePicker) {
-            SizePickerSheet(selectedSize: $value, isPresented: $showSizePicker)
+
+            // Favourite Brands
+            FavouriteBrandsInput(
+                brands: $favouriteBrands,
+                newBrandInput: $newBrandInput
+            )
         }
     }
-    
+
     // MARK: - Gift Form
     private var giftForm: some View {
         VStack(spacing: 16) {
@@ -615,40 +633,48 @@ struct AddProfileDetailView: View {
                     .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
             )
 
-            // Favourite brands field
-            AppTextField(placeholder: "Favourite brands", text: $favouriteBrands)
-
-            // Website URL field with open button
-            HStack(spacing: 12) {
-                AppTextField(placeholder: "Website URL", text: $websiteUrl)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-
-                Button {
-                    openWebsite()
-                } label: {
-                    Image(systemName: "safari")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(websiteUrl.isBlank ? .textSecondary : appAccentColor)
-                        .frame(width: 48, height: 48)
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.buttonCornerRadius)
+            // Repeatable Brand/Website entries
+            VStack(spacing: 12) {
+                ForEach(brandWebsiteEntries.indices, id: \.self) { index in
+                    BrandWebsiteEntryView(
+                        entry: $brandWebsiteEntries[index],
+                        showRemoveButton: brandWebsiteEntries.count > 1,
+                        onRemove: {
+                            brandWebsiteEntries.remove(at: index)
+                        },
+                        onOpenWebsite: {
+                            openWebsite(urlString: brandWebsiteEntries[index].website)
+                        }
+                    )
                 }
-                .disabled(websiteUrl.isBlank)
+
+                // Add another button
+                Button {
+                    brandWebsiteEntries.append(BrandWebsiteEntry())
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 16))
+                        Text("Add another brand/website")
+                            .font(.appCaption)
+                    }
+                    .foregroundColor(appAccentColor)
+                    .padding(.vertical, 8)
+                }
             }
         }
     }
 
-    private func openWebsite() {
-        var urlString = websiteUrl.trimmingCharacters(in: .whitespaces)
+    private func openWebsite(urlString: String) {
+        var url = urlString.trimmingCharacters(in: .whitespaces)
 
         // Add https:// if no scheme is present
-        if !urlString.lowercased().hasPrefix("http://") && !urlString.lowercased().hasPrefix("https://") {
-            urlString = "https://" + urlString
+        if !url.lowercased().hasPrefix("http://") && !url.lowercased().hasPrefix("https://") {
+            url = "https://" + url
         }
 
-        if let url = URL(string: urlString) {
-            UIApplication.shared.open(url)
+        if let finalUrl = URL(string: url) {
+            UIApplication.shared.open(finalUrl)
         }
     }
     
@@ -727,18 +753,43 @@ struct AddProfileDetailView: View {
             detailCategory = .activityIdea
         }
 
-        // Build metadata for gifts
+        // Build metadata for gifts or clothing
         var metadata: [String: String]? = nil
         if category == .gifts {
             var giftMetadata: [String: String] = [:]
-            if !favouriteBrands.isBlank {
-                giftMetadata["favourite_brands"] = favouriteBrands.trimmingCharacters(in: .whitespaces)
+
+            // Filter out empty entries and build JSON array for brand/website pairs
+            let validEntries = brandWebsiteEntries.filter { !$0.isEmpty }
+            if !validEntries.isEmpty {
+                var entriesArray: [[String: String]] = []
+                for entry in validEntries {
+                    var entryDict: [String: String] = [:]
+                    if !entry.brand.isBlank {
+                        entryDict["brand"] = entry.brand.trimmingCharacters(in: .whitespaces)
+                    }
+                    if !entry.website.isBlank {
+                        entryDict["website"] = entry.website.trimmingCharacters(in: .whitespaces)
+                    }
+                    if !entryDict.isEmpty {
+                        entriesArray.append(entryDict)
+                    }
+                }
+                if !entriesArray.isEmpty {
+                    if let jsonData = try? JSONSerialization.data(withJSONObject: entriesArray),
+                       let jsonString = String(data: jsonData, encoding: .utf8) {
+                        giftMetadata["brand_website_entries"] = jsonString
+                    }
+                }
             }
-            if !websiteUrl.isBlank {
-                giftMetadata["website_url"] = websiteUrl.trimmingCharacters(in: .whitespaces)
-            }
+
             if !giftMetadata.isEmpty {
                 metadata = giftMetadata
+            }
+        } else if category == .clothing && !favouriteBrands.isEmpty {
+            // Store favourite brands as JSON array
+            if let jsonData = try? JSONSerialization.data(withJSONObject: favouriteBrands),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                metadata = ["favourite_brands": jsonString]
             }
         }
 
@@ -782,6 +833,8 @@ struct EditClothingDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSizePicker = false
+    @State private var favouriteBrands: [String]
+    @State private var newBrandInput = ""
 
     private let clothingTypes = ["Jacket", "Pants", "Shoes", "T-Shirt", "Dress Shirt", "Belt", "Hat", "Gloves", "Socks", "Underwear", "Other"]
 
@@ -791,6 +844,16 @@ struct EditClothingDetailView: View {
         self.onSave = onSave
         self._label = State(initialValue: detail.label)
         self._value = State(initialValue: detail.value)
+
+        // Parse favourite brands from metadata
+        var brands: [String] = []
+        if let metadata = detail.metadata,
+           let brandsJson = metadata["favourite_brands"],
+           let data = brandsJson.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            brands = parsed
+        }
+        self._favouriteBrands = State(initialValue: brands)
     }
 
     private func dismissView() {
@@ -804,104 +867,107 @@ struct EditClothingDetailView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Edit Clothing")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveChanges() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(label.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
-                .background(Color.appBackground)
 
-                ZStack {
-                    Color.appBackground.ignoresSafeArea()
+                Spacer()
 
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            // Type picker with flow layout
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Clothing Type")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                Text("Edit Clothing")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                                FlowLayout(spacing: 8) {
-                                    ForEach(clothingTypes, id: \.self) { type in
-                                        Button {
-                                            label = type
-                                        } label: {
-                                            Text(type)
-                                                .font(.appCaption)
-                                                .foregroundColor(label == type ? .black : .textPrimary)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 10)
-                                                .background(label == type ? appAccentColor : Color.cardBackgroundSoft)
-                                                .cornerRadius(20)
-                                        }
+                Spacer()
+
+                Button {
+                    Task { await saveChanges() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(label.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ZStack {
+                Color.appBackground.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Type picker with flow layout
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Clothing Type")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            FlowLayout(spacing: 8) {
+                                ForEach(clothingTypes, id: \.self) { type in
+                                    Button {
+                                        label = type
+                                    } label: {
+                                        Text(type)
+                                            .font(.appCaption)
+                                            .foregroundColor(label == type ? .black : .textPrimary)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(label == type ? appAccentColor : Color.cardBackgroundSoft)
+                                            .cornerRadius(20)
                                     }
                                 }
                             }
-
-                            // Custom type
-                            AppTextField(placeholder: "Or enter custom type", text: $label)
-
-                            // Size value with picker button
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Size")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-
-                                SizeFieldWithPicker(size: $value, showPicker: $showSizePicker)
-                            }
-
-                            if let error = errorMessage {
-                                Text(error)
-                                    .font(.appCaption)
-                                    .foregroundColor(.medicalRed)
-                            }
                         }
-                        .padding(AppDimensions.screenPadding)
+
+                        // Custom type
+                        AppTextField(placeholder: "Or enter custom type", text: $label)
+
+                        // Size value with picker button
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Size")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            SizeFieldWithPicker(size: $value, showPicker: $showSizePicker)
+                        }
+
+                        // Favourite Brands
+                        FavouriteBrandsInput(
+                            brands: $favouriteBrands,
+                            newBrandInput: $newBrandInput
+                        )
+
+                        if let error = errorMessage {
+                            Text(error)
+                                .font(.appCaption)
+                                .foregroundColor(.medicalRed)
+                        }
                     }
+                    .padding(AppDimensions.screenPadding)
                 }
             }
-            .background(Color.appBackground)
-            .navigationBarHidden(true)
-            .sheet(isPresented: $showSizePicker) {
-                SizePickerSheet(selectedSize: $value, isPresented: $showSizePicker)
-            }
+        }
+        .background(Color.appBackground)
+        .fitContentSidePanel(isPresented: $showSizePicker) {
+            SizePickerSheet(selectedSize: $value, isPresented: $showSizePicker)
         }
     }
 
@@ -917,6 +983,16 @@ struct EditClothingDetailView: View {
         var updatedDetail = detail
         updatedDetail.label = label
         updatedDetail.value = value
+
+        // Build metadata with favourite brands
+        if !favouriteBrands.isEmpty {
+            if let jsonData = try? JSONSerialization.data(withJSONObject: favouriteBrands),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                updatedDetail.metadata = ["favourite_brands": jsonString]
+            }
+        } else {
+            updatedDetail.metadata = nil
+        }
 
         do {
             let saved = try await appState.profileRepository.updateProfileDetail(updatedDetail)
@@ -993,8 +1069,7 @@ struct EditGiftDetailView: View {
 
     @State private var label: String
     @State private var status: String
-    @State private var favouriteBrands: String
-    @State private var websiteUrl: String
+    @State private var brandWebsiteEntries: [BrandWebsiteEntry]
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -1004,8 +1079,40 @@ struct EditGiftDetailView: View {
         self.onSave = onSave
         self._label = State(initialValue: detail.label)
         self._status = State(initialValue: detail.status ?? "idea")
-        self._favouriteBrands = State(initialValue: detail.metadata?["favourite_brands"] ?? "")
-        self._websiteUrl = State(initialValue: detail.metadata?["website_url"] ?? "")
+
+        // Parse existing brand/website entries from metadata
+        var entries: [BrandWebsiteEntry] = []
+
+        // Try to parse new format (brand_website_entries JSON array)
+        if let entriesJson = detail.metadata?["brand_website_entries"],
+           let data = entriesJson.data(using: .utf8),
+           let array = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] {
+            for item in array {
+                var entry = BrandWebsiteEntry()
+                entry.brand = item["brand"] ?? ""
+                entry.website = item["website"] ?? ""
+                entries.append(entry)
+            }
+        }
+
+        // Fallback to old format (single favourite_brands and website_url)
+        if entries.isEmpty {
+            let oldBrand = detail.metadata?["favourite_brands"] ?? ""
+            let oldWebsite = detail.metadata?["website_url"] ?? ""
+            if !oldBrand.isEmpty || !oldWebsite.isEmpty {
+                var entry = BrandWebsiteEntry()
+                entry.brand = oldBrand
+                entry.website = oldWebsite
+                entries.append(entry)
+            }
+        }
+
+        // Ensure at least one empty entry for adding
+        if entries.isEmpty {
+            entries.append(BrandWebsiteEntry())
+        }
+
+        self._brandWebsiteEntries = State(initialValue: entries)
     }
 
     private func dismissView() {
@@ -1019,132 +1126,137 @@ struct EditGiftDetailView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Edit Gift Idea")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveChanges() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(label.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
-                .background(Color.appBackground)
 
-                ZStack {
-                    Color.appBackground.ignoresSafeArea()
+                Spacer()
 
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            AppTextField(placeholder: "Gift idea", text: $label)
+                Text("Edit Gift Idea")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                            // Status picker in a row container
-                            HStack {
-                                Text("Status")
-                                    .font(.appBody)
-                                    .foregroundColor(.textSecondary)
+                Spacer()
 
-                                Spacer()
+                Button {
+                    Task { await saveChanges() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(label.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(label.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
 
-                                HStack(spacing: 6) {
-                                    StatusButtonCompact(title: "Idea", isSelected: status == "idea") {
-                                        status = "idea"
-                                    }
-                                    StatusButtonCompact(title: "Bought", isSelected: status == "bought") {
-                                        status = "bought"
-                                    }
-                                    StatusButtonCompact(title: "Given", isSelected: status == "given") {
-                                        status = "given"
-                                    }
+            ZStack {
+                Color.appBackground.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        AppTextField(placeholder: "Gift idea", text: $label)
+
+                        // Status picker in a row container
+                        HStack {
+                            Text("Status")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+
+                            Spacer()
+
+                            HStack(spacing: 6) {
+                                StatusButtonCompact(title: "Idea", isSelected: status == "idea") {
+                                    status = "idea"
                                 }
-                            }
-                            .padding()
-                            .frame(height: AppDimensions.textFieldHeight)
-                            .background(Color.cardBackgroundSoft)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                            )
-
-                            // Favourite brands field
-                            AppTextField(placeholder: "Favourite brands", text: $favouriteBrands)
-
-                            // Website URL field with open button
-                            HStack(spacing: 12) {
-                                AppTextField(placeholder: "Website URL", text: $websiteUrl)
-                                    .textInputAutocapitalization(.never)
-                                    .keyboardType(.URL)
-
-                                Button {
-                                    openWebsite()
-                                } label: {
-                                    Image(systemName: "safari")
-                                        .font(.system(size: 18, weight: .medium))
-                                        .foregroundColor(websiteUrl.isBlank ? .textSecondary : appAccentColor)
-                                        .frame(width: 48, height: 48)
-                                        .background(Color.cardBackgroundSoft)
-                                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                                StatusButtonCompact(title: "Bought", isSelected: status == "bought") {
+                                    status = "bought"
                                 }
-                                .disabled(websiteUrl.isBlank)
-                            }
-
-                            if let error = errorMessage {
-                                Text(error)
-                                    .font(.appCaption)
-                                    .foregroundColor(.medicalRed)
+                                StatusButtonCompact(title: "Given", isSelected: status == "given") {
+                                    status = "given"
+                                }
                             }
                         }
-                        .padding(AppDimensions.screenPadding)
+                        .padding()
+                        .frame(height: AppDimensions.textFieldHeight)
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        )
+
+                        // Repeatable Brand/Website entries
+                        VStack(spacing: 12) {
+                            ForEach(brandWebsiteEntries.indices, id: \.self) { index in
+                                BrandWebsiteEntryView(
+                                    entry: $brandWebsiteEntries[index],
+                                    showRemoveButton: brandWebsiteEntries.count > 1,
+                                    onRemove: {
+                                        brandWebsiteEntries.remove(at: index)
+                                    },
+                                    onOpenWebsite: {
+                                        openWebsite(urlString: brandWebsiteEntries[index].website)
+                                    }
+                                )
+                            }
+
+                            // Add another button
+                            Button {
+                                brandWebsiteEntries.append(BrandWebsiteEntry())
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 16))
+                                    Text("Add another brand/website")
+                                        .font(.appCaption)
+                                }
+                                .foregroundColor(appAccentColor)
+                                .padding(.vertical, 8)
+                            }
+                        }
+
+                        if let error = errorMessage {
+                            Text(error)
+                                .font(.appCaption)
+                                .foregroundColor(.medicalRed)
+                        }
                     }
+                    .padding(AppDimensions.screenPadding)
                 }
             }
-            .background(Color.appBackground)
-            .navigationBarHidden(true)
         }
+        .background(Color.appBackground)
     }
 
-    private func openWebsite() {
-        var urlString = websiteUrl.trimmingCharacters(in: .whitespaces)
+    private func openWebsite(urlString: String) {
+        var url = urlString.trimmingCharacters(in: .whitespaces)
 
         // Add https:// if no scheme is present
-        if !urlString.lowercased().hasPrefix("http://") && !urlString.lowercased().hasPrefix("https://") {
-            urlString = "https://" + urlString
+        if !url.lowercased().hasPrefix("http://") && !url.lowercased().hasPrefix("https://") {
+            url = "https://" + url
         }
 
-        if let url = URL(string: urlString) {
-            UIApplication.shared.open(url)
+        if let finalUrl = URL(string: url) {
+            UIApplication.shared.open(finalUrl)
         }
     }
 
@@ -1162,18 +1274,36 @@ struct EditGiftDetailView: View {
         updatedDetail.value = label
         updatedDetail.status = status
 
-        // Build metadata dictionary
-        var metadata: [String: String] = updatedDetail.metadata ?? [:]
-        if !favouriteBrands.isBlank {
-            metadata["favourite_brands"] = favouriteBrands.trimmingCharacters(in: .whitespaces)
-        } else {
-            metadata.removeValue(forKey: "favourite_brands")
+        // Build metadata dictionary - start fresh to avoid old format keys
+        var metadata: [String: String] = [:]
+
+        // Remove old format keys if they exist
+        // (We're migrating to the new format)
+
+        // Filter out empty entries and build JSON array for brand/website pairs
+        let validEntries = brandWebsiteEntries.filter { !$0.isEmpty }
+        if !validEntries.isEmpty {
+            var entriesArray: [[String: String]] = []
+            for entry in validEntries {
+                var entryDict: [String: String] = [:]
+                if !entry.brand.isBlank {
+                    entryDict["brand"] = entry.brand.trimmingCharacters(in: .whitespaces)
+                }
+                if !entry.website.isBlank {
+                    entryDict["website"] = entry.website.trimmingCharacters(in: .whitespaces)
+                }
+                if !entryDict.isEmpty {
+                    entriesArray.append(entryDict)
+                }
+            }
+            if !entriesArray.isEmpty {
+                if let jsonData = try? JSONSerialization.data(withJSONObject: entriesArray),
+                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                    metadata["brand_website_entries"] = jsonString
+                }
+            }
         }
-        if !websiteUrl.isBlank {
-            metadata["website_url"] = websiteUrl.trimmingCharacters(in: .whitespaces)
-        } else {
-            metadata.removeValue(forKey: "website_url")
-        }
+
         updatedDetail.metadata = metadata.isEmpty ? nil : metadata
 
         do {
@@ -1270,6 +1400,61 @@ struct StatusButtonCompact: View {
                 .background(isSelected ? appAccentColor : Color.appBackground)
                 .cornerRadius(AppDimensions.pillCornerRadius)
         }
+    }
+}
+
+// MARK: - Brand/Website Entry View
+struct BrandWebsiteEntryView: View {
+    @Binding var entry: BrandWebsiteEntry
+    let showRemoveButton: Bool
+    let onRemove: () -> Void
+    let onOpenWebsite: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                // Brand field
+                AppTextField(placeholder: "Favourite brand", text: $entry.brand)
+
+                // Remove button
+                if showRemoveButton {
+                    Button {
+                        onRemove()
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.medicalRed)
+                    }
+                }
+            }
+
+            // Website field with open button
+            HStack(spacing: 12) {
+                AppTextField(placeholder: "Website URL", text: $entry.website)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+
+                Button {
+                    onOpenWebsite()
+                } label: {
+                    Image(systemName: "safari")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(entry.website.isBlank ? .textSecondary : appAccentColor)
+                        .frame(width: 48, height: 48)
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                }
+                .disabled(entry.website.isBlank)
+            }
+        }
+        .padding(12)
+        .background(Color.cardBackgroundSoft.opacity(0.5))
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                .stroke(Color.textSecondary.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 
@@ -2601,6 +2786,89 @@ struct RelationshipPillButton: View {
 }
 
 // MARK: - Size Field With Picker
+// MARK: - Favourite Brands Input
+struct FavouriteBrandsInput: View {
+    @Binding var brands: [String]
+    @Binding var newBrandInput: String
+    @Environment(\.appAccentColor) private var appAccentColor
+    @FocusState private var isInputFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Favourite Brands")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+
+            // Display existing brands as tags
+            if !brands.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(brands, id: \.self) { brand in
+                        HStack(spacing: 4) {
+                            Text(brand)
+                                .font(.appCaption)
+                                .foregroundColor(.textPrimary)
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    brands.removeAll { $0 == brand }
+                                }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(16)
+                    }
+                }
+            }
+
+            // Input field with add button
+            HStack(spacing: 8) {
+                TextField("Add a brand", text: $newBrandInput)
+                    .font(.appBody)
+                    .foregroundColor(.textPrimary)
+                    .padding()
+                    .frame(height: AppDimensions.textFieldHeight)
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .focused($isInputFocused)
+                    .onSubmit {
+                        addBrand()
+                    }
+
+                Button {
+                    addBrand()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(newBrandInput.isBlank ? .textSecondary : .black)
+                        .frame(width: AppDimensions.textFieldHeight, height: AppDimensions.textFieldHeight)
+                        .background(newBrandInput.isBlank ? Color.cardBackgroundSoft : appAccentColor)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                }
+                .disabled(newBrandInput.isBlank)
+            }
+        }
+    }
+
+    private func addBrand() {
+        let trimmed = newBrandInput.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        guard !brands.contains(where: { $0.lowercased() == trimmed.lowercased() }) else {
+            newBrandInput = ""
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            brands.append(trimmed)
+        }
+        newBrandInput = ""
+    }
+}
+
 struct SizeFieldWithPicker: View {
     @Binding var size: String
     @Binding var showPicker: Bool
@@ -2635,116 +2903,72 @@ struct SizePickerSheet: View {
     @Binding var selectedSize: String
     @Binding var isPresented: Bool
     @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let letterSizes = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"]
     private let numericSizes = ["6", "7", "8", "9", "10", "11", "12", "13", "14"]
     private let pantsSizes = ["28", "30", "32", "34", "36", "38", "40", "42", "44"]
     private let shoeSizes = ["6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
 
+    private var isiPad: Bool {
+        horizontalSizeClass == .regular
+    }
+
     var body: some View {
+        if isiPad {
+            // iPad: Simplified content for side panel
+            iPadContent
+        } else {
+            // iPhone: NavigationStack with toolbar
+            iPhoneContent
+        }
+    }
+
+    private var iPadContent: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        isPresented = false
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 40, height: 40)
+                        .background(Color.cardBackgroundSoft)
+                        .clipShape(Circle())
+                }
+
+                Spacer()
+
+                Text("Select Size")
+                    .font(.appTitle2)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                Color.clear
+                    .frame(width: 40, height: 40)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+
+            // Content
+            ScrollView {
+                sizePickerContent
+            }
+        }
+    }
+
+    private var iPhoneContent: some View {
         NavigationStack {
             ZStack {
                 Color.appBackground.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Letter sizes
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("LETTER SIZES")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            FlowLayout(spacing: 8) {
-                                ForEach(letterSizes, id: \.self) { size in
-                                    Button {
-                                        selectedSize = size
-                                        isPresented = false
-                                    } label: {
-                                        Text(size)
-                                            .font(.appCaption)
-                                            .foregroundColor(selectedSize == size ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Numeric sizes (shirts, dresses)
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("NUMERIC SIZES")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            FlowLayout(spacing: 8) {
-                                ForEach(numericSizes, id: \.self) { size in
-                                    Button {
-                                        selectedSize = size
-                                        isPresented = false
-                                    } label: {
-                                        Text(size)
-                                            .font(.appCaption)
-                                            .foregroundColor(selectedSize == size ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Pants/Waist sizes
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("PANTS / WAIST")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            FlowLayout(spacing: 8) {
-                                ForEach(pantsSizes, id: \.self) { size in
-                                    Button {
-                                        selectedSize = size
-                                        isPresented = false
-                                    } label: {
-                                        Text(size)
-                                            .font(.appCaption)
-                                            .foregroundColor(selectedSize == size ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedSize == size ? Color.accentYellow : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Shoe sizes
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("SHOE SIZES")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            FlowLayout(spacing: 8) {
-                                ForEach(shoeSizes, id: \.self) { size in
-                                    Button {
-                                        selectedSize = size
-                                        isPresented = false
-                                    } label: {
-                                        Text(size)
-                                            .font(.appCaption)
-                                            .foregroundColor(selectedSize == size ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(AppDimensions.screenPadding)
+                    sizePickerContent
                 }
             }
             .navigationTitle("Select Size")
@@ -2758,6 +2982,131 @@ struct SizePickerSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var sizePickerContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Letter sizes
+            VStack(alignment: .leading, spacing: 8) {
+                Text("LETTER SIZES")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                FlowLayout(spacing: 8) {
+                    ForEach(letterSizes, id: \.self) { size in
+                        Button {
+                            selectedSize = size
+                            if isiPad {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isPresented = false
+                                }
+                            } else {
+                                isPresented = false
+                            }
+                        } label: {
+                            Text(size)
+                                .font(.appCaption)
+                                .foregroundColor(selectedSize == size ? .black : .textPrimary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft.opacity(0.4))
+                                .cornerRadius(20)
+                        }
+                    }
+                }
+            }
+
+            // Numeric sizes (shirts, dresses)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("NUMERIC SIZES")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                FlowLayout(spacing: 8) {
+                    ForEach(numericSizes, id: \.self) { size in
+                        Button {
+                            selectedSize = size
+                            if isiPad {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isPresented = false
+                                }
+                            } else {
+                                isPresented = false
+                            }
+                        } label: {
+                            Text(size)
+                                .font(.appCaption)
+                                .foregroundColor(selectedSize == size ? .black : .textPrimary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft.opacity(0.4))
+                                .cornerRadius(20)
+                        }
+                    }
+                }
+            }
+
+            // Pants/Waist sizes
+            VStack(alignment: .leading, spacing: 8) {
+                Text("PANTS / WAIST")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                FlowLayout(spacing: 8) {
+                    ForEach(pantsSizes, id: \.self) { size in
+                        Button {
+                            selectedSize = size
+                            if isiPad {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isPresented = false
+                                }
+                            } else {
+                                isPresented = false
+                            }
+                        } label: {
+                            Text(size)
+                                .font(.appCaption)
+                                .foregroundColor(selectedSize == size ? .black : .textPrimary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft.opacity(0.4))
+                                .cornerRadius(20)
+                        }
+                    }
+                }
+            }
+
+            // Shoe sizes
+            VStack(alignment: .leading, spacing: 8) {
+                Text("SHOE SIZES")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                FlowLayout(spacing: 8) {
+                    ForEach(shoeSizes, id: \.self) { size in
+                        Button {
+                            selectedSize = size
+                            if isiPad {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isPresented = false
+                                }
+                            } else {
+                                isPresented = false
+                            }
+                        } label: {
+                            Text(size)
+                                .font(.appCaption)
+                                .foregroundColor(selectedSize == size ? .black : .textPrimary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(selectedSize == size ? appAccentColor : Color.cardBackgroundSoft.opacity(0.4))
+                                .cornerRadius(20)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(AppDimensions.screenPadding)
     }
 }
 
@@ -2865,46 +3214,112 @@ struct ClothingCardWithOverlay: View {
     let onDelete: () -> Void
 
     @Environment(\.appAccentColor) private var appAccentColor
+    @State private var showingBrandsPopover = false
+
+    /// Parse favourite brands from metadata
+    private var favouriteBrands: [String] {
+        guard let metadata = detail.metadata,
+              let brandsJson = metadata["favourite_brands"],
+              let data = brandsJson.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+            return []
+        }
+        return parsed
+    }
 
     var body: some View {
-        Button(action: onEdit) {
+        HStack {
+            // Tappable content area for editing
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Clothing")
                         .font(.appCaption)
                         .foregroundColor(.textSecondary)
 
-                    Text(detail.label)
-                        .font(.appCardTitle)
-                        .foregroundColor(.textPrimary)
+                    HStack(spacing: 6) {
+                        Text(detail.label)
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
+
+                        // Favourite brands icon
+                        if !favouriteBrands.isEmpty {
+                            Button {
+                                showingBrandsPopover = true
+                            } label: {
+                                Image(systemName: "tag.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(appAccentColor)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .popover(isPresented: $showingBrandsPopover, arrowEdge: .bottom) {
+                                FavouriteBrandsPopover(brands: favouriteBrands)
+                            }
+                        }
+                    }
                 }
 
                 Spacer()
-
-                // Size value pill
-                Text(detail.value)
-                    .font(.appValuePill)
-                    .foregroundColor(.textPrimary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.pillCornerRadius)
-
-                // Delete button
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 16))
-                        .foregroundColor(.medicalRed)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
             }
-            .padding(AppDimensions.cardPadding)
-            .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onEdit()
+            }
+
+            // Size value pill
+            Text(detail.value)
+                .font(.appValuePill)
+                .foregroundColor(.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.pillCornerRadius)
+
+            // Delete button
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.system(size: 16))
+                    .foregroundColor(.medicalRed)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+    }
+}
+
+// MARK: - Favourite Brands Popover
+struct FavouriteBrandsPopover: View {
+    let brands: [String]
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header
+            HStack(spacing: 6) {
+                Image(systemName: "tag.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(appAccentColor)
+                Text("Favourite Brands")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+            }
+            .padding(.bottom, 4)
+
+            // Stacked list of brands
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(brands, id: \.self) { brand in
+                    Text(brand)
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.cardBackground)
+        .presentationCompactAdaptation(.popover)
     }
 }
 

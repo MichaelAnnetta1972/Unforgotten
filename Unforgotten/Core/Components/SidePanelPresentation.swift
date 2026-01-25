@@ -94,17 +94,57 @@ struct SidePanelPresentation<PanelContent: View>: ViewModifier {
                 }
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isPresented)
         } else {
-            // Compact mode: Use positioned sheet
+            // Compact mode: Full-screen panel overlay
             content
-                .sheet(isPresented: $isPresented) {
-                    panelContent()
-                        .environment(\.sidePanelDismiss, iPhoneDismissAction)
-                        .presentationDetents([.fraction(0.9)])
-                        .presentationDragIndicator(.visible)
-                        .presentationCornerRadius(24)
-                        .presentationBackground(Color.appBackgroundLight)
+                .overlay {
+                    if isPresented {
+                        // Dimmed background
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                iPhoneDismissAction()
+                            }
+                            .transition(.opacity)
+                    }
                 }
+                .overlay {
+                    if isPresented {
+                        // Full-screen panel
+                        GeometryReader { geometry in
+                            iPhoneSlidePanelWrapper(panelWidth: geometry.size.width, maxHeight: geometry.size.height) {
+                                panelContent()
+                                    .environment(\.sidePanelDismiss, iPhoneDismissAction)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                        }
+                        .transition(.asymmetric(
+                            insertion: .modifier(
+                                active: SlidePanelTransition(offset: 400, opacity: 0, scale: 0.98),
+                                identity: SlidePanelTransition(offset: 0, opacity: 1, scale: 1)
+                            ),
+                            removal: .modifier(
+                                active: SlidePanelTransition(offset: 400, opacity: 0, scale: 0.98),
+                                identity: SlidePanelTransition(offset: 0, opacity: 1, scale: 1)
+                            )
+                        ))
+                    }
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isPresented)
         }
+    }
+}
+
+// MARK: - iPhone Slide Panel Wrapper
+/// Wrapper for iPhone slide panel - full screen width
+private struct iPhoneSlidePanelWrapper<Content: View>: View {
+    let panelWidth: CGFloat
+    let maxHeight: CGFloat
+    let content: () -> Content
+
+    var body: some View {
+        content()
+            .frame(width: panelWidth, height: maxHeight, alignment: .top)
+            .background(Color.appBackgroundLight)
     }
 }
 
@@ -146,6 +186,103 @@ private struct SlidePanelTransition: ViewModifier {
     }
 }
 
+// MARK: - Fit Content Side Panel Presentation
+/// A view modifier that presents content in a slide-in panel from the right on iPad
+/// with height that fits the content, or as a sheet on smaller screens
+struct FitContentSidePanelPresentation<PanelContent: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    let panelContent: () -> PanelContent
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isiPad: Bool {
+        horizontalSizeClass == .regular
+    }
+
+    private var iPadDismissAction: SidePanelDismissAction {
+        SidePanelDismissAction {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                isPresented = false
+            }
+        }
+    }
+
+    private var iPhoneDismissAction: SidePanelDismissAction {
+        SidePanelDismissAction {
+            isPresented = false
+        }
+    }
+
+    func body(content: Content) -> some View {
+        if isiPad {
+            // iPad: Overlay modal sliding from right with fit-content height
+            content
+                .overlay(alignment: .trailing) {
+                    if isPresented {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                iPadDismissAction()
+                            }
+                            .transition(.opacity)
+                    }
+                }
+                .overlay(alignment: .trailing) {
+                    if isPresented {
+                        GeometryReader { geometry in
+                            let panelWidth = min(max(400, geometry.size.width * 0.35), 500)
+                            let maxHeight = geometry.size.height - 120
+
+                            FitContentPanelWrapper(panelWidth: panelWidth, maxHeight: maxHeight) {
+                                panelContent()
+                                    .environment(\.sidePanelDismiss, iPadDismissAction)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                        }
+                        .transition(.asymmetric(
+                            insertion: .modifier(
+                                active: SlidePanelTransition(offset: 520, opacity: 0, scale: 0.95),
+                                identity: SlidePanelTransition(offset: 0, opacity: 1, scale: 1)
+                            ),
+                            removal: .modifier(
+                                active: SlidePanelTransition(offset: 520, opacity: 0, scale: 0.95),
+                                identity: SlidePanelTransition(offset: 0, opacity: 1, scale: 1)
+                            )
+                        ))
+                    }
+                }
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isPresented)
+        } else {
+            // iPhone: Standard sheet presentation
+            content
+                .sheet(isPresented: $isPresented) {
+                    panelContent()
+                        .environment(\.sidePanelDismiss, iPhoneDismissAction)
+                        .presentationDetents([.medium, .large])
+                }
+        }
+    }
+}
+
+// MARK: - Fit Content Panel Wrapper
+/// Wrapper that sizes to content with a maximum height constraint
+private struct FitContentPanelWrapper<Content: View>: View {
+    let panelWidth: CGFloat
+    let maxHeight: CGFloat
+    let content: () -> Content
+
+    var body: some View {
+        content()
+            .frame(width: panelWidth)
+            .frame(maxHeight: maxHeight)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(Color.cardBackgroundLight)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
+            .padding(.trailing, 20)
+    }
+}
+
 // MARK: - View Extension
 extension View {
     /// Presents content in a side panel on iPad full-screen, or as a sheet on smaller screens
@@ -154,6 +291,14 @@ extension View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         modifier(SidePanelPresentation(isPresented: isPresented, panelContent: content))
+    }
+
+    /// Presents content in a fit-content side panel on iPad, or as a sheet on smaller screens
+    func fitContentSidePanel<Content: View>(
+        isPresented: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        modifier(FitContentSidePanelPresentation(isPresented: isPresented, panelContent: content))
     }
 
     /// Conditionally presents content in a side panel (only when showPanel is true)

@@ -20,6 +20,16 @@ struct AddCountdownView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    // Family sharing state
+    @State private var shareToFamily = false
+    @State private var selectedMemberIds: Set<UUID> = []
+    @State private var showFamilySharingSheet = false
+
+    // Check if user has Family Plus access
+    private var hasFamilyAccess: Bool {
+        appState.hasFamilyAccess
+    }
+
     private let reminderOptions: [(Int?, String)] = [
         (nil, "No reminder"),
         (0, "On the day"),
@@ -38,140 +48,224 @@ struct AddCountdownView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Add Countdown")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveCountdown() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(title.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        AppTextField(placeholder: "Title *", text: $title)
+                Spacer()
 
-                        // Type selection
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Type")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                Text("Add Countdown")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                            CountdownTypePicker(selectedType: $selectedType)
-                        }
+                Spacer()
 
-                        // Custom type name (shown only when "Custom" is selected)
-                        if selectedType == .custom {
-                            AppTextField(placeholder: "Custom type name", text: $customTypeName)
-                        }
-
-                        // Date picker row
-                        HStack {
-                            Text("Date")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-
-                            Spacer()
-
-                            DatePicker(
-                                "",
-                                selection: $date,
-                                displayedComponents: .date
-                            )
-                            .datePickerStyle(.compact)
-                            .tint(appAccentColor)
-                            .labelsHidden()
-                        }
-                        .padding()
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-
-                        // Recurring toggle
-                        HStack {
-                            Toggle("Repeats every year", isOn: $isRecurring)
-                                .tint(appAccentColor)
-                        }
-                        .padding()
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-
-                        // Reminder picker row
-                        HStack {
-                            Text("Reminder")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-
-                            Spacer()
-
-                            Picker("Reminder", selection: $reminderMinutes) {
-                                ForEach(reminderOptions, id: \.0) { option in
-                                    Text(option.1).tag(option.0)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(appAccentColor)
-                        }
-                        .padding()
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-
-                        AppTextField(placeholder: "Notes (optional)", text: $notes)
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                        }
-
-                        Spacer(minLength: 0)
-                    }
-                    .padding(AppDimensions.screenPadding)
+                Button {
+                    Task { await saveCountdown() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
                 }
+                .disabled(title.isBlank || isLoading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.appBackgroundLight)
-            .navigationBarHidden(true)
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    AppTextField(placeholder: "Title *", text: $title)
+
+                    // Type selection
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Type")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        CountdownTypePicker(selectedType: $selectedType)
+                    }
+
+                    // Custom type name (shown only when "Custom" is selected)
+                    if selectedType == .custom {
+                        AppTextField(placeholder: "Custom type name", text: $customTypeName)
+                    }
+
+                    // Date picker row
+                    HStack {
+                        Text("Date")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        DatePicker(
+                            "",
+                            selection: $date,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .tint(appAccentColor)
+                        .labelsHidden()
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    // Recurring toggle
+                    HStack {
+                        Toggle("Repeats every year", isOn: $isRecurring)
+                            .tint(appAccentColor)
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    // Reminder picker row
+                    HStack {
+                        Text("Reminder")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Picker("Reminder", selection: $reminderMinutes) {
+                            ForEach(reminderOptions, id: \.0) { option in
+                                Text(option.1).tag(option.0)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    AppTextField(placeholder: "Notes (optional)", text: $notes)
+
+                    // Family sharing section
+                    familySharingSection
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(AppDimensions.screenPadding)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .scrollContentBackground(.hidden)
         .background(Color.appBackgroundLight)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .presentationDetents([.fraction(0.9)])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(24)
+        .sheet(isPresented: $showFamilySharingSheet) {
+            FamilySharingSheet(
+                isEnabled: $shareToFamily,
+                selectedMemberIds: $selectedMemberIds,
+                onDismiss: { showFamilySharingSheet = false }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
+        }
+    }
+
+    // MARK: - Family Sharing Section
+    @ViewBuilder
+    private var familySharingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Family Calendar")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+                .padding(.horizontal, 4)
+
+            if hasFamilyAccess {
+                // Full family sharing controls for Family Plus subscribers
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Add to Family Calendar")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            if shareToFamily && !selectedMemberIds.isEmpty {
+                                Text("\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+                            } else if shareToFamily {
+                                Text("Tap to select members")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+
+                        Spacer()
+
+                        Toggle("", isOn: $shareToFamily)
+                            .labelsHidden()
+                            .tint(appAccentColor)
+                    }
+
+                    if shareToFamily {
+                        Button {
+                            showFamilySharingSheet = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.2")
+                                    .foregroundColor(appAccentColor)
+                                Text("Select Members")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            } else {
+                // Upgrade prompt for non-Family Plus users
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Share to Family Calendar")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Text("Upgrade to Family Plus to share events")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "lock.fill")
+                        .foregroundColor(.textSecondary)
+                }
+                .padding()
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+        }
     }
 
     private func saveCountdown() async {
@@ -206,6 +300,23 @@ struct AddCountdownView: View {
                     reminderMinutesBefore: reminderMinutes,
                     isRecurring: countdown.isRecurring
                 )
+            }
+
+            // Create family calendar share if enabled
+            if shareToFamily && !selectedMemberIds.isEmpty {
+                do {
+                    _ = try await appState.familyCalendarRepository.createShare(
+                        accountId: account.id,
+                        eventType: .countdown,
+                        eventId: countdown.id,
+                        memberUserIds: Array(selectedMemberIds)
+                    )
+                } catch {
+                    // Log but don't fail the save - countdown was created successfully
+                    #if DEBUG
+                    print("Failed to create family share: \(error)")
+                    #endif
+                }
             }
 
             onSave(countdown)
@@ -323,142 +434,132 @@ struct EditCountdownView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Edit Countdown")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await updateCountdown() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(title.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        AppTextField(placeholder: "Title *", text: $title)
+                Spacer()
 
-                        // Type selection
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Type")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                Text("Edit Countdown")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                            CountdownTypePicker(selectedType: $selectedType)
-                        }
+                Spacer()
 
-                        // Custom type name (shown only when "Custom" is selected)
-                        if selectedType == .custom {
-                            AppTextField(placeholder: "Custom type name", text: $customTypeName)
-                        }
-
-                        // Date picker row
-                        HStack {
-                            Text("Date")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-
-                            Spacer()
-
-                            DatePicker(
-                                "",
-                                selection: $date,
-                                displayedComponents: .date
-                            )
-                            .datePickerStyle(.compact)
-                            .tint(appAccentColor)
-                            .labelsHidden()
-                        }
-                        .padding()
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-
-                        // Recurring toggle
-                        HStack {
-                            Toggle("Repeats every year", isOn: $isRecurring)
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .tint(appAccentColor)
-                        }
-                        .padding()
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-
-                        // Reminder picker row
-                        HStack {
-                            Text("Reminder")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-
-                            Spacer()
-
-                            Picker("Reminder", selection: $reminderMinutes) {
-                                ForEach(reminderOptions, id: \.0) { option in
-                                    Text(option.1).tag(option.0)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(appAccentColor)
-                        }
-                        .padding()
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-
-                        AppTextField(placeholder: "Notes", text: $notes)
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                        }
-
-                        Spacer(minLength: 0)
-                    }
-                    .padding(AppDimensions.screenPadding)
+                Button {
+                    Task { await updateCountdown() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
                 }
+                .disabled(title.isBlank || isLoading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.appBackgroundLight)
-            .navigationBarHidden(true)
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    AppTextField(placeholder: "Title *", text: $title)
+
+                    // Type selection
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Type")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        CountdownTypePicker(selectedType: $selectedType)
+                    }
+
+                    // Custom type name (shown only when "Custom" is selected)
+                    if selectedType == .custom {
+                        AppTextField(placeholder: "Custom type name", text: $customTypeName)
+                    }
+
+                    // Date picker row
+                    HStack {
+                        Text("Date")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        DatePicker(
+                            "",
+                            selection: $date,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .tint(appAccentColor)
+                        .labelsHidden()
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    // Recurring toggle
+                    HStack {
+                        Toggle("Repeats every year", isOn: $isRecurring)
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                            .tint(appAccentColor)
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    // Reminder picker row
+                    HStack {
+                        Text("Reminder")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Picker("Reminder", selection: $reminderMinutes) {
+                            ForEach(reminderOptions, id: \.0) { option in
+                                Text(option.1).tag(option.0)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    AppTextField(placeholder: "Notes", text: $notes)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(AppDimensions.screenPadding)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .scrollContentBackground(.hidden)
         .background(Color.appBackgroundLight)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .presentationDetents([.fraction(0.9)])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(24)
     }
 
     private func updateCountdown() async {

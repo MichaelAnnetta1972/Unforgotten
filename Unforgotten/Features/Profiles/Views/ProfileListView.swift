@@ -45,7 +45,15 @@ struct ProfileListView: View {
                         pageIdentifier: .profiles,
                         title: "Family and Friends",
                         showHomeButton: iPadHomeAction != nil,
-                        homeAction: iPadHomeAction
+                        homeAction: iPadHomeAction,
+                        showAddButton: true,
+                        addAction: {
+                            if canAddProfile {
+                                showAddProfile = true
+                            } else {
+                                showUpgradePrompt = true
+                            }
+                        }
                     )
 
                     // Content

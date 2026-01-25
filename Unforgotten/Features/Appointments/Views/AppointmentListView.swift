@@ -76,23 +76,13 @@ struct AppointmentListView: View {
 
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
-                        // Calendar button with filter icon
+                        // Section header with filter icon
                         HStack(spacing: 12) {
-                            NavigationLink(destination: AppointmentCalendarView()) {
-                                HStack {
-                                    Text("Calendar")
-                                        .font(.appCardTitle)
-                                        .foregroundColor(.white)
+                            Text("Upcoming Appointments and Events")
+                                .font(.appCardTitle)
+                                .foregroundColor(.white)
 
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.white)
-                                }
-                                .padding(AppDimensions.cardPaddingLarge)
-                                .background(Color.cardBackgroundLight.opacity(0.8))
-                                .cornerRadius(AppDimensions.cardCornerRadius)
-                            }
+                            Spacer()
 
                             Button(action: {
                                 // On iPad, use the environment action to trigger the root-level overlay
@@ -819,9 +809,19 @@ struct AddAppointmentView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    // Family sharing state
+    @State private var shareToFamily = false
+    @State private var selectedMemberIds: Set<UUID> = []
+    @State private var showFamilySharingSheet = false
+
     // Premium check for date restrictions
     private var hasPremiumAccess: Bool {
         PremiumLimitsManager.shared.hasPremiumAccess(appState: appState)
+    }
+
+    // Family Plus check for family sharing
+    private var hasFamilyAccess: Bool {
+        appState.hasFamilyAccess
     }
 
     // Maximum allowed date for appointments (unlimited for premium, 30 days for free)
@@ -853,143 +853,225 @@ struct AddAppointmentView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Add Appointment")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveAppointment() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(title.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
 
-                ScrollView {
-                    VStack(spacing: 20) {
+                Spacer()
 
-                        AppTextField(placeholder: "Title *", text: $title)
+                Text("Add Appointment")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                        // Type selection
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Type")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                Spacer()
 
-                            AppointmentTypePicker(selectedType: $selectedType)
-                        }
+                Button {
+                    Task { await saveAppointment() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(title.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
 
-                        // Date picker
-                        VStack(spacing: 8) {
+            ScrollView {
+                VStack(spacing: 20) {
+
+                    AppTextField(placeholder: "Title *", text: $title)
+
+                    // Type selection
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Type")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        AppointmentTypePicker(selectedType: $selectedType)
+                    }
+
+                    // Date picker
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
                             Text("Date")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
 
                             DatePicker(
-                                "Date",
+                                "",
                                 selection: $date,
                                 in: Date()...maximumDate,
                                 displayedComponents: .date
                             )
                             .datePickerStyle(.compact)
-                            .tint(appAccentColor)
                             .labelsHidden()
-
-                            // Show limit info for free users
-                            if !hasPremiumAccess {
-                                Text("Free plan: limited to next 30 days")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textMuted)
-                            }
-                        }
-
-                        // Time toggle and picker
-                        HStack {
-                            Toggle("Include time", isOn: $hasTime)
-                                .tint(appAccentColor)
-
-                            if hasTime {
-                                Spacer()
-                                DatePicker(
-                                    "",
-                                    selection: $time,
-                                    displayedComponents: .hourAndMinute
-                                )
-                                .datePickerStyle(.compact)
-                                .tint(appAccentColor)
-                                .labelsHidden()
-                            }
+                            .tint(appAccentColor)
                         }
                         .padding()
                         .background(Color.cardBackgroundSoft)
                         .cornerRadius(AppDimensions.cardCornerRadius)
 
-                        AppTextField(placeholder: "Location (optional)", text: $location)
-                        AppTextField(placeholder: "Notes (optional)", text: $notes)
-
-                        // Reminder picker
-                        VStack(spacing: 8) {
-                            Text("Reminder")
+                        // Show limit info for free users
+                        if !hasPremiumAccess {
+                            Text("Free plan: limited to next 30 days")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-
-                            Picker("Reminder", selection: $reminderMinutes) {
-                                ForEach(reminderOptions, id: \.0) { option in
-                                    Text(option.1).tag(option.0)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(appAccentColor)
-                        }
-
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
+                                .foregroundColor(.textMuted)
+                                .padding(.horizontal, 4)
                         }
                     }
-                    .padding(AppDimensions.screenPadding)
+
+                    // Time toggle and picker
+                    HStack {
+                        Toggle("Include time", isOn: $hasTime)
+                            .tint(appAccentColor)
+
+                        if hasTime {
+                            Spacer()
+                            DatePicker(
+                                "",
+                                selection: $time,
+                                displayedComponents: .hourAndMinute
+                            )
+                            .datePickerStyle(.compact)
+                            .tint(appAccentColor)
+                            .labelsHidden()
+                        }
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    AppTextField(placeholder: "Location (optional)", text: $location)
+                    AppTextField(placeholder: "Notes (optional)", text: $notes)
+
+                    // Reminder picker
+                    HStack {
+                        Text("Reminder")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Picker("Reminder", selection: $reminderMinutes) {
+                            ForEach(reminderOptions, id: \.0) { option in
+                                Text(option.1).tag(option.0)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+                    }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    // Family Calendar Sharing
+                    familySharingSection
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
                 }
+                .padding(AppDimensions.screenPadding)
             }
-            .background(Color.clear)
-            .navigationBarHidden(true)
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .toolbarBackground(.clear, for: .navigationBar)
-        .containerBackground(.clear, for: .navigation)
+        .background(Color.appBackgroundLight)
+        .sheet(isPresented: $showFamilySharingSheet) {
+            FamilySharingSheet(
+                isEnabled: $shareToFamily,
+                selectedMemberIds: $selectedMemberIds,
+                onDismiss: { showFamilySharingSheet = false }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
+        }
+    }
+
+    // MARK: - Family Sharing Section
+
+    @ViewBuilder
+    private var familySharingSection: some View {
+        if hasFamilyAccess {
+            // Family Plus user - show full controls
+            Button {
+                showFamilySharingSheet = true
+            } label: {
+                HStack {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(shareToFamily ? appAccentColor : .textSecondary)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Family Calendar")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Text(shareToFamily ? "\(selectedMemberIds.count) member(s) selected" : "Not shared")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.textSecondary)
+                }
+                .padding()
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .buttonStyle(PlainButtonStyle())
+        } else {
+            // Free user - show upgrade prompt
+            HStack {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Family Calendar")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    Text("Upgrade to Family Plus to share events")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.accentYellow)
+            }
+            .padding()
+            .background(Color.cardBackgroundSoft)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .opacity(0.7)
+        }
     }
 
     private func saveAppointment() async {
@@ -1050,6 +1132,23 @@ struct AddAppointmentView: View {
                 reminderMinutesBefore: reminderMinutes
             )
 
+            // Create family calendar share if enabled
+            if shareToFamily && !selectedMemberIds.isEmpty {
+                do {
+                    _ = try await appState.familyCalendarRepository.createShare(
+                        accountId: account.id,
+                        eventType: .appointment,
+                        eventId: appointment.id,
+                        memberUserIds: Array(selectedMemberIds)
+                    )
+                } catch {
+                    // Log error but don't fail the whole operation
+                    #if DEBUG
+                    print("Failed to create family share: \(error)")
+                    #endif
+                }
+            }
+
             onSave(appointment)
             dismissView()
         } catch {
@@ -1082,6 +1181,11 @@ struct EditAppointmentView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    // Family sharing state
+    @State private var shareToFamily = false
+    @State private var selectedMemberIds: Set<UUID> = []
+    @State private var showFamilySharingSheet = false
+
     // Premium check for date restrictions
     private var hasPremiumAccess: Bool {
         PremiumLimitsManager.shared.hasPremiumAccess(appState: appState)
@@ -1094,6 +1198,11 @@ struct EditAppointmentView: View {
         } else {
             return Calendar.current.date(byAdding: .day, value: PremiumLimitsManager.FreeTierLimits.appointmentDaysLimit, to: Date().startOfDay) ?? Date()
         }
+    }
+
+    // Family Plus check for family sharing
+    private var hasFamilyAccess: Bool {
+        appState.hasFamilyAccess
     }
 
     private let reminderOptions = [
@@ -1128,66 +1237,68 @@ struct EditAppointmentView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Edit Appointment")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await updateAppointment() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(title.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        AppTextField(placeholder: "Title *", text: $title)
+                Spacer()
 
-                    // Type selection
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Type")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                Text("Edit Appointment")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                        AppointmentTypePicker(selectedType: $selectedType)
-                    }
+                Spacer()
 
-                    // Date picker
-                    VStack(alignment: .leading, spacing: 8) {
+                Button {
+                    Task { await updateAppointment() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(title.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    AppTextField(placeholder: "Title *", text: $title)
+
+                // Type selection
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Type")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+
+                    AppointmentTypePicker(selectedType: $selectedType)
+                }
+
+                // Date picker
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
                         Text("Date")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
 
                         DatePicker(
                             "",
@@ -1198,72 +1309,174 @@ struct EditAppointmentView: View {
                         .datePickerStyle(.compact)
                         .labelsHidden()
                         .tint(appAccentColor)
-
-                        // Show limit info for free users
-                        if !hasPremiumAccess {
-                            Text("Free plan: limited to next 30 days")
-                                .font(.appCaption)
-                                .foregroundColor(.textMuted)
-                        }
-                    }
-
-                    // Time toggle and picker
-                    HStack {
-                        Toggle("Include Time", isOn: $hasTime)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                            .tint(appAccentColor)
-
-                        if hasTime {
-                            Spacer()
-                            DatePicker(
-                                "",
-                                selection: $time,
-                                displayedComponents: .hourAndMinute
-                            )
-                            .datePickerStyle(.compact)
-                            .labelsHidden()
-                            .tint(appAccentColor)
-                        }
                     }
                     .padding()
                     .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
 
-                    AppTextField(placeholder: "Location", text: $location)
-                    AppTextField(placeholder: "Notes", text: $notes)
-
-                    // Reminder picker
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Reminder")
+                    // Show limit info for free users
+                    if !hasPremiumAccess {
+                        Text("Free plan: limited to next 30 days")
                             .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                            .foregroundColor(.textMuted)
+                            .padding(.horizontal, 4)
+                    }
+                }
 
-                        Picker("Reminder", selection: $reminderMinutes) {
-                            ForEach(reminderOptions, id: \.0) { option in
-                                Text(option.1).tag(option.0)
-                            }
-                        }
-                        .pickerStyle(.menu)
+                // Time toggle and picker
+                HStack {
+                    Toggle("Include Time", isOn: $hasTime)
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                        .tint(appAccentColor)
+
+                    if hasTime {
+                        Spacer()
+                        DatePicker(
+                            "",
+                            selection: $time,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
                         .tint(appAccentColor)
                     }
+                }
+                .padding()
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.cardCornerRadius)
 
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
+                AppTextField(placeholder: "Location", text: $location)
+                AppTextField(placeholder: "Notes", text: $notes)
+
+                // Reminder picker
+                HStack {
+                    Text("Reminder")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Picker("Reminder", selection: $reminderMinutes) {
+                        ForEach(reminderOptions, id: \.0) { option in
+                            Text(option.1).tag(option.0)
                         }
                     }
-                    .padding(AppDimensions.screenPadding)
+                    .pickerStyle(.menu)
+                    .tint(appAccentColor)
                 }
+                .padding()
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+
+                    // Family Calendar Sharing
+                    editFamilySharingSection
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
+                }
+                .padding(AppDimensions.screenPadding)
             }
-            .background(Color.clear)
-            .navigationBarHidden(true)
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .toolbarBackground(.clear, for: .navigationBar)
-        .containerBackground(.clear, for: .navigation)
+        .background(Color.appBackgroundLight)
+        .sheet(isPresented: $showFamilySharingSheet) {
+            FamilySharingSheet(
+                isEnabled: $shareToFamily,
+                selectedMemberIds: $selectedMemberIds,
+                onDismiss: { showFamilySharingSheet = false }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
+        }
+        .task {
+            await loadExistingFamilyShare()
+        }
+    }
+
+    // MARK: - Family Sharing Section
+
+    @ViewBuilder
+    private var editFamilySharingSection: some View {
+        if hasFamilyAccess {
+            // Family Plus user - show full controls
+            Button {
+                showFamilySharingSheet = true
+            } label: {
+                HStack {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(shareToFamily ? appAccentColor : .textSecondary)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Family Calendar")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Text(shareToFamily ? "\(selectedMemberIds.count) member(s) selected" : "Not shared")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.textSecondary)
+                }
+                .padding()
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .buttonStyle(PlainButtonStyle())
+        } else {
+            // Free user - show upgrade prompt
+            HStack {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Family Calendar")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    Text("Upgrade to Family Plus to share events")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.accentYellow)
+            }
+            .padding()
+            .background(Color.cardBackgroundSoft)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .opacity(0.7)
+        }
+    }
+
+    private func loadExistingFamilyShare() async {
+        do {
+            if let share = try await appState.familyCalendarRepository.getShareForEvent(
+                eventType: .appointment,
+                eventId: appointment.id
+            ) {
+                let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: share.id)
+                shareToFamily = true
+                selectedMemberIds = Set(members.map { $0.memberUserId })
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load existing family share: \(error)")
+            #endif
+        }
     }
 
     private func updateAppointment() async {
@@ -1300,6 +1513,11 @@ struct EditAppointmentView: View {
                 reminderMinutesBefore: reminderMinutes
             )
 
+            // Update family calendar sharing
+            if let account = appState.currentAccount {
+                await updateFamilyCalendarSharing(accountId: account.id, appointmentId: saved.id)
+            }
+
             onSave(saved)
             dismissView()
         } catch {
@@ -1307,6 +1525,30 @@ struct EditAppointmentView: View {
         }
 
         isLoading = false
+    }
+
+    private func updateFamilyCalendarSharing(accountId: UUID, appointmentId: UUID) async {
+        do {
+            // First, delete existing share for this appointment
+            try await appState.familyCalendarRepository.deleteShareForEvent(
+                eventType: .appointment,
+                eventId: appointmentId
+            )
+
+            // Then create new share if sharing is enabled
+            if shareToFamily && !selectedMemberIds.isEmpty {
+                _ = try await appState.familyCalendarRepository.createShare(
+                    accountId: accountId,
+                    eventType: .appointment,
+                    eventId: appointmentId,
+                    memberUserIds: Array(selectedMemberIds)
+                )
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to update family calendar sharing: \(error)")
+            #endif
+        }
     }
 }
 
@@ -2034,7 +2276,7 @@ struct AppointmentTypeFilterOverlay: View {
                                     }
                                 }
                                 .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft)
+                                .background(Color.cardBackgroundSoft.opacity(0.4))
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
@@ -2061,7 +2303,7 @@ struct AppointmentTypeFilterOverlay: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 8)
-                                        .background(selectedType == type ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft)
+                                        .background(selectedType == type ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft.opacity(0.4))
                                         .cornerRadius(8)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 8)
@@ -2078,7 +2320,7 @@ struct AppointmentTypeFilterOverlay: View {
                     .frame(maxHeight: 400)
                 }
                 .frame(width: panelWidth)
-                .background(Color.appBackground)
+                .background(Color.cardBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
                 .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
                 .offset(x: offsetX)

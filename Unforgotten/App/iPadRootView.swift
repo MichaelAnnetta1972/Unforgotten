@@ -16,6 +16,7 @@ enum iPadContentSelection: Hashable {
     case profiles
     case medications
     case appointments
+    case calendar
     case todoLists
     case notes
     case stickyReminders
@@ -122,6 +123,19 @@ struct iPadRootView: View {
     @State private var toDoDetailTypeSelectorViewModel: ToDoListDetailViewModel? = nil
     @State private var toDoDetailTypeSelectorBinding: Binding<String?>? = nil
     @State private var toDoDetailTypeSelectorAddAction: (() -> Void)? = nil
+
+    // Calendar filter state (shared with CalendarView on iPad)
+    @State private var showCalendarFilter = false
+    @State private var showCalendarMemberFilter = false
+    @State private var selectedCalendarFilters: Set<CalendarEventFilter> = Set(CalendarEventFilter.allCases)
+    @State private var selectedCalendarMemberFilters: Set<UUID> = []
+    @State private var calendarMembersWithEvents: [AccountMemberWithUser] = []
+
+    // Calendar day detail state (for full-screen overlay on iPad)
+    @State private var showCalendarDayDetail = false
+    @State private var calendarDayDetailDate: Date = Date()
+    @State private var calendarDayDetailEvents: [CalendarEvent] = []
+    @State private var calendarDayDetailOnDismiss: (() -> Void)? = nil
 
     // Premium limit state
     @State private var showUpgradePrompt = false
@@ -240,6 +254,42 @@ struct iPadRootView: View {
                 }
             })
             .environment(\.iPadToDoListFilterBinding, $selectedToDoListTypeFilter)
+            .environment(\.iPadCalendarFilterAction, {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showCalendarFilter = true
+                }
+            })
+            .environment(\.iPadCalendarMemberFilterAction, {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showCalendarMemberFilter = true
+                }
+            })
+            .environment(\.iPadCalendarFilterBinding, $selectedCalendarFilters)
+            .environment(\.iPadCalendarMemberFilterBinding, $selectedCalendarMemberFilters)
+            .environment(\.iPadCalendarMembersWithEventsBinding, $calendarMembersWithEvents)
+            .environment(\.iPadCalendarDayDetailAction, { date, events, onDismiss in
+                calendarDayDetailDate = date
+                calendarDayDetailEvents = events
+                calendarDayDetailOnDismiss = onDismiss
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    showCalendarDayDetail = true
+                }
+            })
+            .environment(\.iPadCalendarDayDetailDismissAction, {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    showCalendarDayDetail = false
+                }
+            })
+            .environment(\.iPadCalendarEventSelectedAction, { event in
+                // Dismiss the day detail first
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    showCalendarDayDetail = false
+                }
+                // Navigate to the appropriate detail view
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    handleCalendarEventNavigation(event)
+                }
+            })
             .environment(\.iPadToDoDetailTypeSelectorAction, { viewModel, selectedTypeBinding, addAction in
                 toDoDetailTypeSelectorViewModel = viewModel
                 toDoDetailTypeSelectorBinding = selectedTypeBinding
@@ -388,7 +438,7 @@ struct iPadRootView: View {
                 iPadHomeSidebar(
                     selectedContent: $selectedContent
                 )
-                .frame(width: 440)
+                .frame(width: 400)
 
                 // Gap between panels
                 Color.appBackground
@@ -421,6 +471,21 @@ struct iPadRootView: View {
             // ToDo List type filter overlay (covers entire screen when open)
             if showToDoListFilter {
                 toDoListFilterOverlay
+            }
+
+            // Calendar event type filter overlay (covers entire screen when open)
+            if showCalendarFilter {
+                calendarFilterOverlay
+            }
+
+            // Calendar member filter overlay (covers entire screen when open)
+            if showCalendarMemberFilter {
+                calendarMemberFilterOverlay
+            }
+
+            // Calendar day detail overlay (covers entire screen when open)
+            if showCalendarDayDetail {
+                calendarDayDetailOverlay
             }
         }
         .environment(\.navNamespace, navNamespace)
@@ -538,6 +603,72 @@ struct iPadRootView: View {
         }
         .zIndex(10)
         .transition(.opacity)
+    }
+
+    /// Calendar event type filter overlay
+    private var calendarFilterOverlay: some View {
+        CalendarFilterView(
+            selectedFilters: $selectedCalendarFilters,
+            isPresented: $showCalendarFilter
+        )
+        .zIndex(10)
+        .transition(.opacity)
+    }
+
+    /// Calendar member filter overlay
+    private var calendarMemberFilterOverlay: some View {
+        CalendarMemberFilterView(
+            selectedMemberFilters: $selectedCalendarMemberFilters,
+            isPresented: $showCalendarMemberFilter,
+            membersWithEvents: calendarMembersWithEvents
+        )
+        .zIndex(10)
+        .transition(.opacity)
+    }
+
+    /// Calendar day detail overlay
+    private var calendarDayDetailOverlay: some View {
+        CalendarDayDetailView(
+            date: calendarDayDetailDate,
+            events: calendarDayDetailEvents,
+            isPresented: $showCalendarDayDetail,
+            onEventSelected: { event in
+                // Dismiss and navigate
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    showCalendarDayDetail = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    handleCalendarEventNavigation(event)
+                }
+            }
+        )
+        .zIndex(10)
+        .transition(.opacity)
+        .onChange(of: showCalendarDayDetail) { _, isShowing in
+            if !isShowing {
+                // Call the onDismiss callback to clear the calendar selection
+                calendarDayDetailOnDismiss?()
+                calendarDayDetailOnDismiss = nil
+            }
+        }
+    }
+
+    /// Handle navigation to event detail views from calendar
+    private func handleCalendarEventNavigation(_ event: CalendarEvent) {
+        switch event {
+        case .appointment(let appointment, _):
+            // Navigate using the direct type (Appointment) which is registered in contentArea
+            navigationPath.append(appointment)
+        case .countdown(let countdown, _):
+            // Countdowns need a navigation destination - append the countdown directly
+            navigationPath.append(countdown)
+        case .birthday(let upcomingBirthday):
+            // Navigate using the direct type (Profile) which is registered in contentArea
+            navigationPath.append(upcomingBirthday.profile)
+        case .medication(let medication, _, _):
+            // Navigate using the direct type (Medication) which is registered in contentArea
+            navigationPath.append(medication)
+        }
     }
 
     /// Side panel overlay
@@ -852,6 +983,8 @@ struct iPadRootView: View {
                     MedicationListView()
                 case .appointments:
                     AppointmentListView()
+                case .calendar:
+                    CalendarView()
                 case .todoLists:
                     iPadToDoListsView(viewModel: toDoListsViewModel)
                 case .notes:
@@ -876,6 +1009,9 @@ struct iPadRootView: View {
             }
             .navigationDestination(for: Appointment.self) { appointment in
                 AppointmentDetailView(appointment: appointment)
+            }
+            .navigationDestination(for: Countdown.self) { countdown in
+                CountdownDetailView(countdown: countdown)
             }
         }
         .id(selectedContent)

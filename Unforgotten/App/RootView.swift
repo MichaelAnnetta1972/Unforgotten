@@ -89,11 +89,18 @@ struct LoadingScreen: View {
 struct MainAppView: View {
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
 
+    /// Minimum width required to show the iPad two-column layout.
+    /// Below this threshold, we switch to the iPhone single-column view.
+    /// Calculation: 440pt sidebar + 24pt gap + ~300pt minimum detail area = ~764pt
+    private let iPadMinimumWidth: CGFloat = 900
+
     var body: some View {
-        if horizontalSizeClass == .regular {
-            iPadRootView()
-        } else {
-            IPhoneMainView()
+        GeometryReader { geometry in
+            if horizontalSizeClass == .regular && geometry.size.width >= iPadMinimumWidth {
+                iPadRootView()
+            } else {
+                IPhoneMainView()
+            }
         }
     }
 }
@@ -325,14 +332,22 @@ struct iPadMainView: View {
             MyCardView()
         case .profiles:
             ProfileListContainerView()
+        case .profileDetail(let profile):
+            ProfileDetailView(profile: profile)
         case .medications:
             MedicationListContainerView()
+        case .medicationDetail(let medication):
+            MedicationDetailView(medication: medication)
         case .appointments:
             AppointmentListContainerView()
         case .appointmentDetail(let appointment):
             AppointmentDetailView(appointment: appointment)
+        case .calendar:
+            CalendarView()
         case .birthdays:
             BirthdaysContainerView()
+        case .countdownDetail(let countdown):
+            CountdownDetailView(countdown: countdown)
         case .contacts:
             UsefulContactsContainerView()
         case .notes:
@@ -1103,17 +1118,26 @@ struct TabContentView: View {
         case .profiles:
             ProfileListView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
+        case .profileDetail(let profile):
+            ProfileDetailView(profile: profile)
         case .medications:
             MedicationListView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
+        case .medicationDetail(let medication):
+            MedicationDetailView(medication: medication)
         case .appointments:
             AppointmentListView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
         case .appointmentDetail(let appointment):
             AppointmentDetailView(appointment: appointment)
+        case .calendar:
+            CalendarView()
+                .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
         case .birthdays:
             BirthdaysView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
+        case .countdownDetail(let countdown):
+            CountdownDetailView(countdown: countdown)
         case .contacts:
             UsefulContactsListView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))

@@ -42,107 +42,103 @@ struct AddToDoListSheet: View {
 
     var body: some View {
         ZStack {
-            NavigationStack {
-                VStack(spacing: 0) {
-                    // Custom header with icons
-                    HStack {
-                        Button {
-                            dismissView()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 48, height: 48)
-                                .background(
-                                    Circle()
-                                        .fill(Color.white.opacity(0.5))
-                                )
-                        }
-
-                        Spacer()
-
-                        Text("New To Do List")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
-
-                        Button {
-                            createList()
-                        } label: {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(.black)
-                                .frame(width: 48, height: 48)
-                                .background(
-                                    Circle()
-                                        .fill(title.isEmpty ? Color.gray.opacity(0.3) : appAccentColor)
-                                )
-                        }
-                        .disabled(title.isEmpty)
+            VStack(spacing: 0) {
+                // Custom header with icons
+                HStack {
+                    Button {
+                        dismissView()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.5))
+                            )
                     }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.vertical, 16)
-
-                    // Content
-                    VStack(spacing: AppDimensions.cardSpacing) {
-                        // Title Field with Type Icon
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("List Title")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-
-                                Spacer()
-
-                                if let type = selectedType {
-                                    Text(type)
-                                        .font(.caption)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 4)
-                                        .background(appAccentColor)
-                                        .cornerRadius(6)
-                                }
-                            }
-
-                            TextField("Enter title", text: $title, axis: .vertical)
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .lineLimit(1...5)
-                                .focused($titleFieldFocused)
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
-                        }
-
-                        // Error message
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    .padding(AppDimensions.screenPadding)
 
                     Spacer()
+
+                    Text("New To Do List")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        createList()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(title.isEmpty ? Color.gray.opacity(0.3) : appAccentColor)
+                            )
+                    }
+                    .disabled(title.isEmpty)
                 }
-                .background(Color.clear)
-                .navigationBarHidden(true)
-                .alert("Add New Type", isPresented: $showingAddType) {
-                    TextField("Type name", text: $newTypeName)
-                    Button("Cancel", role: .cancel) { newTypeName = "" }
-                    Button("Add") {
-                        viewModel.addNewType(name: newTypeName)
-                        newTypeName = ""
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
+
+                // Content
+                VStack(spacing: AppDimensions.cardSpacing) {
+                    // Title Field with Type Icon
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("List Title")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            Spacer()
+
+                            if let type = selectedType {
+                                Text(type)
+                                    .font(.caption)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(appAccentColor)
+                                    .cornerRadius(6)
+                            }
+                        }
+
+                        TextField("Enter title", text: $title, axis: .vertical)
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1...5)
+                            .focused($titleFieldFocused)
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                    }
+
+                    // Error message
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                            .multilineTextAlignment(.center)
                     }
                 }
-                .onAppear {
-                    // Auto-focus title field when sheet appears
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        titleFieldFocused = true
-                    }
+                .padding(AppDimensions.screenPadding)
+
+                Spacer()
+            }
+            .alert("Add New Type", isPresented: $showingAddType) {
+                TextField("Type name", text: $newTypeName)
+                Button("Cancel", role: .cancel) { newTypeName = "" }
+                Button("Add") {
+                    viewModel.addNewType(name: newTypeName)
+                    newTypeName = ""
+                }
+            }
+            .onAppear {
+                // Auto-focus title field when sheet appears
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    titleFieldFocused = true
                 }
             }
 
@@ -173,10 +169,7 @@ struct AddToDoListSheet: View {
                 .transition(.opacity)
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .toolbarBackground(.clear, for: .navigationBar)
-        .containerBackground(.clear, for: .navigation)
+        .background(Color.appBackgroundLight)
     }
 
     private func createList() {

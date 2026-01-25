@@ -574,7 +574,7 @@ struct iPadStickyReminderDetailView: View {
                     Button {
                         reactivateReminder()
                     } label: {
-                        Text("Reactivate")
+                        Text("Activate")
                             .font(.appBodyMedium)
                             .foregroundColor(.white)
                             .padding(.horizontal, 16)

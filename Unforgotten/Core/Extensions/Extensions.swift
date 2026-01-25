@@ -69,18 +69,36 @@ extension Date {
     func daysUntilNextOccurrence() -> Int {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        
+
         var components = calendar.dateComponents([.month, .day], from: self)
         components.year = calendar.component(.year, from: today)
-        
+
         guard var nextDate = calendar.date(from: components) else { return 0 }
-        
+
         if nextDate < today {
             components.year = (components.year ?? 0) + 1
             nextDate = calendar.date(from: components) ?? nextDate
         }
-        
+
         return calendar.dateComponents([.day], from: today, to: nextDate).day ?? 0
+    }
+
+    /// Returns the next occurrence of this date (same month/day in the current or next year)
+    func nextOccurrenceDate() -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        var components = calendar.dateComponents([.month, .day], from: self)
+        components.year = calendar.component(.year, from: today)
+
+        guard var nextDate = calendar.date(from: components) else { return self }
+
+        if nextDate < today {
+            components.year = (components.year ?? 0) + 1
+            nextDate = calendar.date(from: components) ?? nextDate
+        }
+
+        return nextDate
     }
     
     /// Check if date is today
@@ -477,6 +495,71 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - iPad Calendar Filter Action Environment Key
+private struct iPadCalendarFilterActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Calendar Filter overlay on iPad
+    var iPadCalendarFilterAction: (() -> Void)? {
+        get { self[iPadCalendarFilterActionKey.self] }
+        set { self[iPadCalendarFilterActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Filter Binding Environment Key
+private struct iPadCalendarFilterBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<Set<CalendarEventFilter>>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to the selected calendar event filters on iPad
+    var iPadCalendarFilterBinding: Binding<Set<CalendarEventFilter>>? {
+        get { self[iPadCalendarFilterBindingKey.self] }
+        set { self[iPadCalendarFilterBindingKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Member Filter Binding Environment Key
+private struct iPadCalendarMemberFilterBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<Set<UUID>>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to the selected calendar member filters on iPad
+    var iPadCalendarMemberFilterBinding: Binding<Set<UUID>>? {
+        get { self[iPadCalendarMemberFilterBindingKey.self] }
+        set { self[iPadCalendarMemberFilterBindingKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Members With Events Binding Environment Key
+private struct iPadCalendarMembersWithEventsBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<[AccountMemberWithUser]>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to the account members with events for calendar filtering on iPad
+    var iPadCalendarMembersWithEventsBinding: Binding<[AccountMemberWithUser]>? {
+        get { self[iPadCalendarMembersWithEventsBindingKey.self] }
+        set { self[iPadCalendarMembersWithEventsBindingKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Member Filter Action Environment Key
+private struct iPadCalendarMemberFilterActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Calendar Member Filter overlay on iPad
+    var iPadCalendarMemberFilterAction: (() -> Void)? {
+        get { self[iPadCalendarMemberFilterActionKey.self] }
+        set { self[iPadCalendarMemberFilterActionKey.self] = newValue }
+    }
+}
+
 // MARK: - iPad ToDo Detail Type Selector Action Environment Key
 private struct iPadToDoDetailTypeSelectorActionKey: EnvironmentKey {
     static let defaultValue: ((ToDoListDetailViewModel, Binding<String?>, @escaping () -> Void) -> Void)? = nil
@@ -857,3 +940,43 @@ extension EnvironmentValues {
         set { self[iPadShowUpgradeActionKey.self] = newValue }
     }
 }
+
+// MARK: - iPad Calendar Day Detail Action Environment Key
+private struct iPadCalendarDayDetailActionKey: EnvironmentKey {
+    static let defaultValue: ((Date, [CalendarEvent], @escaping () -> Void) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to show the Calendar Day Detail overlay on iPad (date, events, and onDismiss callback)
+    var iPadCalendarDayDetailAction: ((Date, [CalendarEvent], @escaping () -> Void) -> Void)? {
+        get { self[iPadCalendarDayDetailActionKey.self] }
+        set { self[iPadCalendarDayDetailActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Day Detail Dismiss Action Environment Key
+private struct iPadCalendarDayDetailDismissActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to dismiss the Calendar Day Detail overlay on iPad
+    var iPadCalendarDayDetailDismissAction: (() -> Void)? {
+        get { self[iPadCalendarDayDetailDismissActionKey.self] }
+        set { self[iPadCalendarDayDetailDismissActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Event Selected Action Environment Key
+private struct iPadCalendarEventSelectedActionKey: EnvironmentKey {
+    static let defaultValue: ((CalendarEvent) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to handle when a calendar event is selected on iPad (for navigation)
+    var iPadCalendarEventSelectedAction: ((CalendarEvent) -> Void)? {
+        get { self[iPadCalendarEventSelectedActionKey.self] }
+        set { self[iPadCalendarEventSelectedActionKey.self] = newValue }
+    }
+}
+

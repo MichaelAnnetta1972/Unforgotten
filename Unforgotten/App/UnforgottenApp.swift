@@ -193,6 +193,7 @@ final class AppState: ObservableObject {
     let stickyReminderRepository = StickyReminderRepository()
     let appUserRepository = AppUserRepository()
     let countdownRepository = CountdownRepository()
+    let familyCalendarRepository = FamilyCalendarRepository()
     // Note: Notes feature now uses SwiftData (see Features/Notes/)
 
     // MARK: - App Admin State

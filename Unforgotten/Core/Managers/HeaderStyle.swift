@@ -57,7 +57,7 @@ struct HeaderStyleAssets: Codable, Equatable {
             return contactDetail
         case .medicationDetail:
             return medicationDetail
-        case .birthdays, .contacts, .notes, .mood, .todoLists, .todoDetail, .settings, .stickyReminders:
+        case .birthdays, .contacts, .notes, .mood, .todoLists, .todoDetail, .settings, .stickyReminders, .calendar:
             return defaultHeader
         }
     }

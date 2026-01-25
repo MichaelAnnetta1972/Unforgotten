@@ -406,7 +406,7 @@ private struct TypeSelectorSheetOverlay: View {
                             }
                         }
                         .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft)
+                        .background(Color.cardBackgroundSoft.opacity(0.4))
                         .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
@@ -442,7 +442,7 @@ private struct TypeSelectorSheetOverlay: View {
                             }
                         }
                         .padding(.leading, AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft)
+                        .background(Color.cardBackgroundSoft.opacity(0.4))
                         .cornerRadius(8)
                     }
                 }
@@ -452,7 +452,7 @@ private struct TypeSelectorSheetOverlay: View {
             .frame(maxHeight: 300)
         }
         .frame(width: 280)
-        .background(Color.cardBackground)
+        .background(Color.cardBackgroundLight)
         .cornerRadius(AppDimensions.cardCornerRadius)
         .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
         .scaleEffect(scale)

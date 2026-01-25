@@ -433,102 +433,99 @@ struct AddSectionView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(Circle().fill(Color.white.opacity(0.5)))
-                    }
-
-                    Spacer()
-
-                    Text("Add Section")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    // Placeholder for balance
-                    Color.clear.frame(width: 48, height: 48)
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color.white.opacity(0.5)))
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
-                .background(Color.appBackground)
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Preset sections
-                        if !presetSections.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("SUGGESTED SECTIONS")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                Spacer()
 
-                                FlowLayout(spacing: 8) {
-                                    ForEach(presetSections, id: \.self) { section in
-                                        Button {
-                                            onSectionAdded(section)
-                                        } label: {
-                                            Text(section)
-                                                .font(.appCaption)
-                                                .foregroundColor(.textPrimary)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 10)
-                                                .background(Color.cardBackgroundSoft)
-                                                .cornerRadius(20)
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                Text("Add Section")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                        // Custom section input
+                Spacer()
+
+                // Placeholder for balance
+                Color.clear.frame(width: 48, height: 48)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Preset sections
+                    if !presetSections.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("OR CREATE CUSTOM SECTION")
+                            Text("SUGGESTED SECTIONS")
                                 .font(.appCaption)
                                 .foregroundColor(.textSecondary)
 
-                            HStack {
-                                AppTextField(placeholder: "Section name", text: $customSectionName)
-
-                                Button {
-                                    if !customSectionName.isBlank {
-                                        onSectionAdded(customSectionName.trimmingCharacters(in: .whitespaces))
+                            FlowLayout(spacing: 8) {
+                                ForEach(presetSections, id: \.self) { section in
+                                    Button {
+                                        onSectionAdded(section)
+                                    } label: {
+                                        Text(section)
+                                            .font(.appCaption)
+                                            .foregroundColor(.textPrimary)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(Color.cardBackgroundSoft)
+                                            .cornerRadius(20)
                                     }
-                                } label: {
-                                    Image(systemName: "arrow.right")
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundColor(.black)
-                                        .frame(width: 44, height: 44)
-                                        .background(
-                                            Circle()
-                                                .fill(customSectionName.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
-                                        )
                                 }
-                                .disabled(customSectionName.isBlank)
                             }
                         }
+                    }
 
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
+                    // Custom section input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("OR CREATE CUSTOM SECTION")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        HStack {
+                            AppTextField(placeholder: "Section name", text: $customSectionName)
+
+                            Button {
+                                if !customSectionName.isBlank {
+                                    onSectionAdded(customSectionName.trimmingCharacters(in: .whitespaces))
+                                }
+                            } label: {
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.black)
+                                    .frame(width: 44, height: 44)
+                                    .background(
+                                        Circle()
+                                            .fill(customSectionName.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
+                                    )
+                            }
+                            .disabled(customSectionName.isBlank)
                         }
                     }
-                    .padding(AppDimensions.screenPadding)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
                 }
-                .background(Color.appBackground)
+                .padding(AppDimensions.screenPadding)
             }
             .background(Color.appBackground)
-            .navigationBarHidden(true)
         }
+        .background(Color.appBackground)
     }
 }
 
@@ -554,145 +551,142 @@ struct AddSectionItemView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(Circle().fill(Color.white.opacity(0.5)))
-                    }
-
-                    Spacer()
-
-                    VStack(spacing: 2) {
-                        Text("Add to")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-                        Text(sectionName)
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-                    }
-
-                    Spacer()
-
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Text("Done")
-                            .font(.appBodyMedium)
-                            .foregroundColor(appAccentColor)
-                            .frame(width: 48, height: 48)
-                    }
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color.white.opacity(0.5)))
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
-                .background(Color.appBackground)
 
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Added items preview
-                        if !addedItems.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("ADDED")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                Spacer()
 
-                                FlowLayout(spacing: 8) {
-                                    ForEach(addedItems, id: \.self) { item in
-                                        Text(item)
-                                            .font(.appCaption)
-                                            .foregroundColor(.textPrimary)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .background(appAccentColor.opacity(0.3))
-                                            .cornerRadius(16)
-                                    }
-                                }
-                            }
-                        }
+                VStack(spacing: 2) {
+                    Text("Add to")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                    Text(sectionName)
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+                }
 
-                        // Preset items
-                        if !presetItems.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("SUGGESTIONS")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                Spacer()
 
-                                FlowLayout(spacing: 8) {
-                                    ForEach(presetItems, id: \.self) { item in
-                                        Button {
-                                            Task {
-                                                await addItem(item)
-                                            }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Text(item)
-                                                    .font(.appCaption)
-                                                    .foregroundColor(.textPrimary)
-                                                Image(systemName: "plus")
-                                                    .font(.system(size: 10, weight: .bold))
-                                                    .foregroundColor(.textSecondary)
-                                            }
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .background(Color.cardBackgroundSoft)
-                                            .cornerRadius(16)
-                                        }
-                                        .disabled(isLoading)
-                                    }
-                                }
-                            }
-                        }
+                Button {
+                    onDismiss()
+                } label: {
+                    Text("Done")
+                        .font(.appBodyMedium)
+                        .foregroundColor(appAccentColor)
+                        .frame(width: 48, height: 48)
+                }
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
+            .background(Color.appBackground)
 
-                        // Custom item input
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Added items preview
+                    if !addedItems.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("ADD AN ITEM")
+                            Text("ADDED")
                                 .font(.appCaption)
                                 .foregroundColor(.textSecondary)
 
-                            HStack {
-                                AppTextField(placeholder: "Item name", text: $customItemName)
-
-                                Button {
-                                    if !customItemName.isBlank {
-                                        Task {
-                                            await addItem(customItemName.trimmingCharacters(in: .whitespaces))
-                                            customItemName = ""
-                                        }
-                                    }
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundColor(.black)
-                                        .frame(width: 44, height: 44)
-                                        .background(
-                                            Circle()
-                                                .fill(customItemName.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                                        )
+                            FlowLayout(spacing: 8) {
+                                ForEach(addedItems, id: \.self) { item in
+                                    Text(item)
+                                        .font(.appCaption)
+                                        .foregroundColor(.textPrimary)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(appAccentColor.opacity(0.3))
+                                        .cornerRadius(16)
                                 }
-                                .disabled(customItemName.isBlank || isLoading)
                             }
                         }
+                    }
 
-                        if let error = errorMessage {
-                            Text(error)
+                    // Preset items
+                    if !presetItems.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("SUGGESTIONS")
                                 .font(.appCaption)
-                                .foregroundColor(.medicalRed)
+                                .foregroundColor(.textSecondary)
+
+                            FlowLayout(spacing: 8) {
+                                ForEach(presetItems, id: \.self) { item in
+                                    Button {
+                                        Task {
+                                            await addItem(item)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Text(item)
+                                                .font(.appCaption)
+                                                .foregroundColor(.textPrimary)
+                                            Image(systemName: "plus")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.textSecondary)
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Color.cardBackgroundSoft)
+                                        .cornerRadius(16)
+                                    }
+                                    .disabled(isLoading)
+                                }
+                            }
                         }
                     }
-                    .padding(AppDimensions.screenPadding)
+
+                    // Custom item input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ADD AN ITEM")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        HStack {
+                            AppTextField(placeholder: "Item name", text: $customItemName)
+
+                            Button {
+                                if !customItemName.isBlank {
+                                    Task {
+                                        await addItem(customItemName.trimmingCharacters(in: .whitespaces))
+                                        customItemName = ""
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.black)
+                                    .frame(width: 44, height: 44)
+                                    .background(
+                                        Circle()
+                                            .fill(customItemName.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                                    )
+                            }
+                            .disabled(customItemName.isBlank || isLoading)
+                        }
+                    }
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
                 }
-                .background(Color.appBackground)
+                .padding(AppDimensions.screenPadding)
             }
             .background(Color.appBackground)
-            .navigationBarHidden(true)
         }
+        .background(Color.appBackground)
     }
 
     private func addItem(_ itemName: String) async {

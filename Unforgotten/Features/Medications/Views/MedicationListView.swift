@@ -2221,180 +2221,173 @@ struct AddMedicationView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Add Medication")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveMedication() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(name.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
 
-                ScrollView {
-                    VStack(spacing: 24) {
+                Spacer()
 
-                        // Photo picker
-                        HStack {
-                            Spacer()
-                            ImageSourcePicker(
-                                selectedImage: $selectedImage,
-                                currentImagePath: nil,
-                                onImageSelected: { _ in }
-                            )
-                            Spacer()
-                        }
+                Text("Add Medication")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                        // Basic info
-                        VStack(spacing: 16) {
-                            AppTextField(placeholder: "Medication Name *", text: $name)
-                            AppTextField(placeholder: "Strength (e.g., 10mg)", text: $strength)
+                Spacer()
 
-                            // Form picker
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Form")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                Button {
+                    Task { await saveMedication() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(name.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(forms, id: \.self) { formOption in
-                                            Button {
-                                                form = formOption.lowercased()
-                                            } label: {
-                                                Text(formOption)
-                                                    .font(.appCaption)
-                                                    .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
-                                                    .padding(.horizontal, 16)
-                                                    .padding(.vertical, 10)
-                                                    .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
-                                                    .cornerRadius(20)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+            ScrollView {
+                VStack(spacing: 24) {
 
-                            AppTextField(placeholder: "Reason for taking", text: $reason)
+                    // Photo picker
+                    HStack {
+                        Spacer()
+                        ImageSourcePicker(
+                            selectedImage: $selectedImage,
+                            currentImagePath: nil,
+                            onImageSelected: { _ in }
+                        )
+                        Spacer()
+                    }
 
-                            // Intake instruction picker
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Intake Instructions")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                    // Basic info
+                    VStack(spacing: 16) {
+                        AppTextField(placeholder: "Medication Name *", text: $name)
+                        AppTextField(placeholder: "Strength (e.g., 10mg)", text: $strength)
 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        // None option
+                        // Form picker
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Form")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(forms, id: \.self) { formOption in
                                         Button {
-                                            intakeInstruction = nil
+                                            form = formOption.lowercased()
                                         } label: {
-                                            Text("None")
+                                            Text(formOption)
                                                 .font(.appCaption)
-                                                .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
+                                                .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
+                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
                                                 .cornerRadius(20)
                                         }
+                                    }
+                                }
+                            }
+                        }
 
-                                        ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
-                                            Button {
-                                                intakeInstruction = instruction
-                                            } label: {
-                                                Text(instruction.displayName)
-                                                    .font(.appCaption)
-                                                    .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
-                                                    .padding(.horizontal, 16)
-                                                    .padding(.vertical, 10)
-                                                    .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
-                                                    .cornerRadius(20)
-                                            }
+                        AppTextField(placeholder: "Reason for taking", text: $reason)
+
+                        // Intake instruction picker
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Intake Instructions")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    // None option
+                                    Button {
+                                        intakeInstruction = nil
+                                    } label: {
+                                        Text("None")
+                                            .font(.appCaption)
+                                            .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
+                                            .cornerRadius(20)
+                                    }
+
+                                    ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
+                                        Button {
+                                            intakeInstruction = instruction
+                                        } label: {
+                                            Text(instruction.displayName)
+                                                .font(.appCaption)
+                                                .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 10)
+                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
+                                                .cornerRadius(20)
                                         }
                                     }
                                 }
                             }
-
-                            AppTextField(placeholder: "Notes (optional)", text: $notes)
                         }
 
-                        // Schedule section
-                        VStack(alignment: .leading, spacing: 16) {
-                            // Schedule type
-                            HStack(spacing: 12) {
-                                ForEach(ScheduleType.allCases, id: \.self) { type in
-                                    Button {
-                                        scheduleType = type
-                                    } label: {
-                                        Text(type.displayName)
-                                            .font(.appCaption)
-                                            .foregroundColor(scheduleType == type ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
-                                    }
+                        AppTextField(placeholder: "Notes (optional)", text: $notes)
+                    }
+
+                    // Schedule section
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Schedule type
+                        HStack(spacing: 12) {
+                            ForEach(ScheduleType.allCases, id: \.self) { type in
+                                Button {
+                                    scheduleType = type
+                                } label: {
+                                    Text(type.displayName)
+                                        .font(.appCaption)
+                                        .foregroundColor(scheduleType == type ? .black : .textPrimary)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                        .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
+                                        .cornerRadius(20)
                                 }
                             }
-
-                            if scheduleType == .scheduled {
-                                // Schedule entries list with modal
-                                ScheduleEntriesListView(entries: $scheduleEntries)
-                            }
-
-                            if scheduleType == .asNeeded {
-                                AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
-                            }
                         }
 
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
+                        if scheduleType == .scheduled {
+                            // Schedule entries list with modal
+                            ScheduleEntriesListView(entries: $scheduleEntries)
+                        }
+
+                        if scheduleType == .asNeeded {
+                            AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
                         }
                     }
-                    .padding(AppDimensions.screenPadding)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
                 }
+                .padding(AppDimensions.screenPadding)
             }
-            .background(Color.clear)
-            .navigationBarHidden(true)
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .toolbarBackground(.clear, for: .navigationBar)
-        .containerBackground(.clear, for: .navigation)
+        .background(Color.appBackgroundLight)
     }
 
     private func saveMedication() async {
@@ -2549,205 +2542,198 @@ struct EditMedicationView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Edit Medication")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveMedication() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(name.isBlank || isLoading)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Photo picker
-                        HStack {
-                            Spacer()
-                            ImageSourcePicker(
-                                selectedImage: $selectedImage,
-                                currentImagePath: medication.localImagePath,
-                                onImageSelected: { _ in }
-                            )
-                            Spacer()
-                        }
+                Spacer()
 
-                        // Basic info
-                        VStack(spacing: 16) {
-                            AppTextField(placeholder: "Medication Name *", text: $name)
-                            AppTextField(placeholder: "Strength (e.g., 10mg)", text: $strength)
+                Text("Edit Medication")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                            // Form picker
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Form")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                Spacer()
 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(forms, id: \.self) { formOption in
-                                            Button {
-                                                form = formOption.lowercased()
-                                            } label: {
-                                                Text(formOption)
-                                                    .font(.appCaption)
-                                                    .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
-                                                    .padding(.horizontal, 16)
-                                                    .padding(.vertical, 10)
-                                                    .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
-                                                    .cornerRadius(20)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                Button {
+                    Task { await saveMedication() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
+                }
+                .disabled(name.isBlank || isLoading)
+            }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
 
-                            AppTextField(placeholder: "Reason for taking", text: $reason)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Photo picker
+                    HStack {
+                        Spacer()
+                        ImageSourcePicker(
+                            selectedImage: $selectedImage,
+                            currentImagePath: medication.localImagePath,
+                            onImageSelected: { _ in }
+                        )
+                        Spacer()
+                    }
 
-                            // Intake instruction picker
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Intake Instructions")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                    // Basic info
+                    VStack(spacing: 16) {
+                        AppTextField(placeholder: "Medication Name *", text: $name)
+                        AppTextField(placeholder: "Strength (e.g., 10mg)", text: $strength)
 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
+                        // Form picker
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Form")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(forms, id: \.self) { formOption in
                                         Button {
-                                            intakeInstruction = nil
+                                            form = formOption.lowercased()
                                         } label: {
-                                            Text("None")
+                                            Text(formOption)
                                                 .font(.appCaption)
-                                                .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
+                                                .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
+                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
                                                 .cornerRadius(20)
                                         }
+                                    }
+                                }
+                            }
+                        }
 
-                                        ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
-                                            Button {
-                                                intakeInstruction = instruction
-                                            } label: {
-                                                Text(instruction.displayName)
-                                                    .font(.appCaption)
-                                                    .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
-                                                    .padding(.horizontal, 16)
-                                                    .padding(.vertical, 10)
-                                                    .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
-                                                    .cornerRadius(20)
-                                            }
+                        AppTextField(placeholder: "Reason for taking", text: $reason)
+
+                        // Intake instruction picker
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Intake Instructions")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    Button {
+                                        intakeInstruction = nil
+                                    } label: {
+                                        Text("None")
+                                            .font(.appCaption)
+                                            .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
+                                            .cornerRadius(20)
+                                    }
+
+                                    ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
+                                        Button {
+                                            intakeInstruction = instruction
+                                        } label: {
+                                            Text(instruction.displayName)
+                                                .font(.appCaption)
+                                                .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 10)
+                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
+                                                .cornerRadius(20)
                                         }
                                     }
                                 }
                             }
-
-                            AppTextField(placeholder: "Notes (optional)", text: $notes)
                         }
 
-                        // Schedule section
-                        VStack(alignment: .leading, spacing: 16) {
-                            // Schedule type
-                            HStack(spacing: 12) {
-                                ForEach(ScheduleType.allCases, id: \.self) { type in
-                                    Button {
-                                        scheduleType = type
-                                    } label: {
-                                        Text(type.displayName)
-                                            .font(.appCaption)
-                                            .foregroundColor(scheduleType == type ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
-                                    }
+                        AppTextField(placeholder: "Notes (optional)", text: $notes)
+                    }
+
+                    // Schedule section
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Schedule type
+                        HStack(spacing: 12) {
+                            ForEach(ScheduleType.allCases, id: \.self) { type in
+                                Button {
+                                    scheduleType = type
+                                } label: {
+                                    Text(type.displayName)
+                                        .font(.appCaption)
+                                        .foregroundColor(scheduleType == type ? .black : .textPrimary)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                        .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
+                                        .cornerRadius(20)
                                 }
                             }
-
-                            if scheduleType == .scheduled {
-                                ScheduleEntriesListView(entries: $scheduleEntries)
-                            }
-
-                            if scheduleType == .asNeeded {
-                                AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
-                            }
                         }
 
-                        // Delete button
-                        Button {
-                            showDeleteConfirmation = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "trash")
-                                Text("Delete Medication")
-                            }
-                            .font(.appBodyMedium)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.medicalRed)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                        if scheduleType == .scheduled {
+                            ScheduleEntriesListView(entries: $scheduleEntries)
                         }
-                        .padding(.top, 16)
 
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.appCaption)
-                                .foregroundColor(.medicalRed)
+                        if scheduleType == .asNeeded {
+                            AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
                         }
                     }
-                    .padding(AppDimensions.screenPadding)
+
+                    // Delete button
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("Delete Medication")
+                        }
+                        .font(.appBodyMedium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.medicalRed)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                    }
+                    .padding(.top, 16)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
                 }
-            }
-            .background(Color.clear)
-            .navigationBarHidden(true)
-            .task {
-                await loadSchedule()
-            }
-            .alert("Delete Medication", isPresented: $showDeleteConfirmation) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) {
-                    Task { await deleteMedication() }
-                }
-            } message: {
-                Text("Are you sure you want to delete this medication? This action cannot be undone.")
+                .padding(AppDimensions.screenPadding)
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .toolbarBackground(.clear, for: .navigationBar)
-        .containerBackground(.clear, for: .navigation)
+        .background(Color.appBackgroundLight)
+        .task {
+            await loadSchedule()
+        }
+        .alert("Delete Medication", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Task { await deleteMedication() }
+            }
+        } message: {
+            Text("Are you sure you want to delete this medication? This action cannot be undone.")
+        }
     }
 
     private func loadSchedule() async {

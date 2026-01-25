@@ -51,157 +51,154 @@ struct AddEditImportantAccountView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text(mode.title)
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveAccount() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(!isValid || isSaving ? Color.gray.opacity(0.3) : appAccentColor)
-                            )
-                    }
-                    .disabled(!isValid || isSaving)
+        VStack(spacing: 0) {
+            // Custom header with icons
+            HStack {
+                Button {
+                    dismissView()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
-                .background(Color.appBackgroundLight)
 
-                ZStack {
-                    Color.appBackgroundLight.ignoresSafeArea()
+                Spacer()
 
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            // Required Section
-                            VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
-                                AccountFormSectionHeader(title: "ACCOUNT NAME", required: true)
+                Text(mode.title)
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
 
-                                AccountFormTextField(
-                                    placeholder: "e.g., Netflix, Gmail, Chase Bank",
-                                    text: $accountName,
-                                    icon: "textformat"
-                                )
-                            }
+                Spacer()
 
-                            // Category Section
-                            VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
-                                AccountFormSectionHeader(title: "CATEGORY")
-
-                                AccountCategoryPicker(selection: $selectedCategory)
-                            }
-
-                            // Login Details Section
-                            VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
-                                AccountFormSectionHeader(title: "LOGIN DETAILS")
-
-                                AccountFormTextField(
-                                    placeholder: "Website URL",
-                                    text: $websiteURL,
-                                    icon: "globe",
-                                    keyboardType: .URL,
-                                    autocapitalization: .never
-                                )
-
-                                AccountFormTextField(
-                                    placeholder: "Username",
-                                    text: $username,
-                                    icon: "person.fill",
-                                    autocapitalization: .never
-                                )
-
-                                AccountFormTextField(
-                                    placeholder: "Email Address",
-                                    text: $emailAddress,
-                                    icon: "envelope.fill",
-                                    keyboardType: .emailAddress,
-                                    autocapitalization: .never
-                                )
-
-                                AccountFormTextField(
-                                    placeholder: "Phone Number",
-                                    text: $phoneNumber,
-                                    icon: "phone.fill",
-                                    keyboardType: .phonePad
-                                )
-                            }
-
-                            // Recovery Section
-                            VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
-                                AccountFormSectionHeader(title: "RECOVERY HINTS")
-
-                                Text("Don't enter actual passwords or security answers here. Use helpful hints to help you remember.")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-
-                                AccountFormTextField(
-                                    placeholder: "Security question hint (e.g., \"pet's name\")",
-                                    text: $securityQuestionHint,
-                                    icon: "questionmark.circle.fill"
-                                )
-
-                                AccountFormTextField(
-                                    placeholder: "Recovery hint (e.g., \"same as email\", \"blue notebook\")",
-                                    text: $recoveryHint,
-                                    icon: "lightbulb.fill"
-                                )
-                            }
-
-                            // Notes Section
-                            VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
-                                AccountFormSectionHeader(title: "NOTES")
-
-                                AccountFormTextEditor(
-                                    placeholder: "Any additional notes...",
-                                    text: $notes
-                                )
-                            }
-
-                            Spacer()
-                                .frame(height: 50)
-                        }
-                        .padding(.top, 20)
-                    }
+                Button {
+                    Task { await saveAccount() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(!isValid || isSaving ? Color.gray.opacity(0.3) : appAccentColor)
+                        )
                 }
+                .disabled(!isValid || isSaving)
             }
+            .padding(.horizontal, AppDimensions.screenPadding)
+            .padding(.vertical, 16)
             .background(Color.appBackgroundLight)
-            .navigationBarHidden(true)
-            .alert("Error", isPresented: $showError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(errorMessage)
-            }
-            .onAppear {
-                if case .edit(let account) = mode {
-                    populateFields(from: account)
+
+            ZStack {
+                Color.appBackgroundLight.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Required Section
+                        VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
+                            AccountFormSectionHeader(title: "ACCOUNT NAME", required: true)
+
+                            AccountFormTextField(
+                                placeholder: "e.g., Netflix, Gmail, Chase Bank",
+                                text: $accountName,
+                                icon: "textformat"
+                            )
+                        }
+
+                        // Category Section
+                        VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
+                            AccountFormSectionHeader(title: "CATEGORY")
+
+                            AccountCategoryPicker(selection: $selectedCategory)
+                        }
+
+                        // Login Details Section
+                        VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
+                            AccountFormSectionHeader(title: "LOGIN DETAILS")
+
+                            AccountFormTextField(
+                                placeholder: "Website URL",
+                                text: $websiteURL,
+                                icon: "globe",
+                                keyboardType: .URL,
+                                autocapitalization: .never
+                            )
+
+                            AccountFormTextField(
+                                placeholder: "Username",
+                                text: $username,
+                                icon: "person.fill",
+                                autocapitalization: .never
+                            )
+
+                            AccountFormTextField(
+                                placeholder: "Email Address",
+                                text: $emailAddress,
+                                icon: "envelope.fill",
+                                keyboardType: .emailAddress,
+                                autocapitalization: .never
+                            )
+
+                            AccountFormTextField(
+                                placeholder: "Phone Number",
+                                text: $phoneNumber,
+                                icon: "phone.fill",
+                                keyboardType: .phonePad
+                            )
+                        }
+
+                        // Recovery Section
+                        VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
+                            AccountFormSectionHeader(title: "RECOVERY HINTS")
+
+                            Text("Don't enter actual passwords or security answers here. Use helpful hints to help you remember.")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                                .padding(.horizontal, AppDimensions.screenPadding)
+
+                            AccountFormTextField(
+                                placeholder: "Security question hint (e.g., \"pet's name\")",
+                                text: $securityQuestionHint,
+                                icon: "questionmark.circle.fill"
+                            )
+
+                            AccountFormTextField(
+                                placeholder: "Recovery hint (e.g., \"same as email\", \"blue notebook\")",
+                                text: $recoveryHint,
+                                icon: "lightbulb.fill"
+                            )
+                        }
+
+                        // Notes Section
+                        VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
+                            AccountFormSectionHeader(title: "NOTES")
+
+                            AccountFormTextEditor(
+                                placeholder: "Any additional notes...",
+                                text: $notes
+                            )
+                        }
+
+                        Spacer()
+                            .frame(height: 50)
+                    }
+                    .padding(.top, 20)
                 }
+            }
+        }
+        .background(Color.appBackgroundLight)
+        .alert("Error", isPresented: $showError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage)
+        }
+        .onAppear {
+            if case .edit(let account) = mode {
+                populateFields(from: account)
             }
         }
     }

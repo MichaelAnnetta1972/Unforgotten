@@ -22,6 +22,7 @@ protocol AccountRepositoryProtocol {
 
     // Members
     func getAccountMembers(accountId: UUID) async throws -> [AccountMember]
+    func getAccountMembersWithUsers(accountId: UUID) async throws -> [AccountMemberWithUser]
     func addMember(accountId: UUID, userId: UUID, role: MemberRole) async throws -> AccountMember
     func updateMemberRole(memberId: UUID, role: MemberRole) async throws -> AccountMember
     func removeMember(memberId: UUID) async throws
@@ -162,10 +163,33 @@ final class AccountRepository: AccountRepositoryProtocol {
             .eq("account_id", value: accountId)
             .execute()
             .value
-        
+
         return members
     }
-    
+
+    // MARK: - Get Account Members With User Details
+    func getAccountMembersWithUsers(accountId: UUID) async throws -> [AccountMemberWithUser] {
+        let members = try await getAccountMembers(accountId: accountId)
+
+        var membersWithUsers: [AccountMemberWithUser] = []
+        for member in members {
+            // Fetch user details from app_users table
+            let users: [AppUser] = try await supabase
+                .from(TableName.appUsers)
+                .select()
+                .eq("id", value: member.userId)
+                .execute()
+                .value
+
+            if let user = users.first {
+                membersWithUsers.append(AccountMemberWithUser(member: member, user: user))
+            }
+        }
+
+        // Sort by display name
+        return membersWithUsers.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
     // MARK: - Add Member
     func addMember(accountId: UUID, userId: UUID, role: MemberRole) async throws -> AccountMember {
         let newMember = AccountMemberInsert(

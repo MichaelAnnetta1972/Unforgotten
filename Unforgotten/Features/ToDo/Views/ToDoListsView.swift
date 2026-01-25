@@ -374,7 +374,7 @@ private struct TypeFilterSheetOverlay: View {
                                         }
                                     }
                                     .padding(AppDimensions.cardPadding)
-                                    .background(Color.cardBackgroundSoft)
+                                    .background(Color.cardBackgroundSoft.opacity(0.4))
                                     .cornerRadius(8)
                                 }
                                 .buttonStyle(.plain)
@@ -386,7 +386,7 @@ private struct TypeFilterSheetOverlay: View {
                     .frame(maxHeight: 400)
                 }
                 .frame(width: panelWidth)
-                .background(Color.cardBackground)
+                .background(Color.cardBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
                 .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
                 .offset(x: offsetX)

@@ -4,10 +4,14 @@ import SwiftUI
 enum HomeDestination: Hashable {
     case myCard
     case profiles
+    case profileDetail(Profile)
     case medications
+    case medicationDetail(Medication)
     case appointments
     case appointmentDetail(Appointment)
+    case calendar
     case birthdays
+    case countdownDetail(Countdown)
     case contacts
     case notes
     case mood
@@ -85,6 +89,15 @@ struct HomeView: View {
 
                         // Navigation Cards
                         VStack(spacing: AppDimensions.cardSpacing) {
+                         
+
+                            if shouldShowFeature(.calendar) {
+                                NavigationLink(value: HomeDestination.calendar) {
+                                    NavigationCardContent(title: "Calendar", icon: "calendar.badge.clock")
+                                }
+                                .matchedTransitionSource(id: HomeDestination.calendar, in: namespace)
+                            }
+                         
                             if shouldShowFeature(.aboutMe) {
                                 NavigationLink(value: HomeDestination.myCard) {
                                     NavigationCardContent(title: "About Me", icon: "person.crop.circle")
@@ -110,8 +123,9 @@ struct HomeView: View {
                                 NavigationLink(value: HomeDestination.appointments) {
                                     NavigationCardContent(title: "Appointments", icon: "calendar")
                                 }
-                                .matchedTransitionSource(id: HomeDestination.appointments, in: namespace)       
+                                .matchedTransitionSource(id: HomeDestination.appointments, in: namespace)
                             }
+
 
                             if shouldShowFeature(.stickyReminders) {
                                 NavigationLink(value: HomeDestination.stickyReminders) {

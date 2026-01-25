@@ -348,7 +348,7 @@ struct iPadToDoListFilterOverlay: View {
                                     }
                                 }
                                 .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft)
+                                .background(Color.cardBackgroundSoft.opacity(0.4))
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
@@ -370,7 +370,7 @@ struct iPadToDoListFilterOverlay: View {
                                         }
                                     }
                                     .padding(AppDimensions.cardPadding)
-                                    .background(Color.cardBackgroundSoft)
+                                    .background(Color.cardBackgroundSoft.opacity(0.4))
                                     .cornerRadius(8)
                                 }
                                 .buttonStyle(.plain)
@@ -383,7 +383,7 @@ struct iPadToDoListFilterOverlay: View {
                 }
                 .frame(width: panelWidth)
                 .fixedSize(horizontal: false, vertical: true) // Fit content height
-                .background(Color.appBackground)
+                .background(Color.cardBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
                 .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
                 .offset(x: offsetX)
@@ -753,7 +753,7 @@ struct iPadTypeSelectorOverlay: View {
                             }
                         }
                         .padding(.leading, AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft)
+                        .background(Color.cardBackgroundSoft.opacity(0.4))
                         .cornerRadius(8)
                     }
                 }
@@ -763,7 +763,7 @@ struct iPadTypeSelectorOverlay: View {
             .frame(maxHeight: 300)
         }
         .frame(width: 280)
-        .background(Color.appBackground)
+        .background(Color.cardBackgroundLight)
         .cornerRadius(AppDimensions.cardCornerRadius)
         .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
         .scaleEffect(scale)
@@ -853,7 +853,7 @@ struct iPadToDoDetailTypeSelectorOverlay: View {
                                     }
                                 }
                                 .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft)
+                                .background(Color.cardBackgroundSoft.opacity(0.4))
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
@@ -889,7 +889,7 @@ struct iPadToDoDetailTypeSelectorOverlay: View {
                                     }
                                 }
                                 .padding(.leading, AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft)
+                                .background(Color.cardBackgroundSoft.opacity(0.4))
                                 .cornerRadius(8)
                             }
                         }
@@ -900,7 +900,7 @@ struct iPadToDoDetailTypeSelectorOverlay: View {
                 }
                 .frame(width: panelWidth)
                 .fixedSize(horizontal: false, vertical: true) // Fit content height
-                .background(Color.appBackground)
+                .background(Color.cardBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
                 .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
                 .offset(x: offsetX)

@@ -835,7 +835,7 @@ private struct ContactCategoryFilterOverlay: View {
                                     }
                                 }
                                 .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft)
+                                .background(Color.cardBackgroundSoft.opacity(0.4))
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
@@ -862,7 +862,7 @@ private struct ContactCategoryFilterOverlay: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 8)
-                                        .background(selectedCategory == category ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft)
+                                        .background(selectedCategory == category ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft.opacity(0.4))
                                         .cornerRadius(8)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 8)
@@ -879,7 +879,7 @@ private struct ContactCategoryFilterOverlay: View {
                     .frame(maxHeight: 400)
                 }
                 .frame(width: panelWidth)
-                .background(Color.cardBackground)
+                .background(Color.cardBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
                 .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
                 .offset(x: offsetX)

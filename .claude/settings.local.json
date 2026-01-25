@@ -38,7 +38,8 @@
       "Bash(swift -typecheck:*)",
       "Bash(/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild:*)",
       "Bash(swift build:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(swift --version:*)"
     ],
     "deny": [],
     "ask": []

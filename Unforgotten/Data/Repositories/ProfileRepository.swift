@@ -184,7 +184,8 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             label: detail.label,
             value: detail.value,
             status: detail.status,
-            occasion: detail.occasion
+            occasion: detail.occasion,
+            metadata: detail.metadata
         )
         
         let updated: ProfileDetail = try await supabase
@@ -454,6 +455,7 @@ private struct ProfileDetailUpdate: Encodable {
     let value: String
     let status: String?
     let occasion: String?
+    let metadata: [String: String]?
 }
 
 // MARK: - Profile Connection Methods

@@ -1762,3 +1762,243 @@ enum UpcomingEvent: Identifiable {
         return false
     }
 }
+
+// MARK: - Calendar Event Type
+/// Type of event that can be shared to the family calendar
+enum CalendarEventType: String, Codable {
+    case appointment
+    case countdown
+}
+
+// MARK: - Family Calendar Share
+/// Represents an event shared to the family calendar
+struct FamilyCalendarShare: Codable, Identifiable, Equatable {
+    let id: UUID
+    let accountId: UUID
+    let eventType: CalendarEventType
+    let eventId: UUID
+    let sharedByUserId: UUID
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case eventType = "event_type"
+        case eventId = "event_id"
+        case sharedByUserId = "shared_by_user_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+// MARK: - Family Calendar Share Member
+/// Represents a member who can see a shared calendar event
+struct FamilyCalendarShareMember: Codable, Identifiable, Equatable {
+    let id: UUID
+    let shareId: UUID
+    let memberUserId: UUID
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case shareId = "share_id"
+        case memberUserId = "member_user_id"
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Account Member With User
+/// Account member with associated user details for display
+struct AccountMemberWithUser: Identifiable, Equatable {
+    let member: AccountMember
+    let user: AppUser
+
+    var id: UUID { member.id }
+    var userId: UUID { member.userId }
+    var email: String { user.email }
+    var role: MemberRole { member.role }
+
+    /// Display name for the member (uses email since app_users doesn't have display name)
+    var displayName: String {
+        // Extract name part from email (before @) and capitalize it
+        let emailName = user.email.components(separatedBy: "@").first ?? user.email
+        return emailName.capitalized
+    }
+}
+
+// MARK: - Calendar Event Filter
+/// Filter options for calendar events
+enum CalendarEventFilter: String, CaseIterable, Identifiable {
+    case appointments
+    case countdowns
+    case birthdays
+    case medications
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .appointments: return "Appointments"
+        case .countdowns: return "Events"
+        case .birthdays: return "Birthdays"
+        case .medications: return "Medications"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .appointments: return "calendar"
+        case .countdowns: return "clock.fill"
+        case .birthdays: return "gift.fill"
+        case .medications: return "pill.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .appointments: return .calendarBlue
+        case .countdowns: return .blue
+        case .birthdays: return .pink
+        case .medications: return .badgeGreen
+        }
+    }
+}
+
+// MARK: - Unified Calendar Event
+/// A unified type for displaying different event types in the calendar
+enum CalendarEvent: Identifiable {
+    case appointment(Appointment, isShared: Bool)
+    case countdown(Countdown, isShared: Bool)
+    case birthday(UpcomingBirthday)
+    case medication(Medication, ScheduleEntry, Date)
+
+    var id: String {
+        switch self {
+        case .appointment(let apt, _): return "apt-\(apt.id)"
+        case .countdown(let cd, _): return "cd-\(cd.id)"
+        case .birthday(let bday): return "bday-\(bday.id)"
+        case .medication(let med, let entry, let date):
+            let dateStr = ISO8601DateFormatter().string(from: date)
+            return "med-\(med.id)-\(entry.id)-\(dateStr)"
+        }
+    }
+
+    var date: Date {
+        switch self {
+        case .appointment(let apt, _): return apt.date
+        case .countdown(let cd, _): return cd.date
+        case .birthday(let bday): return bday.profile.birthday?.nextOccurrenceDate() ?? Date()
+        case .medication(_, _, let date): return date
+        }
+    }
+
+    var dateTime: Date {
+        switch self {
+        case .appointment(let apt, _): return apt.dateTime
+        case .countdown(let cd, _): return cd.date
+        case .birthday(let bday): return bday.profile.birthday?.nextOccurrenceDate() ?? Date()
+        case .medication(_, let entry, let date):
+            // Combine date with schedule entry time
+            let calendar = Calendar.current
+            let components = entry.time.split(separator: ":").compactMap { Int($0) }
+            if components.count >= 2 {
+                var dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+                dateComponents.hour = components[0]
+                dateComponents.minute = components[1]
+                return calendar.date(from: dateComponents) ?? date
+            }
+            return date
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .appointment(let apt, _): return apt.title
+        case .countdown(let cd, _): return cd.title
+        case .birthday(let bday): return "\(bday.profile.displayName)'s Birthday"
+        case .medication(let med, _, _): return med.name
+        }
+    }
+
+    var subtitle: String? {
+        switch self {
+        case .appointment(let apt, _): return apt.location
+        case .countdown(let cd, _): return cd.notes
+        case .birthday(let bday):
+            if let age = bday.profile.age {
+                return "Turning \(age + 1)"
+            }
+            return nil
+        case .medication(let med, let entry, _):
+            return entry.dosage ?? med.strength
+        }
+    }
+
+    var time: String? {
+        switch self {
+        case .appointment(let apt, _):
+            guard let time = apt.time else { return nil }
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            return formatter.string(from: time)
+        case .countdown: return nil
+        case .birthday: return nil
+        case .medication(_, let entry, _): return entry.time
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .appointment(let apt, _): return apt.type.icon
+        case .countdown(let cd, _): return cd.type.icon
+        case .birthday: return "gift.fill"
+        case .medication: return "pill.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .appointment(let apt, _): return apt.type.color
+        case .countdown(let cd, _): return cd.type.color
+        case .birthday: return .pink
+        case .medication: return .badgeGreen
+        }
+    }
+
+    var filterType: CalendarEventFilter {
+        switch self {
+        case .appointment: return .appointments
+        case .countdown: return .countdowns
+        case .birthday: return .birthdays
+        case .medication: return .medications
+        }
+    }
+
+    var isSharedToFamily: Bool {
+        switch self {
+        case .appointment(_, let isShared): return isShared
+        case .countdown(_, let isShared): return isShared
+        case .birthday: return false
+        case .medication: return false
+        }
+    }
+
+    var canBeShared: Bool {
+        switch self {
+        case .appointment, .countdown: return true
+        case .birthday, .medication: return false
+        }
+    }
+
+    /// The profile ID associated with this event (if any)
+    /// Note: Countdowns are account-scoped and don't have a specific profile
+    var profileId: UUID? {
+        switch self {
+        case .appointment(let apt, _): return apt.profileId
+        case .countdown: return nil // Countdowns are account-wide, not profile-specific
+        case .birthday(let bday): return bday.profile.id
+        case .medication(let med, _, _): return med.profileId
+        }
+    }
+}
