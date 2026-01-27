@@ -1,10 +1,15 @@
 import SwiftUI
 
 // MARK: - Header Style Picker
-/// A 2x2 grid picker for selecting header styles
+/// A horizontal carousel picker for selecting header styles on iPhone, 2x2 grid on iPad
 struct HeaderStylePicker: View {
     @Environment(HeaderStyleManager.self) private var headerStyleManager
     @Environment(UserPreferences.self) private var userPreferences
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isiPad: Bool {
+        horizontalSizeClass == .regular
+    }
 
     let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -17,25 +22,46 @@ struct HeaderStylePicker: View {
             Text("Header Style")
                 .font(.appCardTitle)
                 .foregroundColor(.textPrimary)
+                .padding(.horizontal, isiPad ? 0 : 16)
 
             Text("Choose a visual style for page headers")
                 .font(.appCaption)
                 .foregroundColor(.textSecondary)
+                .padding(.horizontal, isiPad ? 0 : 16)
 
-            // Style grid
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(HeaderStyle.allStyles) { style in
-                    HeaderStyleCell(
-                        style: style,
-                        isSelected: headerStyleManager.currentStyle.id == style.id,
-                        onSelect: {
-                            selectStyle(style)
+            if isiPad {
+                // iPad: 2x2 grid layout
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(HeaderStyle.allStyles) { style in
+                        HeaderStyleCell(
+                            style: style,
+                            isSelected: headerStyleManager.currentStyle.id == style.id,
+                            onSelect: {
+                                selectStyle(style)
+                            }
+                        )
+                    }
+                }
+            } else {
+                // iPhone: Horizontal carousel
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(HeaderStyle.allStyles) { style in
+                            HeaderStyleCarouselCell(
+                                style: style,
+                                isSelected: headerStyleManager.currentStyle.id == style.id,
+                                onSelect: {
+                                    selectStyle(style)
+                                }
+                            )
                         }
-                    )
+                    }
+                    .padding(.horizontal, 16)
                 }
             }
         }
-        .padding()
+        .padding(.vertical, 16)
+        .padding(.horizontal, isiPad ? 16 : 0)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }
@@ -118,6 +144,64 @@ struct HeaderStyleCell: View {
                 .onChanged { _ in isPressed = true }
                 .onEnded { _ in isPressed = false }
         )
+    }
+}
+
+// MARK: - Header Style Carousel Cell (iPhone)
+struct HeaderStyleCarouselCell: View {
+    let style: HeaderStyle
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 8) {
+                // Preview image - wider for carousel
+                ZStack {
+                    // Try to load the preview image, fall back to a gradient
+                    if let uiImage = UIImage(named: style.previewImageName) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 280, height: 280)
+                            .clipped()
+                    } else {
+                        // Fallback gradient using the style's accent color
+                        LinearGradient(
+                            colors: [style.defaultAccentColor.opacity(0.8), style.defaultAccentColor.opacity(0.4)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .frame(width: 280, height: 280)
+                        .overlay(
+                            Text(style.name)
+                                .font(.appCaption)
+                                .foregroundColor(.white)
+                        )
+                    }
+
+                    // Selection overlay
+                    if isSelected {
+                        Color.black.opacity(0.3)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(width: 280, height: 280)
+                .cornerRadius(AppDimensions.smallCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.smallCornerRadius)
+                        .stroke(isSelected ? style.defaultAccentColor : Color.clear, lineWidth: 3)
+                )
+
+                // Style name
+                Text(style.name)
+                    .font(.appCaption)
+                    .foregroundColor(isSelected ? style.defaultAccentColor : .textSecondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

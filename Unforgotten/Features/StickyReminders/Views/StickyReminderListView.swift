@@ -331,6 +331,6 @@ struct StickyReminderCard: View {
 #Preview {
     NavigationStack {
         StickyReminderListView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }

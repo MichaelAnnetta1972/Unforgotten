@@ -40,9 +40,9 @@ struct FeatureVisibilityView: View {
                 VStack(spacing: 24) {
                     // Header
                     VStack(spacing: 12) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.system(size: 50))
-                            .foregroundColor(appAccentColor)
+                        //Image(systemName: "square.grid.2x2")
+                        //    .font(.system(size: 50))
+                        //    .foregroundColor(appAccentColor)
 
                         Text("Show/Hide Features")
                             .font(.appTitle)

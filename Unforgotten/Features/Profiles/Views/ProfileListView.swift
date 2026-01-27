@@ -44,6 +44,8 @@ struct ProfileListView: View {
                     CustomizableHeaderView(
                         pageIdentifier: .profiles,
                         title: "Family and Friends",
+                        showBackButton: iPadHomeAction == nil,
+                        backAction: { dismiss() },
                         showHomeButton: iPadHomeAction != nil,
                         homeAction: iPadHomeAction,
                         showAddButton: true,
@@ -1010,6 +1012,6 @@ class MyCardViewModel: ObservableObject {
 #Preview("Profile List") {
     NavigationStack {
         ProfileListView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }

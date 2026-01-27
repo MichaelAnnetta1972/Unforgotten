@@ -9,9 +9,10 @@ enum HomeDestination: Hashable {
     case medicationDetail(Medication)
     case appointments
     case appointmentDetail(Appointment)
+    case countdownEvents
+    case countdownDetail(Countdown)
     case calendar
     case birthdays
-    case countdownDetail(Countdown)
     case contacts
     case notes
     case mood
@@ -71,7 +72,7 @@ struct HomeView: View {
                         title: "Unforgotten",
                         showAccountSwitcherButton: appState.allAccounts.count > 1,
                         accountSwitcherAction: { showAccountSwitcher = true },
-                        showSettingsButton: true,
+                        //showSettingsButton: true,
                         settingsAction: { showSettings = true },
                         useLogo: true,
                         logoImageName: "unforgotten-logo"
@@ -126,6 +127,12 @@ struct HomeView: View {
                                 .matchedTransitionSource(id: HomeDestination.appointments, in: namespace)
                             }
 
+                            if shouldShowFeature(.countdownEvents) {
+                                NavigationLink(value: HomeDestination.countdownEvents) {
+                                    NavigationCardContent(title: "Events", icon: "timer")
+                                }
+                                .matchedTransitionSource(id: HomeDestination.countdownEvents, in: namespace)
+                            }
 
                             if shouldShowFeature(.stickyReminders) {
                                 NavigationLink(value: HomeDestination.stickyReminders) {
@@ -158,7 +165,7 @@ struct HomeView: View {
 
                             if shouldShowFeature(.birthdays) {
                                 NavigationLink(value: HomeDestination.birthdays) {
-                                    NavigationCardContent(title: "Birthdays & Countdowns", icon: "gift")
+                                    NavigationCardContent(title: "Birthdays", icon: "gift")
                                 }
                                 .matchedTransitionSource(id: HomeDestination.birthdays, in: namespace)
                             }
@@ -244,7 +251,8 @@ struct HomeView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .countdownsDidChange)) { _ in
             Task {
-                await viewModel.loadData(appState: appState)
+                // Use refreshCountdownsFromRemote to fetch latest data from server
+                await viewModel.refreshCountdownsFromRemote(appState: appState)
             }
         }
         .onChange(of: appState.currentAccount?.id) { _, _ in
@@ -404,90 +412,110 @@ struct TodayMedicationRow: View {
     let log: MedicationLog
     @ObservedObject var viewModel: HomeViewModel
     @State private var isUpdating = false
-    @State private var showOptions = false
+    @State private var navigateToDetail = false
+
+    private var medication: Medication? {
+        viewModel.medications.first { $0.id == log.medicationId }
+    }
+
+    /// Status button text based on current status
+    private var statusText: String {
+        switch log.status {
+        case .scheduled: return "Take"
+        case .taken: return "Taken"
+        case .skipped: return "Skipped"
+        case .missed: return "Missed"
+        }
+    }
+
+    /// Status button colors based on current status
+    private var statusColors: (foreground: Color, background: Color) {
+        switch log.status {
+        case .scheduled:
+            return (.appBackground, appAccentColor)
+        case .taken:
+            return (appAccentColor, appAccentColor.opacity(0.15))
+        case .skipped:
+            return (.textSecondary, Color.textSecondary.opacity(0.15))
+        case .missed:
+            return (.medicalRed, Color.medicalRed.opacity(0.15))
+        }
+    }
+
+    /// Cycle to the next status when tapped
+    private func cycleStatus() async {
+        isUpdating = true
+        switch log.status {
+        case .scheduled:
+            await viewModel.markMedicationTaken(log: log, appState: appState)
+        case .taken:
+            await viewModel.skipMedication(log: log, appState: appState)
+        case .skipped:
+            await viewModel.markMedicationNotTaken(log: log, appState: appState)
+        case .missed:
+            await viewModel.markMedicationTaken(log: log, appState: appState)
+        }
+        isUpdating = false
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon
-            Image(systemName: "pill.fill")
-                .font(.system(size: 18))
-                .foregroundColor(.medicalRed)
-                .frame(width: 32, height: 32)
-
-            // Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.medicationName(for: log))
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-
-                Text(log.scheduledAt.formatted(date: .omitted, time: .shortened))
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-            }
-
-            Spacer()
-
-            // Action button
-            if log.status == .scheduled {
-                Button {
-                    Task {
-                        isUpdating = true
-                        await viewModel.markMedicationTaken(log: log, appState: appState)
-                        isUpdating = false
-                    }
-                } label: {
-                    if isUpdating {
-                        ProgressView()
-                            .tint(.appBackground)
-                            .frame(width: 60, height: 32)
-                            .background(appAccentColor)
-                            .cornerRadius(8)
-                    } else {
-                        Text("Take")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.appBackground)
-                            .frame(width: 60, height: 32)
-                            .background(appAccentColor)
-                            .cornerRadius(8)
-                    }
-                }
-                .disabled(isUpdating)
-            } else {
-                Text("Taken")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(appAccentColor)
-                    .frame(width: 60, height: 32)
-            }
-
-            // Options button (vertical dots)
+            // Tappable area for navigation
             Button {
-                showOptions = true
+                navigateToDetail = true
             } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
-                    .font(.system(size: 16))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 32, height: 44)
-                    .contentShape(Rectangle())
+                HStack(spacing: 12) {
+                    // Icon
+                    Image(systemName: "pill.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.medicalRed)
+                        .frame(width: 32, height: 32)
+
+                    // Info
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.medicationName(for: log))
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
+
+                        Text(log.scheduledAt.formatted(date: .omitted, time: .shortened))
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
-        }
-        .padding(AppDimensions.cardPadding)
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            if log.status == .scheduled {
-                Button("Skip medication") {
-                    Task {
-                        await viewModel.skipMedication(log: log, appState: appState)
-                    }
+
+            // Cyclable status button
+            Button {
+                Task {
+                    await cycleStatus()
                 }
-            } else if log.status == .taken {
-                Button("Mark as not taken") {
-                    Task {
-                        await viewModel.markMedicationNotTaken(log: log, appState: appState)
-                    }
+            } label: {
+                if isUpdating {
+                    ProgressView()
+                        .tint(statusColors.foreground)
+                        .frame(width: 70, height: 32)
+                        .background(statusColors.background)
+                        .cornerRadius(8)
+                } else {
+                    Text(statusText)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(statusColors.foreground)
+                        .frame(width: 70, height: 32)
+                        .background(statusColors.background)
+                        .cornerRadius(8)
                 }
             }
-            Button("Cancel", role: .cancel) { }
+            .disabled(isUpdating)
+        }
+        .padding(AppDimensions.cardPadding)
+        .navigationDestination(isPresented: $navigateToDetail) {
+            if let medication = medication {
+                MedicationDetailView(medication: medication)
+            }
         }
     }
 }
@@ -503,30 +531,39 @@ struct TodayAppointmentRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon
-            Image(systemName: "calendar")
-                .font(.system(size: 18))
-                .foregroundColor(.calendarBlue)
-                .frame(width: 32, height: 32)
+            // Tappable area for navigation
+            Button {
+                navigateToDetail = true
+            } label: {
+                HStack(spacing: 12) {
+                    // Icon
+                    Image(systemName: "calendar")
+                        .font(.system(size: 18))
+                        .foregroundColor(.calendarBlue)
+                        .frame(width: 32, height: 32)
 
-            // Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appointment.title)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
+                    // Info
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(appointment.title)
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
 
-                if let time = appointment.time {
-                    Text(time.formatted(date: .omitted, time: .shortened))
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-                } else {
-                    Text("All day")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                        if let time = appointment.time {
+                            Text(time.formatted(date: .omitted, time: .shortened))
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        } else {
+                            Text("All day")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+
+                    Spacer()
                 }
+                .contentShape(Rectangle())
             }
-
-            Spacer()
+            .buttonStyle(PlainButtonStyle())
 
             // Toggleable check icon
             Button {
@@ -554,11 +591,6 @@ struct TodayAppointmentRow: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(AppDimensions.cardPadding)
-        .background(
-            NavigationLink(value: HomeDestination.appointmentDetail(appointment), label: { EmptyView() })
-                .opacity(0)
-                .disabled(!navigateToDetail)
-        )
         .navigationDestination(isPresented: $navigateToDetail) {
             AppointmentDetailView(appointment: appointment)
         }
@@ -575,29 +607,39 @@ struct TodayAppointmentRow: View {
 struct TodayBirthdayRow: View {
     let profile: Profile
     @State private var showOptions = false
+    @State private var navigateToDetail = false
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon
-            Image(systemName: "gift.fill")
-                .font(.system(size: 18))
-                .foregroundColor(.calendarPink)
-                .frame(width: 32, height: 32)
+            // Tappable area for navigation
+            Button {
+                navigateToDetail = true
+            } label: {
+                HStack(spacing: 12) {
+                    // Icon
+                    Image(systemName: "gift.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.calendarPink)
+                        .frame(width: 32, height: 32)
 
-            // Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(profile.displayName)'s Birthday")
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
+                    // Info
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(profile.displayName)'s Birthday")
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
 
-                if let age = profile.age {
-                    Text("Turning \(age + 1)")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                        if let age = profile.age {
+                            Text("Turning \(age + 1)")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+
+                    Spacer()
                 }
+                .contentShape(Rectangle())
             }
-
-            Spacer()
+            .buttonStyle(PlainButtonStyle())
 
             // Options button (vertical dots)
             Button {
@@ -613,9 +655,12 @@ struct TodayBirthdayRow: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(AppDimensions.cardPadding)
+        .navigationDestination(isPresented: $navigateToDetail) {
+            ProfileDetailView(profile: profile)
+        }
         .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
             Button("View profile") {
-                // Navigate to profile
+                navigateToDetail = true
             }
             Button("Cancel", role: .cancel) { }
         }
@@ -626,27 +671,37 @@ struct TodayBirthdayRow: View {
 struct TodayCountdownRow: View {
     let countdown: Countdown
     @State private var showOptions = false
+    @State private var navigateToDetail = false
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon - use the countdown type's icon and color
-            Image(systemName: countdown.type.icon)
-                .font(.system(size: 18))
-                .foregroundColor(countdown.type.color)
-                .frame(width: 32, height: 32)
+            // Tappable area for navigation
+            Button {
+                navigateToDetail = true
+            } label: {
+                HStack(spacing: 12) {
+                    // Icon - use the countdown type's icon and color
+                    Image(systemName: countdown.type.icon)
+                        .font(.system(size: 18))
+                        .foregroundColor(countdown.type.color)
+                        .frame(width: 32, height: 32)
 
-            // Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(countdown.title)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
+                    // Info
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(countdown.title)
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
 
-                Text(countdown.displayTypeName)
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
+                        Text(countdown.displayTypeName)
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
-
-            Spacer()
+            .buttonStyle(PlainButtonStyle())
 
             // Options button (vertical dots)
             Button {
@@ -662,9 +717,12 @@ struct TodayCountdownRow: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(AppDimensions.cardPadding)
+        .navigationDestination(isPresented: $navigateToDetail) {
+            CountdownDetailView(countdown: countdown)
+        }
         .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
             Button("View details") {
-                // Navigate to birthdays & countdowns
+                navigateToDetail = true
             }
             Button("Cancel", role: .cancel) { }
         }
@@ -822,9 +880,9 @@ class HomeViewModel: ObservableObject {
                 print("🏠   - log id: \(log.id), medicationId: \(log.medicationId), status: \(log.status), scheduledAt: \(log.scheduledAt)")
             }
             #endif
-            todayMedications = allLogs.filter { $0.status == .scheduled || $0.status == .taken }
+            todayMedications = allLogs.filter { $0.status == .scheduled || $0.status == .taken || $0.status == .skipped }
             #if DEBUG
-            print("🏠 HomeViewModel: Filtered to \(todayMedications.count) scheduled/taken medications")
+            print("🏠 HomeViewModel: Filtered to \(todayMedications.count) scheduled/taken/skipped medications")
             #endif
 
             // Load today's appointments
@@ -853,6 +911,24 @@ class HomeViewModel: ObservableObject {
         isLoading = false
     }
 
+    /// Refresh countdowns from remote server (called when realtime notification received)
+    func refreshCountdownsFromRemote(appState: AppState) async {
+        guard let accountId = appState.currentAccount?.id else { return }
+
+        do {
+            // Force refresh from server
+            _ = try await appState.countdownRepository.refreshFromRemote(accountId: accountId)
+            // Then load the updated data
+            let allCountdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: accountId, days: 365)
+            todayCountdowns = allCountdowns.filter { $0.daysUntilNextOccurrence == 0 }
+        } catch {
+            // Silently fail - not critical for home view
+            #if DEBUG
+            print("🏠 HomeViewModel: Failed to refresh countdowns: \(error)")
+            #endif
+        }
+    }
+
     func markMedicationTaken(log: MedicationLog, appState: AppState) async {
         do {
             try await appState.medicationRepository.updateLogStatus(logId: log.id, status: .taken)
@@ -869,8 +945,11 @@ class HomeViewModel: ObservableObject {
     func skipMedication(log: MedicationLog, appState: AppState) async {
         do {
             try await appState.medicationRepository.updateLogStatus(logId: log.id, status: .skipped)
-            // Remove from list
-            todayMedications.removeAll { $0.id == log.id }
+            // Update local state
+            if let index = todayMedications.firstIndex(where: { $0.id == log.id }) {
+                todayMedications[index].status = .skipped
+                todayMedications[index].takenAt = nil
+            }
         } catch {
             self.error = "Failed to skip medication: \(error.localizedDescription)"
         }

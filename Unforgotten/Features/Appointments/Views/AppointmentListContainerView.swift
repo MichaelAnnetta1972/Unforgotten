@@ -402,5 +402,5 @@ struct iPadAppointmentRowView: View {
 // MARK: - Preview
 #Preview("iPad Appointments") {
     iPadAppointmentListView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

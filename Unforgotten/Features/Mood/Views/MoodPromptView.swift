@@ -167,5 +167,5 @@ struct MoodButton: View {
 // MARK: - Preview
 #Preview {
     MoodPromptView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

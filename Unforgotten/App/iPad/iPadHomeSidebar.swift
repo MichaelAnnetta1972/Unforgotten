@@ -125,6 +125,16 @@ struct iPadHomeSidebar: View {
                                 }
                             }
 
+                            if shouldShowFeature(.countdownEvents) {
+                                iPadSidebarNavItem(
+                                    title: "Events",
+                                    icon: "timer",
+                                    isSelected: selectedContent == .countdownEvents
+                                ) {
+                                    selectedContent = .countdownEvents
+                                }
+                            }
+
                             if shouldShowFeature(.stickyReminders) {
                                 iPadSidebarNavItem(
                                     title: "Sticky Reminders",
@@ -158,7 +168,7 @@ struct iPadHomeSidebar: View {
 
                             if shouldShowFeature(.birthdays) {
                                 iPadSidebarNavItem(
-                                    title: "Birthdays and Countdowns",
+                                    title: "Birthdays",
                                     icon: "gift",
                                     isSelected: selectedContent == .birthdays
                                 ) {
@@ -585,91 +595,111 @@ struct iPadSidebarTodayCard: View {
 struct iPadSidebarMedicationRow: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.iPadTodayMedicationAction) private var iPadTodayMedicationAction
     let log: MedicationLog
     @ObservedObject var viewModel: HomeViewModel
     @State private var isUpdating = false
-    @State private var showOptions = false
+
+    private var medication: Medication? {
+        viewModel.medications.first { $0.id == log.medicationId }
+    }
+
+    /// Status button text based on current status
+    private var statusText: String {
+        switch log.status {
+        case .scheduled: return "Take"
+        case .taken: return "Taken"
+        case .skipped: return "Skipped"
+        case .missed: return "Missed"
+        }
+    }
+
+    /// Status button colors based on current status
+    private var statusColors: (foreground: Color, background: Color) {
+        switch log.status {
+        case .scheduled:
+            return (.appBackground, appAccentColor)
+        case .taken:
+            return (appAccentColor, appAccentColor.opacity(0.15))
+        case .skipped:
+            return (.textSecondary, Color.textSecondary.opacity(0.15))
+        case .missed:
+            return (.medicalRed, Color.medicalRed.opacity(0.15))
+        }
+    }
+
+    /// Cycle to the next status when tapped
+    private func cycleStatus() async {
+        isUpdating = true
+        switch log.status {
+        case .scheduled:
+            await viewModel.markMedicationTaken(log: log, appState: appState)
+        case .taken:
+            await viewModel.skipMedication(log: log, appState: appState)
+        case .skipped:
+            await viewModel.markMedicationNotTaken(log: log, appState: appState)
+        case .missed:
+            await viewModel.markMedicationTaken(log: log, appState: appState)
+        }
+        isUpdating = false
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "pill.fill")
-                .font(.system(size: 18))
-                .foregroundColor(.medicalRed)
-                .frame(width: 32, height: 32)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.medicationName(for: log))
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
-
-                Text(log.scheduledAt.formatted(date: .omitted, time: .shortened))
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-            }
-
-            Spacer()
-
-            if log.status == .scheduled {
-                Button {
-                    Task {
-                        isUpdating = true
-                        await viewModel.markMedicationTaken(log: log, appState: appState)
-                        isUpdating = false
-                    }
-                } label: {
-                    if isUpdating {
-                        ProgressView()
-                            .tint(.appBackground)
-                            .frame(width: 50, height: 28)
-                            .background(appAccentColor)
-                            .cornerRadius(6)
-                    } else {
-                        Text("Take")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.appBackground)
-                            .frame(width: 50, height: 28)
-                            .background(appAccentColor)
-                            .cornerRadius(6)
-                    }
-                }
-                .disabled(isUpdating)
-            } else {
-                Text("Taken")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(appAccentColor)
-            }
-
+            // Tappable area for navigation
             Button {
-                showOptions = true
+                if let medication = medication {
+                    iPadTodayMedicationAction?(medication)
+                }
             } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
-                    .font(.system(size: 14))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 28, height: 40)
-                    .contentShape(Rectangle())
+                HStack(spacing: 12) {
+                    Image(systemName: "pill.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.medicalRed)
+                        .frame(width: 32, height: 32)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.medicationName(for: log))
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+
+                        Text(log.scheduledAt.formatted(date: .omitted, time: .shortened))
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
+
+            // Cyclable status button
+            Button {
+                Task {
+                    await cycleStatus()
+                }
+            } label: {
+                if isUpdating {
+                    ProgressView()
+                        .tint(statusColors.foreground)
+                        .frame(width: 60, height: 28)
+                        .background(statusColors.background)
+                        .cornerRadius(6)
+                } else {
+                    Text(statusText)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(statusColors.foreground)
+                        .frame(width: 60, height: 28)
+                        .background(statusColors.background)
+                        .cornerRadius(6)
+                }
+            }
+            .disabled(isUpdating)
         }
         .padding(.horizontal, AppDimensions.cardPadding)
         .padding(.vertical, 10)
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            if log.status == .scheduled {
-                Button("Skip medication") {
-                    Task {
-                        await viewModel.skipMedication(log: log, appState: appState)
-                    }
-                }
-            } else if log.status == .taken {
-                Button("Mark as not taken") {
-                    Task {
-                        await viewModel.markMedicationNotTaken(log: log, appState: appState)
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) { }
-        }
     }
 }
 
@@ -679,34 +709,44 @@ struct iPadSidebarAppointmentRow: View {
     @ObservedObject var viewModel: HomeViewModel
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccentColor) private var appAccentColor
-    @State private var showOptions = false
+    @Environment(\.iPadTodayAppointmentAction) private var iPadTodayAppointmentAction
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "calendar")
-                .font(.system(size: 18))
-                .foregroundColor(.calendarBlue)
-                .frame(width: 32, height: 32)
+            // Tappable area for navigation
+            Button {
+                iPadTodayAppointmentAction?(appointment)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 18))
+                        .foregroundColor(.calendarBlue)
+                        .frame(width: 32, height: 32)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appointment.title)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(appointment.title)
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
 
-                if let time = appointment.time {
-                    Text(time.formatted(date: .omitted, time: .shortened))
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-                } else {
-                    Text("All day")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                        if let time = appointment.time {
+                            Text(time.formatted(date: .omitted, time: .shortened))
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        } else {
+                            Text("All day")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+
+                    Spacer()
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(PlainButtonStyle())
 
-            Spacer()
-
+            // Toggleable check icon
             Button {
                 viewModel.toggleAppointmentCompleted(appointmentId: appointment.id, appState: appState)
             } label: {
@@ -715,119 +755,91 @@ struct iPadSidebarAppointmentRow: View {
                     .foregroundColor(appointment.isCompleted ? appAccentColor : .textSecondary.opacity(0.4))
             }
             .buttonStyle(PlainButtonStyle())
-
-            Button {
-                showOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
-                    .font(.system(size: 14))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 28, height: 40)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, AppDimensions.cardPadding)
         .padding(.vertical, 10)
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button("View details") { }
-            Button("Cancel", role: .cancel) { }
-        }
     }
 }
 
 // MARK: - iPad Sidebar Birthday Row
 struct iPadSidebarBirthdayRow: View {
     let profile: Profile
-    @State private var showOptions = false
+    @Environment(\.iPadTodayProfileAction) private var iPadTodayProfileAction
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "gift.fill")
-                .font(.system(size: 18))
-                .foregroundColor(.calendarPink)
-                .frame(width: 32, height: 32)
+        Button {
+            iPadTodayProfileAction?(profile)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "gift.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.calendarPink)
+                    .frame(width: 32, height: 32)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(profile.displayName)'s Birthday")
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(profile.displayName)'s Birthday")
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
 
-                if let age = profile.age {
-                    Text("Turning \(age + 1)")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                    if let age = profile.age {
+                        Text("Turning \(age + 1)")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
                 }
-            }
 
-            Spacer()
+                Spacer()
 
-            Button {
-                showOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
+                Image(systemName: "chevron.right")
                     .font(.system(size: 14))
                     .foregroundColor(.textSecondary)
-                    .frame(width: 28, height: 40)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, AppDimensions.cardPadding)
         .padding(.vertical, 10)
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button("View profile") { }
-            Button("Cancel", role: .cancel) { }
-        }
     }
 }
 
 // MARK: - iPad Sidebar Countdown Row
 struct iPadSidebarCountdownRow: View {
     let countdown: Countdown
-    @State private var showOptions = false
+    @Environment(\.iPadTodayCountdownAction) private var iPadTodayCountdownAction
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: countdown.type.icon)
-                .font(.system(size: 18))
-                .foregroundColor(countdown.type.color)
-                .frame(width: 32, height: 32)
+        Button {
+            iPadTodayCountdownAction?(countdown)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: countdown.type.icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(countdown.type.color)
+                    .frame(width: 32, height: 32)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(countdown.title)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(countdown.title)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
 
-                Text(countdown.displayTypeName)
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-            }
+                    Text(countdown.displayTypeName)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
 
-            Spacer()
+                Spacer()
 
-            Button {
-                showOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
+                Image(systemName: "chevron.right")
                     .font(.system(size: 14))
                     .foregroundColor(.textSecondary)
-                    .frame(width: 28, height: 40)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, AppDimensions.cardPadding)
         .padding(.vertical, 10)
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button("View details") { }
-            Button("Cancel", role: .cancel) { }
-        }
     }
 }
 

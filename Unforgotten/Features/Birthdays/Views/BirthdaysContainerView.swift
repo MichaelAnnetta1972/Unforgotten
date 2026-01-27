@@ -72,7 +72,7 @@ struct iPadBirthdaysView: View {
             rightPane
         }
         .background(Color.appBackground)
-        .navigationTitle("Birthdays & Countdowns")
+        .navigationTitle("Birthdays")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadBirthdays(appState: appState)
@@ -555,5 +555,5 @@ struct iPadBirthdayDetailPane: View {
 // MARK: - Preview
 #Preview("iPad Birthdays") {
     iPadBirthdaysView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

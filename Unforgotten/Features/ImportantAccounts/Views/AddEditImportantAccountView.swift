@@ -418,5 +418,5 @@ struct AccountCategoryChip: View {
         ),
         mode: .add
     ) { _ in }
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }

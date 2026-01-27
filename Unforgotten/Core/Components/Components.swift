@@ -532,9 +532,11 @@ struct FloatingButtonContainer<Content: View>: View {
 enum NavDestination: Hashable {
     case home
     case profiles
-    case myCard  // For limited access users (Helper/Viewer)
+    case myCard  // For limited access users (Helper/Viewer) - now also used as "About Me" in nav
     case appointments
     case medications
+    case calendar
+    case settings
     case other  // For pages without a nav bar icon (Birthdays, Contacts, Mood)
 }
 
@@ -727,37 +729,28 @@ struct BottomNavBar: View {
                                         onNavigate(.home)
                                     }
 
-                                    // Second button: My Card for limited access, Family & Friends for full access
-                                    if isLimitedAccess {
-                                        NavBarButton(
-                                            icon: "person.crop.circle.fill",
-                                            isActive: currentPage == .myCard
-                                        ) {
-                                            onNavigate(.myCard)
-                                        }
-                                    } else {
-                                        NavBarButton(
-                                            icon: "person.2.fill",
-                                            isActive: currentPage == .profiles
-                                        ) {
-                                            onNavigate(.profiles)
-                                        }
-                                    }
-
-                                    // Medications button
+                                    // About Me (My Card) button
                                     NavBarButton(
-                                        icon: "pill.fill",
-                                        isActive: currentPage == .medications
+                                        icon: "person.crop.circle.fill",
+                                        isActive: currentPage == .myCard
                                     ) {
-                                        onNavigate(.medications)
+                                        onNavigate(.myCard)
                                     }
 
-                                    // Appointments button
+                                    // Calendar button
                                     NavBarButton(
                                         icon: "calendar",
-                                        isActive: currentPage == .appointments
+                                        isActive: currentPage == .calendar
                                     ) {
-                                        onNavigate(.appointments)
+                                        onNavigate(.calendar)
+                                    }
+
+                                    // Settings button
+                                    NavBarButton(
+                                        icon: "gearshape.fill",
+                                        isActive: currentPage == .settings
+                                    ) {
+                                        onNavigate(.settings)
                                     }
                                 }
                             }
@@ -799,14 +792,14 @@ struct BottomNavBar: View {
         switch page {
         case .home:
             return 0
-        case .profiles, .myCard:
+        case .myCard:
             return 1
-        case .medications:
+        case .calendar:
             return 2
-        case .appointments:
+        case .settings:
             return 3
-        case .other:
-            return 0 // Default to home
+        case .profiles, .medications, .appointments, .other:
+            return 0 // Default to home for pages not in bottom nav
         }
     }
 }

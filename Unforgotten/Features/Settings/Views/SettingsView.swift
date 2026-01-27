@@ -6,6 +6,7 @@ import StoreKit
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.navigateToHomeTab) private var navigateToHomeTab
     @Environment(UserPreferences.self) private var userPreferences
     @Environment(UserHeaderOverrides.self) private var headerOverrides
     @Environment(HeaderStyleManager.self) private var headerStyleManager
@@ -66,6 +67,22 @@ struct SettingsView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
+                    // Back button (navigates to Home tab)
+                    HStack {
+                        Button {
+                            navigateToHomeTab?()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundColor(.textPrimary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.top, 8)
+
                     // Header
                     VStack(spacing: 8) {
                         Image(systemName: "gearshape.fill")
@@ -76,7 +93,7 @@ struct SettingsView: View {
                             .font(.appLargeTitle)
                             .foregroundColor(.textPrimary)
                     }
-                    .padding(.top, 40)
+                    .padding(.top, 0)
 
                     // Viewing As Bar (shown when viewing another account)
                     ViewingAsBar()
@@ -266,6 +283,11 @@ struct SettingsView: View {
                                 }
                             )
                         }
+                    }
+
+                    // Sync section
+                    SettingsSection(title: "DATA & SYNC") {
+                        SyncStatusSettingsRow(syncEngine: appState.syncEngine)
                     }
 
                     // About section
@@ -2291,7 +2313,7 @@ struct UpgradeView: View {
 #Preview {
     NavigationStack {
         SettingsView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
             .environment(UserPreferences())
             .environment(UserHeaderOverrides())
             .environment(HeaderStyleManager())

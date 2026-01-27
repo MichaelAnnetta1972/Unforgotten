@@ -82,18 +82,18 @@ enum OnboardingScreen: Int, CaseIterable {
     case profileSetup = 1
     case themeSelection = 2
     case friendCode = 3
-    case freeTier = 4
-    case premium = 5
+    case premium = 4
+    case freeTier = 5
     case notifications = 6
-    case completion = 7
+    case activation = 7
 
-    /// The total number of progress steps (excluding welcome and completion)
+    /// The total number of progress steps (excluding welcome and activation)
     static let progressStepCount = 6
 
     /// Whether this screen shows progress dots
     var showsProgressDots: Bool {
         switch self {
-        case .welcome, .completion:
+        case .welcome, .activation:
             return false
         default:
             return true
@@ -101,10 +101,10 @@ enum OnboardingScreen: Int, CaseIterable {
     }
 
     /// The progress step index (0-based) for screens that show progress
-    /// Premium is a branch from freeTier, so it shares the same progress index
+    /// Premium and freeTier share the same progress index as they are alternate paths
     var progressIndex: Int? {
         switch self {
-        case .welcome, .completion:
+        case .welcome, .activation:
             return nil
         case .profileSetup:
             return 0
@@ -112,7 +112,7 @@ enum OnboardingScreen: Int, CaseIterable {
             return 1
         case .friendCode:
             return 2
-        case .freeTier, .premium:
+        case .premium, .freeTier:
             return 3
         case .notifications:
             return 4
@@ -122,7 +122,7 @@ enum OnboardingScreen: Int, CaseIterable {
     /// Whether this screen allows back navigation
     var canGoBack: Bool {
         switch self {
-        case .welcome, .completion:
+        case .welcome, .activation:
             return false
         default:
             return true
@@ -140,13 +140,13 @@ enum OnboardingScreen: Int, CaseIterable {
             return .profileSetup
         case .friendCode:
             return .themeSelection
-        case .freeTier:
-            return .friendCode
         case .premium:
-            return .freeTier
+            return .friendCode
+        case .freeTier:
+            return .premium
         case .notifications:
-            return .freeTier // Skip premium when going back
-        case .completion:
+            return .premium // Skip freeTier when going back
+        case .activation:
             return .notifications
         }
     }

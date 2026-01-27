@@ -349,5 +349,5 @@ struct DatePickerSheet: View {
 // MARK: - Preview
 #Preview {
     OnboardingView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

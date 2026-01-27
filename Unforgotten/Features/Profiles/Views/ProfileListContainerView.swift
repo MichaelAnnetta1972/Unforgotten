@@ -675,5 +675,5 @@ struct iPadProfileDetailPane: View {
 // MARK: - Preview
 #Preview("iPad Profiles") {
     iPadProfileListView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

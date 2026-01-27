@@ -266,76 +266,6 @@ struct ProfileCategoryListView: View {
                 }
             }
 
-            // Local overlay for editing clothing on iPhone (iPad uses full-screen overlay via iPadEditClothingSizeAction)
-            if iPadEditClothingSizeAction == nil, showEditClothing, let detail = editingDetail {
-                ZStack {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showEditClothing = false
-                                editingDetail = nil
-                            }
-                        }
-
-                    EditClothingPanelOverlay(
-                        detail: detail,
-                        onDismiss: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showEditClothing = false
-                                editingDetail = nil
-                            }
-                        },
-                        onSave: { updatedDetail in
-                            if let index = currentDetails.firstIndex(where: { $0.id == updatedDetail.id }) {
-                                currentDetails[index] = updatedDetail
-                            }
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showEditClothing = false
-                                editingDetail = nil
-                            }
-                        }
-                    )
-                }
-                .zIndex(200)
-                .transition(.opacity)
-            }
-
-            // Local overlay for editing gift on iPhone
-            if showEditGift, let detail = editingDetail {
-                ZStack {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showEditGift = false
-                                editingDetail = nil
-                            }
-                        }
-
-                    EditGiftPanelOverlay(
-                        detail: detail,
-                        onDismiss: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showEditGift = false
-                                editingDetail = nil
-                            }
-                        },
-                        onSave: { updatedDetail in
-                            if let index = currentDetails.firstIndex(where: { $0.id == updatedDetail.id }) {
-                                currentDetails[index] = updatedDetail
-                            }
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showEditGift = false
-                                editingDetail = nil
-                            }
-                        }
-                    )
-                }
-                .zIndex(200)
-                .transition(.opacity)
-            }
-
         }
         .ignoresSafeArea(edges: .top)
         .background(Color.appBackgroundLight)
@@ -351,6 +281,46 @@ struct ProfileCategoryListView: View {
             ) { newDetail in
                 currentDetails.append(newDetail)
             }
+        }
+        .onChange(of: showEditGift) { _, isPresented in
+            // Clear editingDetail when panel is dismissed
+            if !isPresented {
+                editingDetail = nil
+            }
+        }
+        .onChange(of: showEditClothing) { _, isPresented in
+            // Clear editingDetail when panel is dismissed
+            if !isPresented {
+                editingDetail = nil
+            }
+        }
+        .sidePanel(isPresented: $showEditGift) {
+            EditGiftDetailView(
+                detail: editingDetail ?? ProfileDetail.placeholder,
+                onDismiss: {
+                    showEditGift = false
+                },
+                onSave: { updatedDetail in
+                    if let index = currentDetails.firstIndex(where: { $0.id == updatedDetail.id }) {
+                        currentDetails[index] = updatedDetail
+                    }
+                    showEditGift = false
+                }
+            )
+        }
+        .sidePanel(isPresented: $showEditClothing) {
+            EditClothingDetailView(
+                detail: editingDetail ?? ProfileDetail.placeholder,
+                onDismiss: {
+                    showEditClothing = false
+                },
+                onSave: { updatedDetail in
+                    if let index = currentDetails.firstIndex(where: { $0.id == updatedDetail.id }) {
+                        currentDetails[index] = updatedDetail
+                    }
+                    showEditClothing = false
+                }
+            )
         }
         .onReceive(NotificationCenter.default.publisher(for: .profileDetailsDidChange)) { notification in
             // Reload details when they change (e.g., from iPad full-screen overlay)
@@ -1326,8 +1296,6 @@ struct EditGiftPanelOverlay: View {
     let onSave: (ProfileDetail) -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var offsetX: CGFloat = 680
-    @State private var opacity: Double = 0
 
     /// Panel width - wider on iPad
     private var panelWidth: CGFloat {
@@ -1335,30 +1303,35 @@ struct EditGiftPanelOverlay: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            HStack {
-                Spacer()
+        ZStack {
+            // Background overlay - animates with parent transition
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    onDismiss()
+                }
 
-                EditGiftDetailView(
-                    detail: detail,
-                    onDismiss: onDismiss,
-                    onSave: onSave
-                )
-                .frame(width: panelWidth, height: geometry.size.height - 80)
-                .background(Color.appBackgroundLight)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
-                .offset(x: offsetX)
-                .opacity(opacity)
-                .padding(.top, 40)
-                .padding(.trailing, 20)
+            GeometryReader { geometry in
+                HStack {
+                    Spacer()
+
+                    EditGiftDetailView(
+                        detail: detail,
+                        onDismiss: onDismiss,
+                        onSave: onSave
+                    )
+                    .frame(width: panelWidth, height: geometry.size.height - 80)
+                    .background(horizontalSizeClass == .regular ? Color.appBackgroundLight : Color.appBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
+                    .padding(.top, 40)
+                    .padding(.trailing, 20)
+                }
             }
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                offsetX = 0
-                opacity = 1.0
-            }
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing),
+                removal: .move(edge: .trailing)
+            ))
         }
     }
 }
@@ -1936,7 +1909,23 @@ struct EditProfileView: View {
                                 relationship: $relationship,
                                 showPicker: $showRelationshipPicker
                             )
+                            Button {
+                                showDatePicker = true
+                            } label: {
+                                HStack {
+                                    Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday")
+                                        .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
 
+                                    Spacer()
+
+                                    Image(systemName: "calendar")
+                                        .foregroundColor(.textSecondary)
+                                }
+                                .padding()
+                                .frame(height: AppDimensions.textFieldHeight)
+                                .background(Color.cardBackgroundSoft)
+                                .cornerRadius(AppDimensions.buttonCornerRadius)
+                            }
                             // Connected To picker for family tree
                             if !allProfiles.isEmpty {
                                 ConnectedToPickerField(
@@ -1966,23 +1955,7 @@ struct EditProfileView: View {
                             AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
                             AppTextField(placeholder: "Address", text: $address)
 
-                            Button {
-                                showDatePicker = true
-                            } label: {
-                                HStack {
-                                    Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday")
-                                        .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
 
-                                    Spacer()
-
-                                    Image(systemName: "calendar")
-                                        .foregroundColor(.textSecondary)
-                                }
-                                .padding()
-                                .frame(height: AppDimensions.textFieldHeight)
-                                .background(Color.cardBackgroundSoft)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
-                            }
 
                             // Deceased Section (only show for non-primary profiles)
                             if profile.type != .primary {
@@ -3134,7 +3107,7 @@ struct SizePickerSheet: View {
         category: .clothing,
         details: []
     )
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }
 
 // MARK: - Gift Card With Overlay Support

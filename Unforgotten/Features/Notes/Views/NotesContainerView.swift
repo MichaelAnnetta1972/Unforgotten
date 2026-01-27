@@ -431,9 +431,9 @@ struct AddNoteSheet: View {
 #Preview("Notes Container - iPhone") {
     let container = try! NotesContainerConfiguration.createPreviewContainer()
 
-    return NotesContainerView()
+    NotesContainerView()
         .modelContainer(container)
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
         .onAppear {
             let context = container.mainContext
             _ = LocalNote.sampleNotes(in: context)
@@ -442,5 +442,5 @@ struct AddNoteSheet: View {
 
 #Preview("Notes Feature View") {
     NotesFeatureView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

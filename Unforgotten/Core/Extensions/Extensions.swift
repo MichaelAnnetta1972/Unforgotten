@@ -365,6 +365,19 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Navigate to Home Tab Action Environment Key
+private struct NavigateToHomeTabActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to navigate to the Home tab (for iPhone bottom nav)
+    var navigateToHomeTab: (() -> Void)? {
+        get { self[NavigateToHomeTabActionKey.self] }
+        set { self[NavigateToHomeTabActionKey.self] = newValue }
+    }
+}
+
 // MARK: - iPad Add Note Action Environment Key
 private struct iPadAddNoteActionKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
@@ -977,6 +990,50 @@ extension EnvironmentValues {
     var iPadCalendarEventSelectedAction: ((CalendarEvent) -> Void)? {
         get { self[iPadCalendarEventSelectedActionKey.self] }
         set { self[iPadCalendarEventSelectedActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Today Item Navigation Actions
+
+private struct iPadTodayMedicationActionKey: EnvironmentKey {
+    static let defaultValue: ((Medication) -> Void)? = nil
+}
+
+private struct iPadTodayAppointmentActionKey: EnvironmentKey {
+    static let defaultValue: ((Appointment) -> Void)? = nil
+}
+
+private struct iPadTodayProfileActionKey: EnvironmentKey {
+    static let defaultValue: ((Profile) -> Void)? = nil
+}
+
+private struct iPadTodayCountdownActionKey: EnvironmentKey {
+    static let defaultValue: ((Countdown) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to navigate to medication detail from Today card on iPad
+    var iPadTodayMedicationAction: ((Medication) -> Void)? {
+        get { self[iPadTodayMedicationActionKey.self] }
+        set { self[iPadTodayMedicationActionKey.self] = newValue }
+    }
+
+    /// Action to navigate to appointment detail from Today card on iPad
+    var iPadTodayAppointmentAction: ((Appointment) -> Void)? {
+        get { self[iPadTodayAppointmentActionKey.self] }
+        set { self[iPadTodayAppointmentActionKey.self] = newValue }
+    }
+
+    /// Action to navigate to profile detail from Today card on iPad
+    var iPadTodayProfileAction: ((Profile) -> Void)? {
+        get { self[iPadTodayProfileActionKey.self] }
+        set { self[iPadTodayProfileActionKey.self] = newValue }
+    }
+
+    /// Action to navigate to countdown detail from Today card on iPad
+    var iPadTodayCountdownAction: ((Countdown) -> Void)? {
+        get { self[iPadTodayCountdownActionKey.self] }
+        set { self[iPadTodayCountdownActionKey.self] = newValue }
     }
 }
 

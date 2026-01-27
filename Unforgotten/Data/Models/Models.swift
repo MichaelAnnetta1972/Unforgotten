@@ -297,6 +297,23 @@ struct ProfileDetail: Codable, Identifiable, Equatable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+
+    /// Placeholder detail for use when a non-optional value is needed but the actual value is not yet available
+    static var placeholder: ProfileDetail {
+        ProfileDetail(
+            id: UUID(),
+            accountId: UUID(),
+            profileId: UUID(),
+            category: .clothing,
+            label: "",
+            value: "",
+            status: nil,
+            occasion: nil,
+            metadata: nil,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
 }
 
 enum DetailCategory: String, Codable, CaseIterable {

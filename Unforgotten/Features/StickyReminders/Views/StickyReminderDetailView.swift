@@ -388,6 +388,6 @@ struct StickyReminderDetailView: View {
                 repeatInterval: StickyReminderInterval(value: 2, unit: .hours)
             )
         )
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
     }
 }

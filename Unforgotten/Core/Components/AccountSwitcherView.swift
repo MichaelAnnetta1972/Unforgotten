@@ -378,7 +378,7 @@ struct AccountSwitcherModal: View {
         AccountSwitcherView(isPresented: .constant(true))
             .padding()
     }
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }
 
 #Preview("Viewing As Bar") {
@@ -386,7 +386,7 @@ struct AccountSwitcherModal: View {
         ViewingAsBar()
         Spacer()
     }
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }
 
 #Preview("Access Denied") {

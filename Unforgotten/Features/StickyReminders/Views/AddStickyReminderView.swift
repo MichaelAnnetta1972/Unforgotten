@@ -525,7 +525,7 @@ private struct QuickOptionsSheet: View {
 // MARK: - Preview
 #Preview {
     AddStickyReminderView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }
 
 #Preview("Edit Mode") {
@@ -538,5 +538,5 @@ private struct QuickOptionsSheet: View {
             repeatInterval: StickyReminderInterval(value: 2, unit: .hours)
         )
     )
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }

@@ -1650,7 +1650,7 @@ struct AdminPanelContentView: View {
 // MARK: - Preview
 #Preview {
     SettingsPanelView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
         .environment(UserPreferences())
         .environment(UserHeaderOverrides())
         .environment(HeaderStyleManager())

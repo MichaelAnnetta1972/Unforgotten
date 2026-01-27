@@ -92,7 +92,9 @@ struct CalendarView: View {
                                     monthEventsSection
                                 }
                             } else {
-                                CalendarListView(viewModel: viewModel, scrollProxy: scrollProxy, scrollToTodayTrigger: $scrollToTodayTrigger)
+                                CalendarListView(viewModel: viewModel, scrollProxy: scrollProxy, scrollToTodayTrigger: $scrollToTodayTrigger) { event in
+                                    handleEventSelection(event)
+                                }
                             }
 
                             // Loading state
@@ -107,7 +109,7 @@ struct CalendarView: View {
                             }
                         }
                         .padding(.horizontal, AppDimensions.screenPadding)
-                        .padding(.bottom, AppDimensions.screenPadding)
+                        .padding(.bottom, 100)
                     }
                 }
             }
@@ -421,6 +423,6 @@ struct CalendarView: View {
 #Preview {
     NavigationStack {
         CalendarView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }

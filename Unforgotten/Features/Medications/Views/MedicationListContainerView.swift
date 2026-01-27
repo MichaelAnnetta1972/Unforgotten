@@ -348,5 +348,5 @@ struct iPadMedicationRowView: View {
 // MARK: - Preview
 #Preview("iPad Medications") {
     iPadMedicationListView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

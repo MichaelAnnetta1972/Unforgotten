@@ -603,5 +603,5 @@ struct EditCountdownView: View {
 // MARK: - Preview
 #Preview {
     AddCountdownView { _ in }
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

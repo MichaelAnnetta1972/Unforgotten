@@ -261,5 +261,5 @@ struct FamilyMemberRow: View {
         isEnabled: .constant(true),
         selectedMemberIds: .constant([])
     )
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }

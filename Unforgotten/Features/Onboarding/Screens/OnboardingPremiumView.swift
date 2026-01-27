@@ -3,7 +3,7 @@ import StoreKit
 
 // MARK: - Onboarding Premium View
 /// Screen 6: Premium subscription offering with StoreKit 2 integration
-/// Shows both Premium and Family Plus tiers
+/// Shows both Premium and Family Plus tiers with card-based design
 struct OnboardingPremiumView: View {
     @Bindable var onboardingData: OnboardingData
     let accentColor: Color
@@ -15,7 +15,11 @@ struct OnboardingPremiumView: View {
     @State private var errorMessage: String? = nil
     @State private var hasAppeared = false
     @State private var selectedTier: SelectedTier = .premium
+    @State private var selectedBillingPeriod: BillingPeriod = .monthly
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
     private enum PurchaseState {
         case idle
@@ -29,6 +33,11 @@ struct OnboardingPremiumView: View {
         case familyPlus
     }
 
+    private enum BillingPeriod {
+        case monthly
+        case annual
+    }
+
     // Product IDs for StoreKit
     private let productIds = [
         "com.unforgotten.premium.monthly",
@@ -37,52 +46,42 @@ struct OnboardingPremiumView: View {
         "com.unforgotten.family.annual"
     ]
 
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: isRegularWidth ? 32 : 24) {
                 Spacer()
-                    .frame(height: 24)
+                    .frame(height: isRegularWidth ? 60 : 40)
 
                 // Header
-                VStack(spacing: 12) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(accentColor)
-                        .scaleEffect(hasAppeared ? 1 : 0.5)
-                        .opacity(hasAppeared ? 1 : 0)
-
-                    Text("Unlock more with a subscription")
-                        .font(.appLargeTitle)
-                        .foregroundColor(.textPrimary)
-                        .multilineTextAlignment(.center)
-                        .opacity(hasAppeared ? 1 : 0)
-                        .offset(y: hasAppeared ? 0 : 10)
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .animation(
-                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                    value: hasAppeared
-                )
+                Text("Try Unforgotten Pro for free")
+                    .font(.appLargeTitle)
+                    .foregroundColor(.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .opacity(hasAppeared ? 1 : 0)
+                    .offset(y: hasAppeared ? 0 : 10)
+                    .animation(
+                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
+                        value: hasAppeared
+                    )
 
                 // Success state
                 if purchaseState == .success {
                     successView
                 } else {
-                    // Tier selection and pricing
+                    // Tier selector and pricing
                     premiumContent
                 }
 
-                Spacer()
-                    .frame(minHeight: 40)
-
                 // Bottom buttons
                 bottomButtons
+                    .frame(maxWidth: isRegularWidth ? 400 : .infinity)
                     .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.bottom, 48)
+                    .padding(.bottom, isRegularWidth ? 64 : 48)
                     .opacity(hasAppeared ? 1 : 0)
                     .offset(y: hasAppeared ? 0 : 20)
                     .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.5),
+                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.4),
                         value: hasAppeared
                     )
             }
@@ -102,27 +101,17 @@ struct OnboardingPremiumView: View {
         }
     }
 
-    // MARK: - Premium Features List
-    private let premiumFeatures: [(icon: String, text: String)] = [
-        ("infinity", "Unlimited profiles, medications, notes & more"),
-        ("calendar", "Unlimited appointments (no 30-day limit)"),
-        ("photo.on.rectangle", "Custom header images"),
-        ("bell.badge", "Unlimited reminders & countdowns")
-    ]
+    // MARK: - Feature Descriptions
+    private let premiumDescription = "Unlock unlimited medications with reminders, profiles for your loved ones, to-do lists, notes, and useful contacts. Everything you need to stay organised and never forget what matters most."
 
-    // MARK: - Family Plus Features List
-    private let familyPlusFeatures: [(icon: String, text: String)] = [
-        ("checkmark.circle.fill", "Everything in Premium"),
-        ("person.badge.plus", "Invite family members"),
-        ("arrow.left.arrow.right", "Switch between family accounts"),
-        ("person.2", "Manage account members")
-    ]
+    private let familyPlusDescription = "Everything in Premium, plus the ability to invite family members to help manage care together. Share access with different permission levels including Owner, Admin, Helper, and Viewer roles."
 
     // MARK: - Premium Content
     private var premiumContent: some View {
-        VStack(spacing: 20) {
-            // Tier selector
+        VStack(spacing: isRegularWidth ? 24 : 20) {
+            // Tier selector (segmented control style)
             tierSelector
+                .frame(maxWidth: isRegularWidth ? 500 : .infinity)
                 .padding(.horizontal, AppDimensions.screenPadding)
                 .opacity(hasAppeared ? 1 : 0)
                 .offset(y: hasAppeared ? 0 : 20)
@@ -131,41 +120,16 @@ struct OnboardingPremiumView: View {
                     value: hasAppeared
                 )
 
-            // Features for selected tier
-            VStack(spacing: 10) {
-                let features = selectedTier == .premium ? premiumFeatures : familyPlusFeatures
-                ForEach(Array(features.enumerated()), id: \.offset) { index, feature in
-                    HStack(spacing: 12) {
-                        Image(systemName: feature.icon)
-                            .font(.system(size: 16))
-                            .foregroundColor(selectedTier == .premium ? accentColor : .purple)
-                            .frame(width: 24)
-
-                        Text(feature.text)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
-                    }
-                    .opacity(hasAppeared ? 1 : 0)
-                    .offset(y: hasAppeared ? 0 : 20)
-                    .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(Double(index) * 0.05 + 0.15),
-                        value: hasAppeared
-                    )
-                }
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-
-            // Pricing options
-            if purchaseState == .loading {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: accentColor))
-                    .padding()
-            } else {
-                pricingSection
-                    .padding(.horizontal, AppDimensions.screenPadding)
-            }
+            // Plan details card
+            planDetailsCard
+                .frame(maxWidth: isRegularWidth ? 500 : .infinity)
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .opacity(hasAppeared ? 1 : 0)
+                .offset(y: hasAppeared ? 0 : 20)
+                .animation(
+                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.2),
+                    value: hasAppeared
+                )
 
             // Error message
             if let error = errorMessage {
@@ -178,6 +142,11 @@ struct OnboardingPremiumView: View {
 
             // Subscription terms
             subscriptionTerms
+                .opacity(hasAppeared ? 1 : 0)
+                .animation(
+                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.3),
+                    value: hasAppeared
+                )
         }
     }
 
@@ -191,18 +160,12 @@ struct OnboardingPremiumView: View {
                     updateSelectedProduct()
                 }
             } label: {
-                VStack(spacing: 4) {
-                    Text("Premium")
-                        .font(.appBodyMedium)
-                        .foregroundColor(selectedTier == .premium ? .textPrimary : .textSecondary)
-                    Text("$4.99/mo")
-                        .font(.appCaption)
-                        .foregroundColor(selectedTier == .premium ? accentColor : .textMuted)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(selectedTier == .premium ? accentColor.opacity(0.15) : Color.clear)
-                .cornerRadius(12)
+                Text("Premium")
+                    .font(.appBodyMedium)
+                    .foregroundColor(selectedTier == .premium ? .white : accentColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(selectedTier == .premium ? accentColor : Color.clear)
             }
 
             // Family Plus tab
@@ -212,89 +175,95 @@ struct OnboardingPremiumView: View {
                     updateSelectedProduct()
                 }
             } label: {
-                VStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        Text("Family Plus")
-                            .font(.appBodyMedium)
-                            .foregroundColor(selectedTier == .familyPlus ? .textPrimary : .textSecondary)
-                    }
-                    Text("$7.99/mo")
-                        .font(.appCaption)
-                        .foregroundColor(selectedTier == .familyPlus ? .purple : .textMuted)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(selectedTier == .familyPlus ? Color.purple.opacity(0.15) : Color.clear)
-                .cornerRadius(12)
+                Text("Family Plus")
+                    .font(.appBodyMedium)
+                    .foregroundColor(selectedTier == .familyPlus ? .white : accentColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(selectedTier == .familyPlus ? accentColor : Color.clear)
             }
         }
-        .padding(4)
         .background(Color.cardBackground)
-        .cornerRadius(16)
+        .clipShape(Capsule())
     }
 
-    // MARK: - Pricing Section
-    private var pricingSection: some View {
-        VStack(spacing: 12) {
-            let tierProducts = productsForSelectedTier
-            if tierProducts.isEmpty {
-                // Fallback pricing
-                if selectedTier == .premium {
-                    pricingCard(
-                        title: "Monthly",
-                        price: "$4.99/month",
-                        isSelected: true,
-                        isBestValue: false,
-                        tierColor: accentColor
-                    )
-                    pricingCard(
-                        title: "Annual",
-                        price: "$39.99/year",
-                        subtitle: "Save 33%",
-                        isSelected: false,
-                        isBestValue: true,
-                        tierColor: accentColor
-                    )
-                } else {
-                    pricingCard(
-                        title: "Monthly",
-                        price: "$7.99/month",
-                        isSelected: true,
-                        isBestValue: false,
-                        tierColor: .purple
-                    )
-                    pricingCard(
-                        title: "Annual",
-                        price: "$63.99/year",
-                        subtitle: "Save 33%",
-                        isSelected: false,
-                        isBestValue: true,
-                        tierColor: .purple
-                    )
-                }
-            } else {
-                ForEach(tierProducts.sorted { $0.price < $1.price }) { product in
-                    productCard(product)
-                }
+    // MARK: - Plan Details Card
+    private var planDetailsCard: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Plan title
+            Text(selectedTier == .premium ? "Premium" : "Family Plus")
+                .font(.appTitle)
+                .foregroundColor(.textPrimary)
+
+            // Features description as paragraph
+            Text(selectedTier == .premium ? premiumDescription : familyPlusDescription)
+                .font(.appBody)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Pricing options
+            VStack(spacing: 12) {
+                // Monthly option
+                pricingOptionRow(
+                    title: "Monthly",
+                    price: selectedTier == .premium ? "$4.99/month" : "$9.99/month",
+                    isSelected: selectedBillingPeriod == .monthly,
+                    onSelect: { selectedBillingPeriod = .monthly; updateSelectedProduct() }
+                )
+
+                // Annual option
+                pricingOptionRow(
+                    title: "Annual",
+                    price: selectedTier == .premium ? "$39.99/year" : "$69.99/year",
+                    isSelected: selectedBillingPeriod == .annual,
+                    onSelect: { selectedBillingPeriod = .annual; updateSelectedProduct() }
+                )
             }
         }
-        .opacity(hasAppeared ? 1 : 0)
-        .offset(y: hasAppeared ? 0 : 20)
-        .animation(
-            reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.35),
-            value: hasAppeared
-        )
+        .padding(20)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 
-    private var productsForSelectedTier: [Product] {
-        let prefix = selectedTier == .premium ? "com.unforgotten.premium" : "com.unforgotten.family"
-        return products.filter { $0.id.hasPrefix(prefix) }
-    }
+    // MARK: - Pricing Option Row
+    private func pricingOptionRow(
+        title: String,
+        price: String,
+        isSelected: Bool,
+        onSelect: @escaping () -> Void
+    ) -> some View {
+        Button(action: onSelect) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
 
-    private func updateSelectedProduct() {
-        let tierProducts = productsForSelectedTier
-        // Default to annual if available
-        selectedProduct = tierProducts.first { $0.id.contains("annual") } ?? tierProducts.first
+                    Text(price)
+                        .font(.appCaption)
+                        .foregroundColor(accentColor)
+                }
+
+                Spacer()
+
+                // Selection indicator
+                Circle()
+                    .fill(isSelected ? accentColor : Color.clear)
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle()
+                            .stroke(isSelected ? accentColor : Color.textSecondary.opacity(0.5), lineWidth: 2)
+                    )
+            }
+            .padding(16)
+            .background(Color.cardBackgroundSoft.opacity(0.5))
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                    .stroke(isSelected ? accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Success View
@@ -316,89 +285,11 @@ struct OnboardingPremiumView: View {
         .padding(.vertical, 40)
     }
 
-    // MARK: - Pricing Card
-    private func pricingCard(
-        title: String,
-        price: String,
-        subtitle: String? = nil,
-        isSelected: Bool,
-        isBestValue: Bool,
-        tierColor: Color
-    ) -> some View {
-        VStack(spacing: 0) {
-            if isBestValue {
-                Text("BEST VALUE")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(tierColor)
-                    .clipShape(Capsule())
-                    .offset(y: 12)
-                    .zIndex(1)
-            }
-
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.appBodyMedium)
-                        .foregroundColor(.textPrimary)
-
-                    Text(price)
-                        .font(.appTitle)
-                        .foregroundColor(.textPrimary)
-
-                    if let subtitle = subtitle {
-                        Text(subtitle)
-                            .font(.appCaption)
-                            .foregroundColor(tierColor)
-                    }
-                }
-
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(tierColor)
-                }
-            }
-            .padding(20)
-            .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.cardCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .stroke(isSelected ? tierColor : Color.cardBackgroundLight, lineWidth: isSelected ? 2 : 1)
-            )
-        }
-    }
-
-    // MARK: - Product Card
-    private func productCard(_ product: Product) -> some View {
-        let isSelected = selectedProduct?.id == product.id
-        let isAnnual = product.id.contains("annual")
-        let tierColor: Color = selectedTier == .premium ? accentColor : .purple
-
-        return Button {
-            selectedProduct = product
-        } label: {
-            pricingCard(
-                title: isAnnual ? "Annual" : "Monthly",
-                price: product.displayPrice + (isAnnual ? "/year" : "/month"),
-                subtitle: isAnnual ? "Save 33%" : nil,
-                isSelected: isSelected,
-                isBestValue: isAnnual,
-                tierColor: tierColor
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: - Subscription Terms
     private var subscriptionTerms: some View {
         VStack(spacing: 8) {
-            Text("Subscription auto-renews unless cancelled at least 24 hours before the end of the current period. Manage subscriptions in Settings.")
-                .font(.system(size: 10))
+            Text("Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage subscriptions in Settings.")
+                .font(.system(size: 12))
                 .foregroundColor(.textMuted)
                 .multilineTextAlignment(.center)
 
@@ -406,7 +297,7 @@ struct OnboardingPremiumView: View {
                 Button("Terms of Use") {
                     // Open terms URL
                 }
-                .font(.system(size: 10))
+                .font(.system(size: 12))
                 .foregroundColor(.textSecondary)
 
                 Button("Privacy Policy") {
@@ -416,6 +307,7 @@ struct OnboardingPremiumView: View {
                 .foregroundColor(.textSecondary)
             }
         }
+        .frame(maxWidth: isRegularWidth ? 500 : .infinity)
         .padding(.horizontal, AppDimensions.screenPadding)
     }
 
@@ -423,37 +315,38 @@ struct OnboardingPremiumView: View {
     private var bottomButtons: some View {
         VStack(spacing: 12) {
             if purchaseState == .success {
-                PrimaryButton(
-                    title: "Continue",
-                    backgroundColor: selectedTier == .premium ? accentColor : .purple,
-                    action: onContinue
-                )
+                Button(action: onContinue) {
+                    Text("Continue")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: AppDimensions.buttonHeight)
+                        .background(accentColor)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                }
             } else {
                 // Subscribe button
-                PrimaryButton(
-                    title: "Subscribe to \(selectedTier == .premium ? "Premium" : "Family Plus")",
-                    isLoading: purchaseState == .purchasing,
-                    backgroundColor: selectedTier == .premium ? accentColor : .purple,
-                    action: purchase
-                )
-                .disabled(selectedProduct == nil && products.isEmpty)
-
-                // Restore purchases
-                Button {
-                    Task {
-                        await restorePurchases()
+                Button(action: purchase) {
+                    HStack {
+                        if purchaseState == .purchasing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Text("Start your 7 day free trial")
+                                .font(.appBodyMedium)
+                        }
                     }
-                } label: {
-                    Text("Restore Purchases")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppDimensions.buttonHeight)
+                    .background(accentColor)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
                 }
+                .disabled(purchaseState == .purchasing)
 
                 // Maybe later
-                Button {
-                    onContinue()
-                } label: {
-                    Text("Maybe later")
+                Button(action: onContinue) {
+                    Text("Maybe Later")
                         .font(.appBodyMedium)
                         .foregroundColor(.textSecondary)
                 }
@@ -463,14 +356,25 @@ struct OnboardingPremiumView: View {
 
     // MARK: - StoreKit Methods
 
+    private var productsForSelectedTier: [Product] {
+        let prefix = selectedTier == .premium ? "com.unforgotten.premium" : "com.unforgotten.family"
+        return products.filter { $0.id.hasPrefix(prefix) }
+    }
+
+    private func updateSelectedProduct() {
+        let tierProducts = productsForSelectedTier
+        let suffix = selectedBillingPeriod == .annual ? "annual" : "monthly"
+        selectedProduct = tierProducts.first { $0.id.contains(suffix) } ?? tierProducts.first
+    }
+
     private func loadProducts() async {
         purchaseState = .loading
         do {
             let storeProducts = try await Product.products(for: productIds)
             await MainActor.run {
                 products = storeProducts
-                // Select annual premium by default
-                selectedProduct = storeProducts.first { $0.id == "com.unforgotten.premium.annual" }
+                // Select monthly premium by default
+                selectedProduct = storeProducts.first { $0.id == "com.unforgotten.premium.monthly" }
                     ?? storeProducts.first { $0.id.contains("premium") }
                 purchaseState = .idle
             }
@@ -547,40 +451,6 @@ struct OnboardingPremiumView: View {
                 print("Purchase error: \(error)")
                 #endif
             }
-        }
-    }
-
-    private func restorePurchases() async {
-        do {
-            try await AppStore.sync()
-
-            // Check for active subscriptions
-            for await result in Transaction.currentEntitlements {
-                if case .verified(let transaction) = result {
-                    if productIds.contains(transaction.productID) {
-                        await MainActor.run {
-                            let tier: SubscriptionTier = transaction.productID.contains("family") ? .familyPlus : .premium
-                            onboardingData.isPremium = true
-                            onboardingData.subscriptionProductId = transaction.productID
-                            onboardingData.subscriptionTier = tier
-                            selectedTier = tier == .familyPlus ? .familyPlus : .premium
-                            purchaseState = .success
-                        }
-                        return
-                    }
-                }
-            }
-
-            await MainActor.run {
-                errorMessage = "No active subscription found."
-            }
-        } catch {
-            await MainActor.run {
-                errorMessage = "Failed to restore purchases."
-            }
-            #if DEBUG
-            print("Restore error: \(error)")
-            #endif
         }
     }
 }

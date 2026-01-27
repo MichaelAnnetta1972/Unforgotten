@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - Onboarding Notifications View
 /// Screen 7: Request notification permissions with value explanation
+/// Features a background image at the top with content anchored to the bottom
 struct OnboardingNotificationsView: View {
     @Bindable var onboardingData: OnboardingData
     let accentColor: Color
@@ -10,97 +11,106 @@ struct OnboardingNotificationsView: View {
     @State private var isRequesting = false
     @State private var hasAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        GeometryReader { geometry in
+            ZStack {
+                // Background with image at top
+                notificationsBackground(geometry: geometry)
 
-            // Content
-            VStack(spacing: 32) {
-                // Illustration placeholder
-                illustrationView
-                    .opacity(hasAppeared ? 1 : 0)
-                    .scaleEffect(hasAppeared ? 1 : 0.8)
-                    .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                        value: hasAppeared
-                    )
+                // Content anchored to bottom
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer()
 
-                // Headlines
-                VStack(spacing: 12) {
-                    Text("Stay on top of what matters")
-                        .font(.appLargeTitle)
-                        .foregroundColor(.textPrimary)
-                        .multilineTextAlignment(.center)
+                        // Form content
+                        VStack(spacing: isRegularWidth ? 32 : 24) {
+                            // Headlines
+                            VStack(spacing: 12) {
+                                Text("Stay on top of what matters")
+                                    .font(.appLargeTitle)
+                                    .foregroundColor(.textPrimary)
+                                    .multilineTextAlignment(.center)
+                                    .opacity(hasAppeared ? 1 : 0)
+                                    .offset(y: hasAppeared ? 0 : 10)
 
-                    Text("Get timely reminders for medications, birthdays, and appointments")
-                        .font(.appBody)
-                        .foregroundColor(.textSecondary)
-                        .multilineTextAlignment(.center)
+                                Text("Get timely reminders for medications, birthdays, and appointments")
+                                    .font(.appBody)
+                                    .foregroundColor(.textSecondary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .opacity(hasAppeared ? 1 : 0)
+                                    .offset(y: hasAppeared ? 0 : 10)
+                            }
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .animation(
+                                reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
+                                value: hasAppeared
+                            )
+
+                            // Notification examples
+                            VStack(spacing: isRegularWidth ? 16 : 12) {
+                                notificationExampleAnimated(
+                                    icon: "pills.fill",
+                                    title: "Time for your vitamins",
+                                    subtitle: "Tap to mark as taken",
+                                    delay: 0.1
+                                )
+
+                                notificationExampleAnimated(
+                                    icon: "calendar",
+                                    title: "Doctor's appointment tomorrow",
+                                    subtitle: "10:00 AM at City Medical Center",
+                                    delay: 0.2
+                                )
+
+                                notificationExampleAnimated(
+                                    icon: "gift.fill",
+                                    title: "Sarah's birthday is today!",
+                                    subtitle: "Don't forget to wish her well",
+                                    delay: 0.3
+                                )
+                            }
+                            .frame(maxWidth: isRegularWidth ? 500 : .infinity)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+
+                            // Bottom buttons
+                            VStack(spacing: isRegularWidth ? 20 : 16) {
+                                PrimaryButton(
+                                    title: "Enable Notifications",
+                                    isLoading: isRequesting,
+                                    backgroundColor: accentColor,
+                                    action: requestNotifications
+                                )
+
+                                Button {
+                                    onContinue()
+                                } label: {
+                                    Text("Not now")
+                                        .font(.appBodyMedium)
+                                        .foregroundColor(.textSecondary)
+                                }
+                                .disabled(isRequesting)
+                            }
+                            .frame(maxWidth: isRegularWidth ? 400 : .infinity)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(
+                                reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.4),
+                                value: hasAppeared
+                            )
+                        }
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + (isRegularWidth ? 48 : 32))
+                    }
+                    .frame(minHeight: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .opacity(hasAppeared ? 1 : 0)
-                .offset(y: hasAppeared ? 0 : 15)
-                .animation(
-                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.1),
-                    value: hasAppeared
-                )
-
-                // Notification examples
-                VStack(spacing: 12) {
-                    notificationExampleAnimated(
-                        icon: "pills.fill",
-                        title: "Time for your vitamins",
-                        subtitle: "Tap to mark as taken",
-                        delay: 0.2
-                    )
-
-                    notificationExampleAnimated(
-                        icon: "calendar",
-                        title: "Doctor's appointment tomorrow",
-                        subtitle: "10:00 AM at City Medical Center",
-                        delay: 0.3
-                    )
-
-                    notificationExampleAnimated(
-                        icon: "gift.fill",
-                        title: "Sarah's birthday is today!",
-                        subtitle: "Don't forget to wish her well",
-                        delay: 0.4
-                    )
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
             }
-
-            Spacer()
-            Spacer()
-
-            // Bottom buttons
-            VStack(spacing: 16) {
-                PrimaryButton(
-                    title: "Enable Notifications",
-                    isLoading: isRequesting,
-                    backgroundColor: accentColor,
-                    action: requestNotifications
-                )
-
-                Button {
-                    onContinue()
-                } label: {
-                    Text("Not now")
-                        .font(.appBodyMedium)
-                        .foregroundColor(.textSecondary)
-                }
-                .disabled(isRequesting)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.bottom, 48)
-            .opacity(hasAppeared ? 1 : 0)
-            .offset(y: hasAppeared ? 0 : 20)
-            .animation(
-                reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.5),
-                value: hasAppeared
-            )
+            .ignoresSafeArea()
         }
         .onAppear {
             guard !hasAppeared else { return }
@@ -114,17 +124,37 @@ struct OnboardingNotificationsView: View {
         }
     }
 
-    // MARK: - Illustration View
-    private var illustrationView: some View {
-        // Placeholder illustration - replace with actual asset
-        ZStack {
-            Circle()
-                .fill(accentColor.opacity(0.15))
-                .frame(width: 140, height: 140)
+    // MARK: - Background
+    @ViewBuilder
+    private func notificationsBackground(geometry: GeometryProxy) -> some View {
+        ZStack(alignment: .top) {
+            // Base dark background
+            Color.appBackground
 
-            Image(systemName: "bell.badge.fill")
-                .font(.system(size: 60))
-                .foregroundColor(accentColor)
+            // Background image - aligned to top
+            Image("onboarding-notifications-bg")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: geometry.size.width)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .clipped()
+
+            // Gradient overlay for smooth transition to content area
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: geometry.size.height * 0.3)
+
+                LinearGradient(
+                    colors: [
+                        Color.appBackground.opacity(0),
+                        Color.appBackground.opacity(0.5),
+                        Color.appBackground.opacity(0.9),
+                        Color.appBackground
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
         }
     }
 

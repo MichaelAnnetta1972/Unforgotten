@@ -1140,6 +1140,6 @@ private extension String {
 #Preview {
     NavigationStack {
         FamilyTreeView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }

@@ -371,7 +371,7 @@ struct AccountDetailHeaderView: View {
             onDelete: {},
             onUpdate: { _ in }
         )
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
         .environment(HeaderStyleManager())
     }
 }

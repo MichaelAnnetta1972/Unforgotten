@@ -157,5 +157,5 @@ struct AddUsefulContactView: View {
 // MARK: - Preview
 #Preview {
     AddUsefulContactView { _ in }
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

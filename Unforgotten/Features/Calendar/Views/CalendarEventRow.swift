@@ -20,14 +20,14 @@ struct CalendarEventRow: View {
     var body: some View {
         HStack(spacing: 12) {
             // Color indicator and icon
-        //    VStack {
-        //        Image(systemName: event.icon)
-        //            .font(.system(size: 16))
-        //            .foregroundColor(event.color)
-        //    }
-        //    .frame(width: 40, height: 40)
-        //    .background(event.color.opacity(0.2))
-        //    .cornerRadius(10)
+            VStack {
+                Image(systemName: event.icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(event.color)
+            }
+            .frame(width: 40, height: 40)
+            .background(event.color.opacity(0.2))
+            .cornerRadius(10)
 
             // Event details
             VStack(alignment: .leading, spacing: 4) {

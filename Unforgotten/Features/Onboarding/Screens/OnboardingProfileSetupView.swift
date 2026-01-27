@@ -3,6 +3,7 @@ import PhotosUI
 
 // MARK: - Onboarding Profile Setup View
 /// Screen 2: Collect user's profile information (photo, first name, last name)
+/// Features a background image in the upper portion with form below
 struct OnboardingProfileSetupView: View {
     @Bindable var onboardingData: OnboardingData
     let accentColor: Color
@@ -13,135 +14,142 @@ struct OnboardingProfileSetupView: View {
     @State private var hasAppeared = false
     @FocusState private var focusedField: Field?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
     private enum Field: Hashable {
         case firstName
         case lastName
     }
 
+    // Button gradient colors matching design
+    private let buttonGradient = LinearGradient(
+        colors: [Color(hex: "79A5D7"), Color(hex: "8CBFD3")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 32) {
-                Spacer()
-                    .frame(height: 40)
+        GeometryReader { geometry in
+            ZStack {
+                // Background with image in top portion
+                profileBackground(geometry: geometry)
 
-                // Header
-                VStack(spacing: 12) {
-                    Text("Let's set up your profile")
-                        .font(.appLargeTitle)
-                        .foregroundColor(.textPrimary)
-                        .multilineTextAlignment(.center)
+                // Content anchored to bottom
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer()
 
-                    Text("This helps personalize your experience")
-                        .font(.appBody)
-                        .foregroundColor(.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .opacity(hasAppeared ? 1 : 0)
-                .offset(y: hasAppeared ? 0 : 15)
-                .animation(
-                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                    value: hasAppeared
-                )
+                        // Form content
+                        VStack(spacing: isRegularWidth ? 32 : 24) {
+                            // Header
+                            VStack(spacing: 12) {
+                                Text("Let's set up your profile")
+                                    .font(.appLargeTitle)
+                                    .foregroundColor(.textPrimary)
+                                    .multilineTextAlignment(.center)
+                                    .opacity(hasAppeared ? 1 : 0)
+                                    .offset(y: hasAppeared ? 0 : 15)
 
-                // Photo picker
-                photoPicker
-                    .padding(.top, 16)
-                    .opacity(hasAppeared ? 1 : 0)
-                    .scaleEffect(hasAppeared ? 1 : 0.9)
-                    .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.1),
-                        value: hasAppeared
-                    )
-
-                // Name fields
-                VStack(spacing: 16) {
-                    // First name
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("First name")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        TextField("", text: $onboardingData.firstName)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                            .padding()
-                            .frame(height: AppDimensions.textFieldHeight)
-                            .background(Color.cardBackgroundSoft)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                    .stroke(focusedField == .firstName ? accentColor : Color.textSecondary.opacity(0.3), lineWidth: 1)
-                            )
-                            .focused($focusedField, equals: .firstName)
-                            .textContentType(.givenName)
-                            .submitLabel(.next)
-                            .onSubmit {
-                                focusedField = .lastName
+                                Text("This helps personalise your experience")
+                                    .font(.appBody)
+                                    .foregroundColor(.textSecondary)
+                                    .multilineTextAlignment(.center)
+                                    .opacity(hasAppeared ? 1 : 0)
+                                    .offset(y: hasAppeared ? 0 : 15)
                             }
-                    }
-                    .opacity(hasAppeared ? 1 : 0)
-                    .offset(y: hasAppeared ? 0 : 20)
-                    .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.2),
-                        value: hasAppeared
-                    )
-
-                    // Last name
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Last name")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        TextField("", text: $onboardingData.lastName)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                            .padding()
-                            .frame(height: AppDimensions.textFieldHeight)
-                            .background(Color.cardBackgroundSoft)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                    .stroke(focusedField == .lastName ? accentColor : Color.textSecondary.opacity(0.3), lineWidth: 1)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .animation(
+                                reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
+                                value: hasAppeared
                             )
-                            .focused($focusedField, equals: .lastName)
-                            .textContentType(.familyName)
-                            .submitLabel(.done)
-                            .onSubmit {
-                                focusedField = nil
+
+                            // Photo picker
+                            photoPicker
+                                .padding(.top, isRegularWidth ? 12 : 8)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .scaleEffect(hasAppeared ? 1 : 0.9)
+                                .animation(
+                                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.1),
+                                    value: hasAppeared
+                                )
+
+                            // Name fields
+                            VStack(spacing: 16) {
+                                // First name
+                                OnboardingTextField(
+                                    placeholder: "First Name",
+                                    text: $onboardingData.firstName,
+                                    isFocused: focusedField == .firstName,
+                                    accentColor: accentColor
+                                )
+                                .focused($focusedField, equals: .firstName)
+                                .textContentType(.givenName)
+                                .submitLabel(.next)
+                                .onSubmit {
+                                    focusedField = .lastName
+                                }
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(
+                                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.2),
+                                    value: hasAppeared
+                                )
+
+                                // Last name
+                                OnboardingTextField(
+                                    placeholder: "Last Name",
+                                    text: $onboardingData.lastName,
+                                    isFocused: focusedField == .lastName,
+                                    accentColor: accentColor
+                                )
+                                .focused($focusedField, equals: .lastName)
+                                .textContentType(.familyName)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    focusedField = nil
+                                }
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(
+                                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.3),
+                                    value: hasAppeared
+                                )
                             }
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .frame(maxWidth: isRegularWidth ? 500 : .infinity)
+
+                            // Continue button
+                            Button(action: onContinue) {
+                                Text("Continue")
+                                    .font(.appBodyMedium)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: AppDimensions.buttonHeight)
+                                    .background(buttonGradient)
+                                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                            }
+                            .disabled(!onboardingData.isProfileValid)
+                            .opacity(onboardingData.isProfileValid ? 1 : 0.6)
+                            .frame(maxWidth: isRegularWidth ? 400 : .infinity)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .padding(.top, isRegularWidth ? 24 : 16)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(
+                                reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.4),
+                                value: hasAppeared
+                            )
+                        }
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + (isRegularWidth ? 48 : 32))
                     }
-                    .opacity(hasAppeared ? 1 : 0)
-                    .offset(y: hasAppeared ? 0 : 20)
-                    .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.3),
-                        value: hasAppeared
-                    )
+                    .frame(minHeight: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-
-                Spacer()
-                    .frame(minHeight: 60)
-
-                // Continue button
-                PrimaryButton(
-                    title: "Continue",
-                    backgroundColor: accentColor,
-                    action: onContinue
-                )
-                .disabled(!onboardingData.isProfileValid)
-                .opacity(onboardingData.isProfileValid ? 1 : 0.6)
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.bottom, 48)
-                .offset(y: hasAppeared ? 0 : 20)
-                .animation(
-                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.4),
-                    value: hasAppeared
-                )
+                .scrollDismissesKeyboard(.interactively)
             }
+            .ignoresSafeArea()
         }
-        .scrollDismissesKeyboard(.interactively)
         .onAppear {
             guard !hasAppeared else { return }
             if reduceMotion {
@@ -154,6 +162,40 @@ struct OnboardingProfileSetupView: View {
         }
     }
 
+    // MARK: - Profile Background
+    @ViewBuilder
+    private func profileBackground(geometry: GeometryProxy) -> some View {
+        ZStack(alignment: .top) {
+            // Base dark background
+            Color.appBackground
+
+            // Background image - aligned to top, fixed position
+            Image("onboarding-profile-bg")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: geometry.size.width)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .clipped()
+
+            // Gradient overlay for smooth transition to content area
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: geometry.size.height * 0.3)
+
+                LinearGradient(
+                    colors: [
+                        Color.appBackground.opacity(0),
+                        Color.appBackground.opacity(0.5),
+                        Color.appBackground.opacity(0.9),
+                        Color.appBackground
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+    }
+
     // MARK: - Photo Picker
     private var photoPicker: some View {
         VStack(spacing: 12) {
@@ -161,8 +203,8 @@ struct OnboardingProfileSetupView: View {
                 ZStack {
                     // Background circle
                     Circle()
-                        .fill(Color.cardBackgroundSoft)
-                        .frame(width: 120, height: 120)
+                        .fill(Color.white)
+                        .frame(width: 100, height: 100)
 
                     if isLoadingPhoto {
                         ProgressView()
@@ -171,51 +213,35 @@ struct OnboardingProfileSetupView: View {
                         Image(uiImage: photo)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 120, height: 120)
+                            .frame(width: 100, height: 100)
                             .clipShape(Circle())
                     } else {
-                        VStack(spacing: 8) {
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 40))
-                                .foregroundColor(.textSecondary)
-
-                            Text("Add Photo")
-                                .font(.appCaption)
-                                .foregroundColor(accentColor)
-                        }
+                        // Person icon placeholder
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(.black.opacity(0.3))
                     }
 
                     // Edit badge when photo is set
                     if onboardingData.profilePhoto != nil && !isLoadingPhoto {
                         Circle()
                             .fill(accentColor)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 28, height: 28)
                             .overlay(
                                 Image(systemName: "pencil")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(.white)
                             )
-                            .offset(x: 40, y: 40)
+                            .offset(x: 35, y: 35)
                     }
                 }
             }
             .accessibilityLabel(onboardingData.profilePhoto != nil ? "Change profile photo" : "Add profile photo")
 
-            // Skip option
-            if onboardingData.profilePhoto == nil {
-                Text("You can add a photo later")
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-            } else {
-                Button {
-                    onboardingData.profilePhoto = nil
-                    selectedPhotoItem = nil
-                } label: {
-                    Text("Remove photo")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-                }
-            }
+            // Helper text
+            Text("Add your photo")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
         }
         .onChange(of: selectedPhotoItem) { _, newItem in
             guard let newItem = newItem else { return }
@@ -249,6 +275,29 @@ struct OnboardingProfileSetupView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Onboarding Text Field
+/// Styled text field for onboarding screens
+struct OnboardingTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    var isFocused: Bool = false
+    var accentColor: Color = .accentYellow
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .font(.appBody)
+            .foregroundColor(.textPrimary)
+            .padding(.horizontal, 20)
+            .frame(height: AppDimensions.textFieldHeight)
+            .background(Color.cardBackground.opacity(0.8))
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                    .stroke(isFocused ? accentColor : Color.clear, lineWidth: 2)
+            )
     }
 }
 

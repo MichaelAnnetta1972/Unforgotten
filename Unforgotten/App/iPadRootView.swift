@@ -16,6 +16,7 @@ enum iPadContentSelection: Hashable {
     case profiles
     case medications
     case appointments
+    case countdownEvents
     case calendar
     case todoLists
     case notes
@@ -438,6 +439,30 @@ struct iPadRootView: View {
                 iPadHomeSidebar(
                     selectedContent: $selectedContent
                 )
+                .environment(\.iPadTodayMedicationAction, { medication in
+                    selectedContent = .medications
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        navigationPath.append(medication)
+                    }
+                })
+                .environment(\.iPadTodayAppointmentAction, { appointment in
+                    selectedContent = .appointments
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        navigationPath.append(appointment)
+                    }
+                })
+                .environment(\.iPadTodayProfileAction, { profile in
+                    selectedContent = .profiles
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        navigationPath.append(profile)
+                    }
+                })
+                .environment(\.iPadTodayCountdownAction, { countdown in
+                    selectedContent = .countdownEvents
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        navigationPath.append(countdown)
+                    }
+                })
                 .frame(width: 400)
 
                 // Gap between panels
@@ -983,6 +1008,8 @@ struct iPadRootView: View {
                     MedicationListView()
                 case .appointments:
                     AppointmentListView()
+                case .countdownEvents:
+                    CountdownEventsView()
                 case .calendar:
                     CalendarView()
                 case .todoLists:
@@ -1023,7 +1050,7 @@ struct iPadRootView: View {
 
 #Preview("iPad Root View") {
     iPadRootView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
         .environment(UserHeaderOverrides())
         .environment(UserPreferences())
         .environment(HeaderStyleManager())

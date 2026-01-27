@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import UIKit
 import UserNotifications
 
@@ -18,16 +19,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct UnforgottenApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var appState = AppState()
     @State private var userPreferences = UserPreferences()
     @State private var headerOverrides = UserHeaderOverrides()
     @State private var headerStyleManager = HeaderStyleManager()
     @State private var featureVisibility = FeatureVisibilityManager()
     @Environment(\.scenePhase) private var scenePhase
 
+    // MARK: - Local Storage
+    private let localStorageContainer: ModelContainer
+    @StateObject private var appState: AppState
+
     init() {
-        // Configure the preferences sync service with manager references
-        // Note: Must be done after managers are initialized
+        // Initialize the local storage container
+        let container: ModelContainer
+        do {
+            container = try LocalStorageContainer.create()
+        } catch {
+            fatalError("Failed to create local storage container: \(error)")
+        }
+        self.localStorageContainer = container
+
+        // Initialize AppState with the model context
+        let context = ModelContext(container)
+        _appState = StateObject(wrappedValue: AppState(modelContext: context))
     }
 
     var body: some Scene {
@@ -78,6 +92,12 @@ struct UnforgottenApp: App {
                     // wasn't running when a reminder was created on another device
                     Task {
                         await appState.syncStickyReminderNotifications()
+                    }
+
+                    // Refresh data from server when app becomes active
+                    // This catches any changes made on other devices
+                    Task {
+                        await appState.refreshDataFromRemote()
                     }
                 }
             }
@@ -179,22 +199,40 @@ final class AppState: ObservableObject {
     // MARK: - Post-Onboarding Navigation
     @Published var pendingOnboardingAction: OnboardingFirstAction?
 
-    // MARK: - Repositories
+    // MARK: - Local Storage & Sync
+    private let modelContext: ModelContext
+    let syncEngine: SyncEngine
+
+    // MARK: - Remote Repositories (for operations not cached locally)
     let authRepository = AuthRepository()
     let accountRepository = AccountRepository()
     let invitationRepository = InvitationRepository()
-    let profileRepository = ProfileRepository()
-    let medicationRepository = MedicationRepository()
-    let appointmentRepository = AppointmentRepository()
-    let usefulContactRepository = UsefulContactRepository()
-    let moodRepository = MoodRepository()
-    let toDoRepository = ToDoRepository()
-    let importantAccountRepository = ImportantAccountRepository()
-    let stickyReminderRepository = StickyReminderRepository()
     let appUserRepository = AppUserRepository()
-    let countdownRepository = CountdownRepository()
     let familyCalendarRepository = FamilyCalendarRepository()
-    // Note: Notes feature now uses SwiftData (see Features/Notes/)
+
+    // MARK: - Cached Repositories (offline-first)
+    let cachedProfileRepository: CachedProfileRepository
+    let cachedMedicationRepository: CachedMedicationRepository
+    let cachedAppointmentRepository: CachedAppointmentRepository
+    let cachedUsefulContactRepository: CachedUsefulContactRepository
+    let cachedMoodRepository: CachedMoodRepository
+    let cachedToDoRepository: CachedToDoRepository
+    let cachedImportantAccountRepository: CachedImportantAccountRepository
+    let cachedStickyReminderRepository: CachedStickyReminderRepository
+    let cachedCountdownRepository: CachedCountdownRepository
+
+    // MARK: - Legacy Repository Access (for backward compatibility)
+    // These provide access to cached repositories through the old property names
+    var profileRepository: CachedProfileRepository { cachedProfileRepository }
+    var medicationRepository: CachedMedicationRepository { cachedMedicationRepository }
+    var appointmentRepository: CachedAppointmentRepository { cachedAppointmentRepository }
+    var usefulContactRepository: CachedUsefulContactRepository { cachedUsefulContactRepository }
+    var moodRepository: CachedMoodRepository { cachedMoodRepository }
+    var toDoRepository: CachedToDoRepository { cachedToDoRepository }
+    var importantAccountRepository: CachedImportantAccountRepository { cachedImportantAccountRepository }
+    var stickyReminderRepository: CachedStickyReminderRepository { cachedStickyReminderRepository }
+    var countdownRepository: CachedCountdownRepository { cachedCountdownRepository }
+    // Note: Notes feature uses its own SwiftData container (see Features/Notes/)
 
     // MARK: - App Admin State
     @Published var isAppAdmin = false
@@ -248,7 +286,60 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Initialization
-    init() {
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+
+        // Initialize sync engine
+        let syncEngine = SyncEngine(modelContext: modelContext)
+        self.syncEngine = syncEngine
+
+        // Initialize cached repositories
+        self.cachedProfileRepository = CachedProfileRepository(
+            modelContext: modelContext,
+            remoteRepository: ProfileRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedMedicationRepository = CachedMedicationRepository(
+            modelContext: modelContext,
+            remoteRepository: MedicationRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedAppointmentRepository = CachedAppointmentRepository(
+            modelContext: modelContext,
+            remoteRepository: AppointmentRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedUsefulContactRepository = CachedUsefulContactRepository(
+            modelContext: modelContext,
+            remoteRepository: UsefulContactRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedMoodRepository = CachedMoodRepository(
+            modelContext: modelContext,
+            remoteRepository: MoodRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedToDoRepository = CachedToDoRepository(
+            modelContext: modelContext,
+            remoteRepository: ToDoRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedImportantAccountRepository = CachedImportantAccountRepository(
+            modelContext: modelContext,
+            remoteRepository: ImportantAccountRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedStickyReminderRepository = CachedStickyReminderRepository(
+            modelContext: modelContext,
+            remoteRepository: StickyReminderRepository(),
+            syncEngine: syncEngine
+        )
+        self.cachedCountdownRepository = CachedCountdownRepository(
+            modelContext: modelContext,
+            remoteRepository: CountdownRepository(),
+            syncEngine: syncEngine
+        )
+
         // Setup notification categories and delegate
         NotificationService.shared.setupNotificationCategories()
         NotificationService.shared.delegate = self
@@ -268,6 +359,18 @@ final class AppState: ObservableObject {
         }
     }
     
+    /// Creates an AppState instance for SwiftUI Previews
+    @MainActor
+    static func forPreview() -> AppState {
+        do {
+            let container = try LocalStorageContainer.createPreviewContainer()
+            let context = ModelContext(container)
+            return AppState(modelContext: context)
+        } catch {
+            fatalError("Failed to create preview AppState: \(error)")
+        }
+    }
+
     // MARK: - Auth State
     func checkAuthState() async {
         isLoading = true
@@ -342,43 +445,33 @@ final class AppState: ObservableObject {
     // MARK: - Load Account Data
     func loadAccountData() async {
         do {
-            // Fetch all accounts the user has access to
-            allAccounts = try await accountRepository.getAllUserAccounts()
+            // First, try to load from local cache for instant UI (offline-first)
+            let cachedAccounts = try await loadAccountsFromCache()
 
-            // Determine which account to load
-            var accountToLoad: Account?
+            if !cachedAccounts.isEmpty {
+                // Show cached data immediately
+                allAccounts = cachedAccounts
+                await selectAndLoadAccount()
 
-            // Check if there's a previously selected account
-            if let savedAccountIdString = UserDefaults.standard.string(forKey: selectedAccountIdKey),
-               let savedAccountId = UUID(uuidString: savedAccountIdString),
-               let savedAccount = allAccounts.first(where: { $0.account.id == savedAccountId }) {
-                accountToLoad = savedAccount.account
-            }
-            // Otherwise, default to owned account first
-            else if let owned = ownedAccount {
-                accountToLoad = owned.account
-            }
-            // Fall back to first available account
-            else if let first = allAccounts.first {
-                accountToLoad = first.account
-            }
-
-            if let account = accountToLoad {
-                currentAccount = account
-                currentUserRole = try await accountRepository.getCurrentUserRole(accountId: account.id)
-                isViewingOtherAccount = !(ownedAccount?.account.id == account.id)
-                hasCompletedOnboarding = true
-
-                // Save the selected account
-                UserDefaults.standard.set(account.id.uuidString, forKey: selectedAccountIdKey)
-
-                // Start realtime sync for cross-device updates
-                await RealtimeSyncService.shared.startListening(accountId: account.id)
+                // Then sync in background
+                Task {
+                    await syncAccountDataInBackground()
+                }
             } else {
-                currentAccount = nil
-                currentUserRole = nil
-                isViewingOtherAccount = false
-                hasCompletedOnboarding = false
+                // No cache - fetch from network (first-time user or cleared cache)
+                allAccounts = try await accountRepository.getAllUserAccounts()
+
+                // Cache the fetched accounts and members locally for future offline access
+                await cacheAccountsLocally(allAccounts)
+
+                await selectAndLoadAccount()
+
+                // Sync all entity data for the selected account
+                if let account = currentAccount {
+                    Task {
+                        await syncEngine.performFullSync(accountId: account.id)
+                    }
+                }
             }
         } catch {
             #if DEBUG
@@ -389,6 +482,154 @@ final class AppState: ObservableObject {
             allAccounts = []
             isViewingOtherAccount = false
             hasCompletedOnboarding = false
+        }
+    }
+
+    /// Load accounts from local cache
+    private func loadAccountsFromCache() async throws -> [AccountWithRole] {
+        let descriptor = FetchDescriptor<LocalAccount>(
+            predicate: #Predicate { !$0.locallyDeleted }
+        )
+        let localAccounts = try modelContext.fetch(descriptor)
+
+        // Convert to AccountWithRole (we'll need to fetch roles separately)
+        var result: [AccountWithRole] = []
+        for local in localAccounts {
+            let localAccountId = local.id
+            let memberDescriptor = FetchDescriptor<LocalAccountMember>(
+                predicate: #Predicate { $0.accountId == localAccountId && !$0.locallyDeleted }
+            )
+            let members = try modelContext.fetch(memberDescriptor)
+
+            // Find current user's membership
+            if let userId = await SupabaseManager.shared.currentUserId,
+               let membership = members.first(where: { $0.userId == userId }) {
+                let account = local.toRemote()
+                let role = MemberRole(rawValue: membership.role) ?? .viewer
+                let isOwner = local.ownerUserId == userId
+                result.append(AccountWithRole(account: account, role: role, isOwner: isOwner))
+            }
+        }
+
+        return result
+    }
+
+    /// Cache accounts and members locally for offline access
+    private func cacheAccountsLocally(_ accountsWithRoles: [AccountWithRole]) async {
+        guard let userId = await SupabaseManager.shared.currentUserId else { return }
+
+        for accountWithRole in accountsWithRoles {
+            let account = accountWithRole.account
+
+            // Check if account already exists locally
+            let accountId = account.id
+            let existingDescriptor = FetchDescriptor<LocalAccount>(
+                predicate: #Predicate { $0.id == accountId }
+            )
+
+            if let existing = try? modelContext.fetch(existingDescriptor).first {
+                // Update existing account
+                existing.update(from: account)
+            } else {
+                // Insert new account
+                let localAccount = LocalAccount(from: account)
+                modelContext.insert(localAccount)
+            }
+
+            // Cache the membership
+            let memberDescriptor = FetchDescriptor<LocalAccountMember>(
+                predicate: #Predicate { $0.accountId == accountId && $0.userId == userId }
+            )
+
+            if let existingMember = try? modelContext.fetch(memberDescriptor).first {
+                // Update existing membership
+                existingMember.role = accountWithRole.role.rawValue
+                existingMember.isSynced = true
+            } else {
+                // Insert new membership
+                let localMember = LocalAccountMember(
+                    id: UUID(),
+                    accountId: account.id,
+                    userId: userId,
+                    role: accountWithRole.role.rawValue,
+                    isSynced: true
+                )
+                modelContext.insert(localMember)
+            }
+        }
+
+        try? modelContext.save()
+
+        #if DEBUG
+        print("🔄 Cached \(accountsWithRoles.count) accounts locally")
+        #endif
+    }
+
+    /// Select and load the appropriate account
+    private func selectAndLoadAccount() async {
+        var accountToLoad: Account?
+
+        // Check if there's a previously selected account
+        if let savedAccountIdString = UserDefaults.standard.string(forKey: selectedAccountIdKey),
+           let savedAccountId = UUID(uuidString: savedAccountIdString),
+           let savedAccount = allAccounts.first(where: { $0.account.id == savedAccountId }) {
+            accountToLoad = savedAccount.account
+        }
+        // Otherwise, default to owned account first
+        else if let owned = ownedAccount {
+            accountToLoad = owned.account
+        }
+        // Fall back to first available account
+        else if let first = allAccounts.first {
+            accountToLoad = first.account
+        }
+
+        if let account = accountToLoad {
+            currentAccount = account
+            currentUserRole = allAccounts.first(where: { $0.account.id == account.id })?.role
+            isViewingOtherAccount = !(ownedAccount?.account.id == account.id)
+            hasCompletedOnboarding = true
+
+            // Save the selected account
+            UserDefaults.standard.set(account.id.uuidString, forKey: selectedAccountIdKey)
+
+            // Start realtime sync for cross-device updates
+            await RealtimeSyncService.shared.startListening(accountId: account.id)
+        } else {
+            currentAccount = nil
+            currentUserRole = nil
+            isViewingOtherAccount = false
+            hasCompletedOnboarding = false
+        }
+    }
+
+    /// Sync account data in background
+    private func syncAccountDataInBackground() async {
+        guard let account = currentAccount else { return }
+
+        do {
+            // Fetch fresh account list from server
+            let freshAccounts = try await accountRepository.getAllUserAccounts()
+            allAccounts = freshAccounts
+
+            // Cache the fresh accounts locally
+            await cacheAccountsLocally(freshAccounts)
+
+            // Update role if changed
+            if let freshRole = freshAccounts.first(where: { $0.account.id == account.id })?.role {
+                currentUserRole = freshRole
+            }
+
+            // Perform full sync for all entity data
+            await syncEngine.performFullSync(accountId: account.id)
+
+            #if DEBUG
+            print("🔄 Background sync completed for account: \(account.id)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("🔄 Background sync failed: \(error)")
+            #endif
         }
     }
 
@@ -410,6 +651,11 @@ final class AppState: ObservableObject {
 
         // Start realtime sync for the new account
         await RealtimeSyncService.shared.startListening(accountId: accountWithRole.account.id)
+
+        // Trigger background sync for the new account
+        Task {
+            await syncEngine.performFullSync(accountId: accountWithRole.account.id)
+        }
 
         // Reload notifications for the new account
         await rescheduleNotifications()
@@ -624,10 +870,8 @@ final class AppState: ObservableObject {
         guard let account = currentAccount else { return }
 
         do {
-            try await medicationRepository.generateDailyLogs(
-                accountId: account.id,
-                date: Date()
-            )
+            // Generate logs locally for offline support
+            try await syncEngine.generateLocalMedicationLogs(accountId: account.id)
         } catch {
             #if DEBUG
             print("Error generating medication logs: \(error)")
@@ -722,6 +966,61 @@ final class AppState: ObservableObject {
         } catch {
             #if DEBUG
             print("Error syncing sticky reminder notifications: \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - Refresh Data From Remote
+    /// Refresh cached data from the remote server when app becomes active
+    /// This ensures data syncs across devices even without realtime subscriptions
+    func refreshDataFromRemote() async {
+        guard let account = currentAccount else {
+            #if DEBUG
+            print("📱 No account, skipping data refresh")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("📱 Refreshing data from remote for account: \(account.id)")
+        #endif
+
+        // Refresh countdowns
+        do {
+            _ = try await countdownRepository.refreshFromRemote(accountId: account.id)
+            NotificationCenter.default.post(name: .countdownsDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed countdowns from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing countdowns: \(error)")
+            #endif
+        }
+
+        // Refresh appointments
+        do {
+            _ = try await appointmentRepository.refreshFromRemote(accountId: account.id)
+            NotificationCenter.default.post(name: .appointmentsDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed appointments from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing appointments: \(error)")
+            #endif
+        }
+
+        // Refresh sticky reminders
+        do {
+            _ = try await stickyReminderRepository.refreshFromRemote(accountId: account.id)
+            NotificationCenter.default.post(name: .stickyRemindersDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed sticky reminders from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing sticky reminders: \(error)")
             #endif
         }
     }

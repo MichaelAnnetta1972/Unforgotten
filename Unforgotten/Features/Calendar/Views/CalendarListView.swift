@@ -7,13 +7,15 @@ struct CalendarListView: View {
 
     var scrollProxy: ScrollViewProxy?
     @Binding var scrollToTodayTrigger: Bool
+    var onEventSelected: ((CalendarEvent) -> Void)?
 
     private let calendar = Calendar.current
 
-    init(viewModel: CalendarViewModel, scrollProxy: ScrollViewProxy? = nil, scrollToTodayTrigger: Binding<Bool> = .constant(false)) {
+    init(viewModel: CalendarViewModel, scrollProxy: ScrollViewProxy? = nil, scrollToTodayTrigger: Binding<Bool> = .constant(false), onEventSelected: ((CalendarEvent) -> Void)? = nil) {
         self.viewModel = viewModel
         self.scrollProxy = scrollProxy
         self._scrollToTodayTrigger = scrollToTodayTrigger
+        self.onEventSelected = onEventSelected
     }
 
     /// All events sorted by date/time for flat list display
@@ -25,8 +27,13 @@ struct CalendarListView: View {
     var body: some View {
         LazyVStack(spacing: AppDimensions.cardSpacing) {
             ForEach(sortedEvents) { event in
-                CalendarEventRow(event: event, showDate: true)
-                    .id(eventId(for: event))
+                Button {
+                    onEventSelected?(event)
+                } label: {
+                    CalendarEventRow(event: event, showDate: true)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .id(eventId(for: event))
             }
         }
         .onChange(of: scrollToTodayTrigger) { _, _ in

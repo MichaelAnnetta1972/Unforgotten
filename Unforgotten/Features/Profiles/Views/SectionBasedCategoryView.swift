@@ -746,5 +746,5 @@ struct AddSectionItemView: View {
         category: .hobbies,
         details: []
     )
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }

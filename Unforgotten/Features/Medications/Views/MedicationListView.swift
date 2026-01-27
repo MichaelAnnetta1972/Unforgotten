@@ -2865,6 +2865,6 @@ struct EditMedicationView: View {
 #Preview {
     NavigationStack {
         MedicationListView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }

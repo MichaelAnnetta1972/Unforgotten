@@ -901,6 +901,6 @@ private struct ContactCategoryFilterOverlay: View {
 #Preview {
     NavigationStack {
         UsefulContactsListView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }

@@ -4,10 +4,11 @@ import SwiftUI
 /// Represents toggleable features in the app
 enum Feature: String, CaseIterable, Identifiable {
     case aboutMe = "about_me"
+    case calendar = "calendar"
     case familyAndFriends = "family_and_friends"
     case medications = "medications"
     case appointments = "appointments"
-    case calendar = "calendar"
+    case countdownEvents = "countdown_events"
     case todoLists = "todo_lists"
     case notes = "notes"
     case stickyReminders = "sticky_reminders"
@@ -20,10 +21,11 @@ enum Feature: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .aboutMe: return "About Me"
+        case .calendar: return "Calendar"
         case .familyAndFriends: return "Family & Friends"
         case .medications: return "Medications"
         case .appointments: return "Appointments"
-        case .calendar: return "Calendar"
+        case .countdownEvents: return "Countdown Events"
         case .todoLists: return "To Do Lists"
         case .notes: return "Notes"
         case .stickyReminders: return "Sticky Reminders"
@@ -36,10 +38,11 @@ enum Feature: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .aboutMe: return "person.crop.rectangle"
+        case .calendar: return "calendar.badge.clock"
         case .familyAndFriends: return "person.2"
         case .medications: return "pills"
         case .appointments: return "calendar"
-        case .calendar: return "calendar.badge.clock"
+        case .countdownEvents: return "timer"
         case .todoLists: return "checklist"
         case .notes: return "note.text"
         case .stickyReminders: return "bell.badge"
@@ -51,7 +54,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
     /// Features that cannot be hidden (core features)
     static var requiredFeatures: [Feature] {
-        [.aboutMe]
+        [.aboutMe, .calendar, .familyAndFriends]
     }
 
     var canBeHidden: Bool {

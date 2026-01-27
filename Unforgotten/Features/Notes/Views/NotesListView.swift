@@ -5,6 +5,7 @@ import SwiftData
 /// Main list view displaying all notes with header and card styling matching other pages
 struct NotesListView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var appState: AppState
     @Environment(\.iPadHomeAction) private var iPadHomeAction
     @Environment(\.iPadAddNoteAction) private var iPadAddNoteAction
@@ -58,6 +59,8 @@ struct NotesListView: View {
                     CustomizableHeaderView(
                         pageIdentifier: .notes,
                         title: "Notes",
+                        showBackButton: iPadHomeAction == nil,
+                        backAction: { dismiss() },
                         showHomeButton: iPadHomeAction != nil,
                         homeAction: iPadHomeAction,
                         showAddButton: true,
@@ -550,7 +553,7 @@ struct ThemeFilterPopover: View {
         NotesListView()
     }
     .modelContainer(for: LocalNote.self)
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
     .environment(UserHeaderOverrides())
     .environment(UserPreferences())
     .environment(HeaderStyleManager())

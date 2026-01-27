@@ -318,5 +318,5 @@ struct CountdownDetailView: View {
             isRecurring: true
         )
     )
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }

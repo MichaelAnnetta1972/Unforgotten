@@ -543,5 +543,5 @@ struct iPadContactDetailRow: View {
 // MARK: - Preview
 #Preview("iPad Contacts") {
     iPadUsefulContactsView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

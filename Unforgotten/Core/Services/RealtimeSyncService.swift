@@ -10,8 +10,10 @@ final class RealtimeSyncService: ObservableObject {
     private let supabase = SupabaseManager.shared.client
     private var appointmentsChannel: RealtimeChannelV2?
     private var stickyRemindersChannel: RealtimeChannelV2?
+    private var countdownsChannel: RealtimeChannelV2?
     private var changeListenerTask: Task<Void, Never>?
     private var stickyReminderListenerTask: Task<Void, Never>?
+    private var countdownListenerTask: Task<Void, Never>?
     private var currentAccountId: UUID?
 
     private init() {}
@@ -34,6 +36,9 @@ final class RealtimeSyncService: ObservableObject {
         // Subscribe to sticky reminders table changes for this account
         await subscribeToStickyReminders(accountId: accountId)
 
+        // Subscribe to countdowns table changes for this account
+        await subscribeToCountdowns(accountId: accountId)
+
         #if DEBUG
         print("📡 RealtimeSyncService: Started listening for account \(accountId)")
         #endif
@@ -47,6 +52,9 @@ final class RealtimeSyncService: ObservableObject {
         stickyReminderListenerTask?.cancel()
         stickyReminderListenerTask = nil
 
+        countdownListenerTask?.cancel()
+        countdownListenerTask = nil
+
         if let channel = appointmentsChannel {
             await supabase.realtimeV2.removeChannel(channel)
             appointmentsChannel = nil
@@ -55,6 +63,11 @@ final class RealtimeSyncService: ObservableObject {
         if let channel = stickyRemindersChannel {
             await supabase.realtimeV2.removeChannel(channel)
             stickyRemindersChannel = nil
+        }
+
+        if let channel = countdownsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            countdownsChannel = nil
         }
 
         currentAccountId = nil
@@ -405,10 +418,97 @@ final class RealtimeSyncService: ObservableObject {
             return nil
         }
     }
+
+    // MARK: - Countdowns Subscription
+
+    private func subscribeToCountdowns(accountId: UUID) async {
+        let channel = supabase.channel("countdowns_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.countdowns,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        countdownsChannel = channel
+
+        // Listen for changes in a detached task
+        countdownListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleCountdownChange(change)
+            }
+        }
+    }
+
+    private func handleCountdownChange(_ change: AnyAction) async {
+        #if DEBUG
+        print("📡 RealtimeSyncService: Received countdown change")
+        #endif
+
+        switch change {
+        case .insert:
+            #if DEBUG
+            print("📡 RealtimeSyncService: Countdown INSERT detected")
+            #endif
+            NotificationCenter.default.post(
+                name: .countdownsDidChange,
+                object: nil,
+                userInfo: ["action": CountdownChangeAction.created]
+            )
+
+        case .update(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Countdown UPDATE detected")
+            #endif
+            var userInfo: [String: Any] = ["action": CountdownChangeAction.updated]
+
+            if let idValue = action.record["id"],
+               let idString = extractStringValue(from: idValue),
+               let countdownId = UUID(uuidString: idString) {
+                userInfo["countdownId"] = countdownId
+            }
+
+            NotificationCenter.default.post(
+                name: .countdownsDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+
+        case .delete(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Countdown DELETE detected")
+            #endif
+            var userInfo: [String: Any] = ["action": CountdownChangeAction.deleted]
+
+            if let idValue = action.oldRecord["id"],
+               let idString = extractStringValue(from: idValue),
+               let countdownId = UUID(uuidString: idString) {
+                userInfo["countdownId"] = countdownId
+                // Cancel any scheduled notification for the deleted countdown
+                await NotificationService.shared.cancelCountdownReminder(countdownId: countdownId)
+            }
+
+            NotificationCenter.default.post(
+                name: .countdownsDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+        }
+    }
 }
 
 // MARK: - Sticky Reminder Change Action
 enum StickyReminderChangeAction: String {
+    case created
+    case updated
+    case deleted
+}
+
+// MARK: - Countdown Change Action
+enum CountdownChangeAction: String {
     case created
     case updated
     case deleted

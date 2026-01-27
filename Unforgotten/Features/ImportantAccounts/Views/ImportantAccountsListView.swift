@@ -790,7 +790,7 @@ class ImportantAccountsViewModel: ObservableObject {
                 updatedAt: Date()
             )
         )
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
         .environment(HeaderStyleManager())
     }
 }

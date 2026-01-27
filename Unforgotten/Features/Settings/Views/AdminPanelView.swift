@@ -315,5 +315,5 @@ class AdminPanelViewModel: ObservableObject {
 // MARK: - Preview
 #Preview {
     AdminPanelView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

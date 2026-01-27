@@ -346,6 +346,8 @@ struct iPadMainView: View {
             CalendarView()
         case .birthdays:
             BirthdaysContainerView()
+        case .countdownEvents:
+            CountdownEventsView()
         case .countdownDetail(let countdown):
             CountdownDetailView(countdown: countdown)
         case .contacts:
@@ -589,6 +591,8 @@ struct IPhoneMainView: View {
     @State private var appointmentsPath = NavigationPath()
     @State private var medicationsPath = NavigationPath()
     @State private var myCardPath = NavigationPath()
+    @State private var calendarPath = NavigationPath()
+    @State private var settingsPath = NavigationPath()
     @State private var currentHomeDestination: HomeDestination? = nil
     @State private var isBottomNavBarVisible = true
     @State private var hasHandledOnboardingAction = false
@@ -624,17 +628,11 @@ struct IPhoneMainView: View {
 
     // Determine which nav icon should be active based on current destination
     private var activeNavDestination: NavDestination {
-        // If we're on home tab and navigated to a page with a matching nav icon, highlight that icon
+        // If we're on home tab and navigated to My Card, show My Card as active
         if selectedTab == .home, let destination = currentHomeDestination {
             switch destination {
-            case .profiles:
-                return isLimitedAccess ? .home : .profiles
             case .myCard:
-                return isLimitedAccess ? .myCard : .home
-            case .medications:
-                return .medications
-            case .appointments:
-                return .appointments
+                return .myCard
             default:
                 return .home
             }
@@ -653,11 +651,16 @@ struct IPhoneMainView: View {
                 profilesPath: $profilesPath,
                 appointmentsPath: $appointmentsPath,
                 medicationsPath: $medicationsPath,
+                calendarPath: $calendarPath,
+                settingsPath: $settingsPath,
                 currentHomeDestination: $currentHomeDestination,
                 shouldShowToDoAddSheet: shouldShowToDoAddSheet
             )
             .environment(\.navNamespace, navNamespace)
             .environment(\.isBottomNavBarVisible, isBottomNavBarVisible)
+            .environment(\.navigateToHomeTab, {
+                navigateToTab(.home)
+            })
             .onPreferenceChange(BottomNavBarVisibilityPreference.self) { visible in
                 isBottomNavBarVisible = visible
             }
@@ -942,10 +945,26 @@ struct IPhoneMainView: View {
             return
         }
 
+        // Handle calendar tab - clear path if already on calendar
+        if newTab == .calendar && selectedTab == .calendar {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                calendarPath = NavigationPath()
+            }
+            return
+        }
+
+        // Handle settings tab - clear path if already on settings
+        if newTab == .settings && selectedTab == .settings {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                settingsPath = NavigationPath()
+            }
+            return
+        }
+
         guard newTab != selectedTab else { return }
 
         // Determine slide direction based on tab order
-        let tabOrder: [NavDestination] = [.home, .profiles, .myCard, .appointments, .medications]
+        let tabOrder: [NavDestination] = [.home, .myCard, .calendar, .settings]
         let currentIndex = tabOrder.firstIndex(of: selectedTab) ?? 0
         let newIndex = tabOrder.firstIndex(of: newTab) ?? 0
 
@@ -1027,6 +1046,8 @@ struct TabContentView: View {
     @Binding var profilesPath: NavigationPath
     @Binding var appointmentsPath: NavigationPath
     @Binding var medicationsPath: NavigationPath
+    @Binding var calendarPath: NavigationPath
+    @Binding var settingsPath: NavigationPath
     @Binding var currentHomeDestination: HomeDestination?
     let shouldShowToDoAddSheet: Bool
 
@@ -1082,11 +1103,29 @@ struct TabContentView: View {
                 .tint(.accentYellow)
                 .transition(slideTransition)
 
-            case .myCard:
-                // My Card is handled via home tab navigation, not as a separate tab
-                EmptyView()
+            case .calendar:
+                NavigationStack(path: $calendarPath) {
+                    CalendarView()
+                        .navigationDestination(for: HomeDestination.self) { destination in
+                            destinationView(for: destination)
+                        }
+                }
+                .tint(.accentYellow)
+                .transition(slideTransition)
 
-            case .other:
+            case .settings:
+                NavigationStack(path: $settingsPath) {
+                    SettingsView()
+                        .navigationDestination(for: HomeDestination.self) { destination in
+                            destinationView(for: destination)
+                        }
+                }
+                .tint(.accentYellow)
+                .transition(slideTransition)
+
+            case .myCard, .other:
+                // My Card is handled via home tab navigation, not as a separate tab
+                // Other is for pages without a nav bar icon
                 EmptyView()
             }
         }
@@ -1133,11 +1172,14 @@ struct TabContentView: View {
         case .calendar:
             CalendarView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
-        case .birthdays:
-            BirthdaysView()
+        case .countdownEvents:
+            CountdownEventsView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
         case .countdownDetail(let countdown):
             CountdownDetailView(countdown: countdown)
+        case .birthdays:
+            BirthdaysView()
+                .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
         case .contacts:
             UsefulContactsListView()
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
@@ -1187,5 +1229,5 @@ extension EnvironmentValues {
 // MARK: - Preview
 #Preview {
     RootView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

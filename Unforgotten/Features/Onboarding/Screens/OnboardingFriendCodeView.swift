@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - Onboarding Friend Code View
 /// Screen 4: Optional friend code entry to connect with an existing account
+/// Features a background image in the upper portion
 struct OnboardingFriendCodeView: View {
     @Bindable var onboardingData: OnboardingData
     let accentColor: Color
@@ -16,99 +17,131 @@ struct OnboardingFriendCodeView: View {
     @State private var hasAppeared = false
     @FocusState private var isCodeFieldFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isRegularWidth: Bool { horizontalSizeClass == .regular }
+
+    // Button gradient colors matching design
+    private let buttonGradient = LinearGradient(
+        colors: [Color(hex: "7BA4B5"), Color(hex: "A8C5D4")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                Spacer()
-                    .frame(height: 40)
+        GeometryReader { geometry in
+            ZStack {
+                // Background with image in top portion
+                inviteBackground(geometry: geometry)
 
-                // Header
-                VStack(spacing: 12) {
-                    Image(systemName: "person.2.circle.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(accentColor)
-                        .scaleEffect(hasAppeared ? 1 : 0.5)
-                        .opacity(hasAppeared ? 1 : 0)
+                // Content anchored to bottom
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer()
 
-                    Text("Were you invited by family or a friend?")
-                        .font(.appLargeTitle)
-                        .foregroundColor(.textPrimary)
-                        .multilineTextAlignment(.center)
-                        .opacity(hasAppeared ? 1 : 0)
-                        .offset(y: hasAppeared ? 0 : 10)
+                        // Form content
+                        VStack(spacing: isRegularWidth ? 32 : 24) {
+                            // Header
+                            VStack(spacing: 12) {
+                                Text("Were you invited by a \nfamily or friend?")
+                                    .font(.appLargeTitle)
+                                    .foregroundColor(.textPrimary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .opacity(hasAppeared ? 1 : 0)
+                                    .offset(y: hasAppeared ? 0 : 10)
 
-                    Text("If someone shared a code with you, enter it below to connect with them")
-                        .font(.appBody)
-                        .foregroundColor(.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .opacity(hasAppeared ? 1 : 0)
-                        .offset(y: hasAppeared ? 0 : 10)
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .animation(
-                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                    value: hasAppeared
-                )
+                                Text("If someone shared a code with you, enter it below to connect with them")
+                                    .font(.appBody)
+                                    .foregroundColor(.textSecondary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .opacity(hasAppeared ? 1 : 0)
+                                    .offset(y: hasAppeared ? 0 : 10)
+                            }
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .animation(
+                                reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
+                                value: hasAppeared
+                            )
 
-                // Content area
-                if isConnected {
-                    connectedState
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                } else {
-                    codeEntryState
-                        .opacity(hasAppeared ? 1 : 0)
-                        .offset(y: hasAppeared ? 0 : 20)
-                        .animation(
-                            reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.15),
-                            value: hasAppeared
-                        )
-                }
+                            // Content area
+                            if isConnected {
+                                connectedState
+                                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            } else {
+                                codeEntryState
+                                    .opacity(hasAppeared ? 1 : 0)
+                                    .offset(y: hasAppeared ? 0 : 20)
+                                    .animation(
+                                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.15),
+                                        value: hasAppeared
+                                    )
+                            }
 
-                Spacer()
-                    .frame(minHeight: 60)
+                            // Bottom buttons
+                            VStack(spacing: isRegularWidth ? 20 : 16) {
+                                if isConnected {
+                                    Button(action: onContinue) {
+                                        Text("Continue")
+                                            .font(.appBodyMedium)
+                                            .foregroundColor(.white)
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: AppDimensions.buttonHeight)
+                                            .background(accentColor)
+                                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                                    }
+                                } else {
+                                    // Connect button
+                                    Button(action: validateCode) {
+                                        HStack {
+                                            if isValidating {
+                                                ProgressView()
+                                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            } else {
+                                                Text("Connect")
+                                                    .font(.appBodyMedium)
+                                            }
+                                        }
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: AppDimensions.buttonHeight)
+                                        .background(accentColor)
+                                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                                    }
+                                    .disabled(codeInput.trimmingCharacters(in: .whitespaces).isEmpty || isValidating)
+                                 //   .opacity(codeInput.trimmingCharacters(in: .whitespaces).isEmpty ? 0.6 : 1)
 
-                // Bottom buttons
-                VStack(spacing: 16) {
-                    if isConnected {
-                        PrimaryButton(
-                            title: "Continue",
-                            backgroundColor: accentColor,
-                            action: onContinue
-                        )
-                    } else {
-                        // Connect button
-                        PrimaryButton(
-                            title: "Connect",
-                            isLoading: isValidating,
-                            backgroundColor: accentColor,
-                            action: validateCode
-                        )
-                        .disabled(codeInput.trimmingCharacters(in: .whitespaces).isEmpty || isValidating)
-                        .opacity(codeInput.trimmingCharacters(in: .whitespaces).isEmpty ? 0.6 : 1)
-
-                        // Skip button
-                        Button {
-                            onContinue()
-                        } label: {
-                            Text("I don't have a code")
-                                .font(.appBodyMedium)
-                                .foregroundColor(.textSecondary)
+                                    // Skip button
+                                    Button {
+                                        onContinue()
+                                    } label: {
+                                        Text("I don't have a code")
+                                            .font(.appBodyMedium)
+                                            .foregroundColor(.textSecondary)
+                                    }
+                                    .disabled(isValidating)
+                                }
+                            }
+                            .frame(maxWidth: isRegularWidth ? 400 : .infinity)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(
+                                reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.25),
+                                value: hasAppeared
+                            )
                         }
-                        .disabled(isValidating)
+                        .frame(maxWidth: isRegularWidth ? 500 : .infinity)
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + (isRegularWidth ? 48 : 32))
                     }
+                    .frame(minHeight: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.bottom, 48)
-                .opacity(hasAppeared ? 1 : 0)
-                .offset(y: hasAppeared ? 0 : 20)
-                .animation(
-                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.25),
-                    value: hasAppeared
-                )
+                .scrollDismissesKeyboard(.interactively)
             }
+            .ignoresSafeArea()
         }
-        .scrollDismissesKeyboard(.interactively)
         .onAppear {
             guard !hasAppeared else { return }
             if reduceMotion {
@@ -121,28 +154,62 @@ struct OnboardingFriendCodeView: View {
         }
     }
 
+    // MARK: - Invite Background
+    @ViewBuilder
+    private func inviteBackground(geometry: GeometryProxy) -> some View {
+        ZStack(alignment: .top) {
+            // Base dark background
+            Color.appBackground
+
+            // Background image - aligned to top, fixed position
+            Image("onboarding-invite-bg")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: geometry.size.width)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .clipped()
+
+            // Gradient overlay for smooth transition to content area
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: geometry.size.height * 0.3)
+
+                LinearGradient(
+                    colors: [
+                        Color.appBackground.opacity(0),
+                        Color.appBackground.opacity(0.5),
+                        Color.appBackground.opacity(0.9),
+                        Color.appBackground
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+    }
+
     // MARK: - Code Entry State
     private var codeEntryState: some View {
         VStack(spacing: 16) {
             // Code input field
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Enter your invite code", text: $codeInput)
-                    .font(.system(size: 20, weight: .medium, design: .monospaced))
+                    .font(.system(size: 18, weight: .medium, design: .monospaced))
                     .foregroundColor(.textPrimary)
                     .multilineTextAlignment(.center)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                    .padding()
-                    .frame(height: 60)
-                    .background(Color.cardBackgroundSoft)
+                    .padding(.horizontal, 20)
+                    .frame(height: AppDimensions.textFieldHeight)
+                    .background(Color.cardBackground.opacity(0.8))
                     .cornerRadius(AppDimensions.buttonCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        RoundedRectangle(cornerRadius: AppDimensions.textFieldHeight / 2)
                             .stroke(
                                 validationError != nil ? Color.medicalRed :
                                     isCodeFieldFocused ? accentColor :
-                                    Color.textSecondary.opacity(0.3),
-                                lineWidth: 1
+                                    Color.clear,
+                                lineWidth: 2
                             )
                     )
                     .focused($isCodeFieldFocused)
@@ -160,6 +227,7 @@ struct OnboardingFriendCodeView: View {
                             .font(.appCaption)
                     }
                     .foregroundColor(.medicalRed)
+                    .padding(.horizontal, 4)
                 }
             }
             .padding(.horizontal, AppDimensions.screenPadding)
@@ -384,7 +452,7 @@ private struct InfoRow: View {
             accentColor: Color(hex: "FFC93A"),
             onContinue: {}
         )
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
     }
 }
 

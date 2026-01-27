@@ -184,5 +184,5 @@ struct EditUsefulContactView: View {
             updatedAt: Date()
         )
     ) { _ in }
-    .environmentObject(AppState())
+    .environmentObject(AppState.forPreview())
 }

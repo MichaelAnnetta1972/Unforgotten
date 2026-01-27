@@ -197,6 +197,6 @@ struct ContactActionButton: View {
                 updatedAt: Date()
             )
         )
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
     }
 }

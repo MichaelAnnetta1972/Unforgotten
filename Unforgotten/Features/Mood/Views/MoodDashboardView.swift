@@ -452,6 +452,6 @@ class MoodDashboardViewModel: ObservableObject {
 #Preview {
     NavigationStack {
         MoodDashboardView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }

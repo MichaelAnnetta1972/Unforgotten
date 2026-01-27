@@ -13,8 +13,8 @@ struct OnboardingContainerView: View {
     @State private var themeManager = OnboardingThemeManager()
     @State private var slideDirection: OnboardingSlideDirection = .forward
     @State private var isCompleting = false
-    @State private var selectedFirstAction: OnboardingFirstAction? = nil
     @State private var completionError: String? = nil
+    @State private var showCancelConfirmation = false
 
     // Reduce motion preference
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,30 +23,61 @@ struct OnboardingContainerView: View {
         ZStack {
             Color.appBackground.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Navigation bar (back button + progress dots)
+            // Screen content - full width for background images
+            screenContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // Navigation bar overlay (so it floats on top of content)
+            VStack {
                 if currentScreen.showsProgressDots {
                     navigationBar
                         .padding(.horizontal, AppDimensions.screenPadding)
                         .padding(.top, 8)
                         .frame(maxWidth: 650)
-                }
-
-                // Screen content - constrained width for iPad
-                screenContent
+                } else if currentScreen == .welcome {
+                    // Close button only for welcome screen - positioned on right
+                    HStack {
+                        Spacer()
+                        closeButton
+                            .padding(.trailing, AppDimensions.screenPadding)
+                            .padding(.top, 8)
+                    }
                     .frame(maxWidth: 650)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                Spacer()
             }
         }
         .environment(\.onboardingAccentColor, themeManager.accentColor)
         .tint(themeManager.accentColor)
         .gesture(swipeGesture)
+        .alert("Cancel Setup?", isPresented: $showCancelConfirmation) {
+            Button("Continue Setup", role: .cancel) { }
+            Button("Sign Out", role: .destructive) {
+                cancelOnboarding()
+            }
+        } message: {
+            Text("Are you sure you want to cancel? You'll need to sign in again to continue.")
+        }
+    }
+
+    // MARK: - Close Button
+    private var closeButton: some View {
+        Button {
+            showCancelConfirmation = true
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.textPrimary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Cancel setup")
     }
 
     // MARK: - Navigation Bar
     private var navigationBar: some View {
         HStack {
-            // Back button
+            // Back button (chevron) - now on left
             if currentScreen.canGoBack {
                 Button {
                     navigateBack()
@@ -73,9 +104,8 @@ struct OnboardingContainerView: View {
 
             Spacer()
 
-            // Placeholder for symmetry
-            Spacer()
-                .frame(width: 44)
+            // Close button - now on right
+            closeButton
         }
         .frame(height: 44)
     }
@@ -112,7 +142,21 @@ struct OnboardingContainerView: View {
                     onboardingData: onboardingData,
                     accentColor: themeManager.accentColor,
                     onContinue: {
-                        navigateTo(.freeTier)
+                        navigateTo(.premium)
+                    }
+                )
+
+            case .premium:
+                OnboardingPremiumView(
+                    onboardingData: onboardingData,
+                    accentColor: themeManager.accentColor,
+                    onContinue: {
+                        // If user subscribed, go to notifications; if "Maybe Later", go to freeTier
+                        if onboardingData.isPremium {
+                            navigateTo(.notifications)
+                        } else {
+                            navigateTo(.freeTier)
+                        }
                     }
                 )
 
@@ -127,34 +171,24 @@ struct OnboardingContainerView: View {
                     }
                 )
 
-            case .premium:
-                OnboardingPremiumView(
-                    onboardingData: onboardingData,
-                    accentColor: themeManager.accentColor,
-                    onContinue: {
-                        navigateTo(.notifications)
-                    }
-                )
-
             case .notifications:
                 OnboardingNotificationsView(
                     onboardingData: onboardingData,
                     accentColor: themeManager.accentColor,
                     onContinue: {
-                        navigateTo(.completion)
+                        navigateTo(.activation)
                     }
                 )
 
-            case .completion:
-                OnboardingCompletionView(
+            case .activation:
+                OnboardingActivationView(
                     onboardingData: onboardingData,
                     accentColor: themeManager.accentColor,
                     isCompleting: isCompleting,
                     errorMessage: completionError,
-                    onActionSelected: { action in
+                    onComplete: {
                         completionError = nil
-                        selectedFirstAction = action
-                        completeOnboarding(action: action)
+                        completeOnboarding()
                     }
                 )
             }
@@ -209,9 +243,17 @@ struct OnboardingContainerView: View {
             }
     }
 
+    // MARK: - Cancel Onboarding
+
+    private func cancelOnboarding() {
+        Task {
+            await appState.signOut()
+        }
+    }
+
     // MARK: - Complete Onboarding
 
-    private func completeOnboarding(action: OnboardingFirstAction) {
+    private func completeOnboarding() {
         guard !isCompleting else { return }
         isCompleting = true
 
@@ -223,16 +265,15 @@ struct OnboardingContainerView: View {
                     userPreferences: userPreferences
                 )
 
-                // Complete onboarding in AppState with the selected first action
+                // Complete onboarding in AppState
                 try await appState.completeOnboarding(
                     accountName: onboardingData.accountName,
                     primaryProfileName: onboardingData.fullName,
                     birthday: nil, // Birthday not collected in new flow
-                    firstAction: action
+                    firstAction: .exploreApp // Default action - go to home
                 )
 
                 // The RootView will automatically show MainAppView
-                // Navigation to specific section is handled by AppState.pendingOnboardingAction
 
             } catch {
                 #if DEBUG
@@ -256,7 +297,7 @@ private enum OnboardingSlideDirection {
 // MARK: - Preview
 #Preview {
     OnboardingContainerView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
         .environment(HeaderStyleManager())
         .environment(UserPreferences())
 }

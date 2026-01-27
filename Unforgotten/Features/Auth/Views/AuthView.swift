@@ -4,41 +4,90 @@ import AuthenticationServices
 // MARK: - Auth View
 struct AuthView: View {
     @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showSignUp = false
+
+    private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 32) {
-                        // Header
-                        VStack(spacing: 16) {
+            GeometryReader { geometry in
+                ZStack {
+                    // Background - stays fixed
+                    AuthBackgroundView()
+                        .ignoresSafeArea(.keyboard)
+
+                    // Content with logo at top, form at bottom
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Logo at top
                             Image("unforgotten-logo")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .frame(height: 100)
+                                .frame(height: isRegularWidth ? 100 : 80)
+                                .padding(.top, geometry.safeAreaInsets.top + (isRegularWidth ? 60 : 40))
 
-                            Text("Remember what matters most")
-                                .font(.appBody)
-                                .foregroundColor(.textSecondary)
-                        }
-                        .padding(.top, 60)
+                            Spacer(minLength: isRegularWidth ? 60 : 40)
 
-                        // Auth Form
-                        if showSignUp {
-                            SignUpForm(showSignUp: $showSignUp)
-                        } else {
-                            SignInForm(showSignUp: $showSignUp)
+                            // Auth Form content
+                            VStack(spacing: isRegularWidth ? 32 : 24) {
+                                if showSignUp {
+                                    SignUpForm(showSignUp: $showSignUp)
+                                } else {
+                                    SignInForm(showSignUp: $showSignUp)
+                                }
+                            }
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .padding(.bottom, geometry.safeAreaInsets.bottom + (isRegularWidth ? 48 : 32))
+                            .frame(maxWidth: isRegularWidth ? 500 : 550)
                         }
+                        .frame(minHeight: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(AppDimensions.screenPadding)
-                    .frame(maxWidth: 550)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollDismissesKeyboard(.interactively)
                 }
-                .frame(maxWidth: .infinity)
+                .ignoresSafeArea()
             }
         }
+    }
+}
+
+// MARK: - Auth Background View
+struct AuthBackgroundView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                // Base dark background
+                Color.appBackground
+
+                // Background image - aligned to top
+                Image("onboarding-auth-bg")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geometry.size.width)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .clipped()
+
+                // Gradient overlay for smooth transition to content area
+                VStack(spacing: 0) {
+                    Color.clear
+                        .frame(height: geometry.size.height * 0.3)
+
+                    LinearGradient(
+                        colors: [
+                            Color.appBackground.opacity(0),
+                            Color.appBackground.opacity(0.5),
+                            Color.appBackground.opacity(0.9),
+                            Color.appBackground
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+            }
+        }
+        .ignoresSafeArea()
     }
 }
 
@@ -53,18 +102,32 @@ struct SignInForm: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showMagicLinkSent = false
-    
+
+    // Button gradient colors matching design
+    private let buttonGradient = LinearGradient(
+        colors: [Color(hex: "79A5D7"), Color(hex: "8CBFD3")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
+            // Title
+            Text("Sign in to get started")
+                .font(.appLargeTitle)
+                .foregroundColor(.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.bottom, 8)
+
             // Email field
-            AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+            AuthTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
                 .textContentType(.emailAddress)
                 .autocapitalization(.none)
-            
+
             // Password field
-            AppTextField(placeholder: "Password", text: $password, isSecure: true)
+            AuthTextField(placeholder: "Password", text: $password, isSecure: true)
                 .textContentType(.password)
-            
+
             // Error message
             if let error = errorMessage {
                 Text(error)
@@ -72,60 +135,29 @@ struct SignInForm: View {
                     .foregroundColor(.medicalRed)
                     .multilineTextAlignment(.center)
             }
-            
+
             // Sign in button
-            PrimaryButton(title: "Sign In", isLoading: isLoading) {
-                Task { await signIn() }
-            }
-            .disabled(email.isBlank || password.isBlank)
-            
-            // Divider
-            HStack {
-                Rectangle()
-                    .fill(Color.textSecondary.opacity(0.3))
-                    .frame(height: 1)
-                
-                Text("or")
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-                
-                Rectangle()
-                    .fill(Color.textSecondary.opacity(0.3))
-                    .frame(height: 1)
-            }
-            
-            // Magic link button
-            SecondaryButton(title: "Sign in with Magic Link") {
-                Task { await sendMagicLink() }
-            }
-            .disabled(email.isBlank)
-            
-            // Apple Sign In
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = [.email, .fullName]
-            } onCompletion: { result in
-                Task { await handleAppleSignIn(result) }
-            }
-            .signInWithAppleButtonStyle(.white)
-            .frame(height: AppDimensions.buttonHeight)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
-            
-            // Switch to sign up
             Button {
-                withAnimation {
-                    showSignUp = true
-                }
+                Task { await signIn() }
             } label: {
-                HStack(spacing: 4) {
-                    Text("Don't have an account?")
-                        .foregroundColor(.textSecondary)
-                    Text("Sign Up")
-                        .foregroundColor(appAccentColor)
+                HStack {
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Sign in")
+                            .font(.appBodyMedium)
+                    }
                 }
-                .font(.appBody)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: AppDimensions.buttonHeight)
+                .background(buttonGradient)
+                .cornerRadius(AppDimensions.buttonHeight / 2)
             }
-            .padding(.top, 8)
-            
+            .disabled(email.isBlank || password.isBlank || isLoading)
+            .opacity(email.isBlank || password.isBlank ? 0.6 : 1)
+
             // Forgot password
             Button {
                 Task { await resetPassword() }
@@ -134,6 +166,71 @@ struct SignInForm: View {
                     .font(.appCaption)
                     .foregroundColor(.textSecondary)
             }
+            .padding(.top, 8)
+
+
+            // Divider
+            HStack {
+                Rectangle()
+                    .fill(Color.textSecondary.opacity(0.3))
+                    .frame(height: 1)
+
+                Text("or")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                Rectangle()
+                    .fill(Color.textSecondary.opacity(0.3))
+                    .frame(height: 1)
+            }
+            .padding(.vertical, 8)
+
+            // Magic link button
+        //    Button {
+        //        Task { await sendMagicLink() }
+        //    } label: {
+        //        Text("Sign in with Magic Link")
+        //            .font(.appBodyMedium)
+        //            .foregroundColor(.white)
+        //            .frame(maxWidth: .infinity)
+        //            .frame(height: AppDimensions.buttonHeight)
+        //            .background(Color.black)
+        //            .cornerRadius(AppDimensions.buttonHeight / 2)
+        //            .overlay(
+        //                RoundedRectangle(cornerRadius: AppDimensions.buttonHeight / 2)
+        //                    .stroke(Color.white, lineWidth: 1)
+        //            )
+        //    }
+        //    .disabled(email.isBlank)
+        //    .opacity(email.isBlank ? 0.6 : 1)
+
+            // Apple Sign In
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.email, .fullName]
+            } onCompletion: { result in
+                Task { await handleAppleSignIn(result) }
+            }
+            .signInWithAppleButtonStyle(.white)
+            .frame(height: AppDimensions.buttonHeight)
+            .cornerRadius(AppDimensions.buttonHeight / 2)
+
+
+
+            // Switch to sign up
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showSignUp = true
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Don't have an account?")
+                        .foregroundColor(.textSecondary)
+                    Text("Sign Up")
+                        .foregroundColor(Color(hex: "79A5D7"))
+                }
+                .font(.appBody)
+            }
+
         }
         .alert("Magic Link Sent", isPresented: $showMagicLinkSent) {
             Button("OK", role: .cancel) { }
@@ -223,29 +320,46 @@ struct SignUpForm: View {
     @State private var confirmPassword = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    
+
+    // Button gradient colors matching design
+    private let buttonGradient = LinearGradient(
+        colors: [Color(hex: "79A5D7"), Color(hex: "8CBFD3")],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
+            // Title
+            Text("Let's get you signed up")
+                .font(.appLargeTitle)
+                .foregroundColor(.textPrimary)
+                .multilineTextAlignment(.center)
+                .padding(.bottom, 8)
+
             // Email field
-            AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+            AuthTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
                 .textContentType(.emailAddress)
                 .autocapitalization(.none)
-            
+
             // Password field
-            AppTextField(placeholder: "Password", text: $password, isSecure: true)
+            AuthTextField(placeholder: "Password", text: $password, isSecure: true)
                 .textContentType(.newPassword)
-            
+
             // Confirm password field
-            AppTextField(placeholder: "Confirm Password", text: $confirmPassword, isSecure: true)
+            AuthTextField(placeholder: "Confirm Password", text: $confirmPassword, isSecure: true)
                 .textContentType(.newPassword)
-            
-            // Password requirements
-            VStack(alignment: .leading, spacing: 4) {
-                PasswordRequirement(text: "At least 8 characters", isMet: password.count >= 8)
-                PasswordRequirement(text: "Passwords match", isMet: !password.isEmpty && password == confirmPassword)
+
+            // Password requirements (only show when typing)
+            if !password.isEmpty || !confirmPassword.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    PasswordRequirement(text: "At least 8 characters", isMet: password.count >= 8)
+                    PasswordRequirement(text: "Passwords match", isMet: !password.isEmpty && password == confirmPassword)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            
+
             // Error message
             if let error = errorMessage {
                 Text(error)
@@ -253,28 +367,45 @@ struct SignUpForm: View {
                     .foregroundColor(.medicalRed)
                     .multilineTextAlignment(.center)
             }
-            
-            // Sign up button
-            PrimaryButton(title: "Create Account", isLoading: isLoading) {
+
+            // Create Account button
+            Button {
                 Task { await signUp() }
+            } label: {
+                HStack {
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Create Account")
+                            .font(.appBodyMedium)
+                    }
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: AppDimensions.buttonHeight)
+                .background(buttonGradient)
+                .cornerRadius(AppDimensions.buttonHeight / 2)
             }
-            .disabled(!isFormValid)
-            
+            .disabled(!isFormValid || isLoading)
+            .opacity(!isFormValid ? 0.6 : 1)
+
             // Divider
             HStack {
                 Rectangle()
                     .fill(Color.textSecondary.opacity(0.3))
                     .frame(height: 1)
-                
+
                 Text("or")
                     .font(.appCaption)
                     .foregroundColor(.textSecondary)
-                
+
                 Rectangle()
                     .fill(Color.textSecondary.opacity(0.3))
                     .frame(height: 1)
             }
-            
+            .padding(.vertical, 8)
+
             // Apple Sign Up
             SignInWithAppleButton(.signUp) { request in
                 request.requestedScopes = [.email, .fullName]
@@ -283,11 +414,11 @@ struct SignUpForm: View {
             }
             .signInWithAppleButtonStyle(.white)
             .frame(height: AppDimensions.buttonHeight)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
-            
+            .cornerRadius(AppDimensions.buttonHeight / 2)
+
             // Switch to sign in
             Button {
-                withAnimation {
+                withAnimation(.easeInOut(duration: 0.2)) {
                     showSignUp = false
                 }
             } label: {
@@ -295,12 +426,13 @@ struct SignUpForm: View {
                     Text("Already have an account?")
                         .foregroundColor(.textSecondary)
                     Text("Sign In")
-                        .foregroundColor(appAccentColor)
+                        .foregroundColor(Color(hex: "79A5D7"))
                 }
                 .font(.appBody)
             }
             .padding(.top, 8)
         }
+        .animation(.easeInOut(duration: 0.2), value: password.isEmpty && confirmPassword.isEmpty)
     }
     
     private var isFormValid: Bool {
@@ -348,13 +480,13 @@ struct SignUpForm: View {
 struct PasswordRequirement: View {
     let text: String
     let isMet: Bool
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: isMet ? "checkmark.circle.fill" : "circle")
                 .foregroundColor(isMet ? .badgeGreen : .textSecondary)
                 .font(.caption)
-            
+
             Text(text)
                 .font(.appCaption)
                 .foregroundColor(isMet ? .textPrimary : .textSecondary)
@@ -362,8 +494,49 @@ struct PasswordRequirement: View {
     }
 }
 
+// MARK: - Auth Text Field
+/// Custom text field styled for auth screens with lighter grey background
+struct AuthTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    var isSecure: Bool = false
+    var keyboardType: UIKeyboardType = .default
+
+    // Lighter grey background color
+    private let fieldBackground = Color(hex: "DDDDDD")
+    private let placeholderColor = Color(hex: "666666")
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            // Custom placeholder
+            if text.isEmpty {
+                Text(placeholder)
+                    .font(.appBody)
+                    .foregroundColor(placeholderColor)
+                    .padding(.horizontal, 20)
+            }
+
+            // Actual text field
+            Group {
+                if isSecure {
+                    SecureField("", text: $text)
+                } else {
+                    TextField("", text: $text)
+                        .keyboardType(keyboardType)
+                }
+            }
+            .font(.appBody)
+            .foregroundColor(.black)
+            .padding(.horizontal, 20)
+        }
+        .frame(height: AppDimensions.textFieldHeight)
+        .background(fieldBackground)
+        .cornerRadius(AppDimensions.buttonCornerRadius)
+    }
+}
+
 // MARK: - Preview
 #Preview {
     AuthView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.forPreview())
 }

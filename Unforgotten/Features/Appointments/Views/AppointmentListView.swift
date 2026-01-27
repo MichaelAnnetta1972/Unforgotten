@@ -2456,6 +2456,6 @@ struct AppointmentTypeBadge: View {
 #Preview {
     NavigationStack {
         AppointmentListView()
-            .environmentObject(AppState())
+            .environmentObject(AppState.forPreview())
     }
 }
