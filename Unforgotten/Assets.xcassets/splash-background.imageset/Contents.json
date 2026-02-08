@@ -1,17 +1,26 @@
 {
   "images" : [
     {
-      "filename" : "black-background-01.jpeg",
-      "idiom" : "universal",
+      "filename" : "onboarding-welcome-bg.jpg",
+      "idiom" : "iphone",
       "scale" : "1x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "2x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "3x"
+    },
+    {
+      "filename" : "black-background-01.jpeg",
+      "idiom" : "ipad",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "ipad",
+      "scale" : "2x"
     }
   ],
   "info" : {

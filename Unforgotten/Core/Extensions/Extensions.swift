@@ -294,6 +294,10 @@ extension Notification.Name {
 
     /// Posted when countdowns data has changed and lists should refresh
     static let countdownsDidChange = Notification.Name("countdownsDidChange")
+
+    /// Posted when a profile sync connection has changed (created or severed)
+    /// userInfo keys: "syncId" (UUID), "action" (String: "created" or "severed")
+    static let profileSyncDidChange = Notification.Name("profileSyncDidChange")
 }
 
 // MARK: - Appointment Change Action
@@ -414,6 +418,19 @@ extension EnvironmentValues {
     var iPadEditNoteAction: ((LocalNote) -> Void)? {
         get { self[iPadEditNoteActionKey.self] }
         set { self[iPadEditNoteActionKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Add Profile Action Environment Key
+private struct iPadAddProfileActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to trigger the Add Profile panel on iPad
+    var iPadAddProfileAction: (() -> Void)? {
+        get { self[iPadAddProfileActionKey.self] }
+        set { self[iPadAddProfileActionKey.self] = newValue }
     }
 }
 

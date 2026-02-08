@@ -23,9 +23,11 @@ final class CachedMoodRepository {
 
     /// Get today's mood entry
     func getTodaysEntry(accountId: UUID, userId: UUID) async throws -> MoodEntry? {
-        let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: Date())
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        // Use UTC calendar to match how mood entries are stored (UTC midnight)
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let startOfDay = utcCalendar.startOfDay(for: Date())
+        let endOfDay = utcCalendar.date(byAdding: .day, value: 1, to: startOfDay)!
 
         let descriptor = FetchDescriptor<LocalMoodEntry>(
             predicate: #Predicate {

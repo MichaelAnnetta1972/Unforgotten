@@ -6,11 +6,23 @@ struct AdminPanelView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
-
+    @Environment(UserPreferences.self) private var userPreferences
+    @Environment(UserHeaderOverrides.self) private var headerOverrides
+    @Environment(HeaderStyleManager.self) private var headerStyleManager
     @StateObject private var viewModel = AdminPanelViewModel()
     @State private var searchText = ""
 
-    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+
+    /// Computed effective accent color (respects hasCustomAccentColor flag)
+    private var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
+
+    @State private var isCheckmarkPressed = false    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
     private func dismissView() {
         if let sidePanelDismiss {
             sidePanelDismiss()
@@ -23,17 +35,42 @@ struct AdminPanelView: View {
         VStack(spacing: 0) {
             // Custom header with Done button
             HStack {
-                Text("Admin Panel")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
+
+                        Text("Admin Panel")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                    }
 
                 Spacer()
 
-                Button("Done") {
-                    dismissView()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isCheckmarkPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismissView()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.appBody.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(15)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                        )
+                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
-                .font(.appBody)
-                .foregroundColor(appAccentColor)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)

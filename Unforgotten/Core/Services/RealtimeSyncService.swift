@@ -11,9 +11,13 @@ final class RealtimeSyncService: ObservableObject {
     private var appointmentsChannel: RealtimeChannelV2?
     private var stickyRemindersChannel: RealtimeChannelV2?
     private var countdownsChannel: RealtimeChannelV2?
+    private var profilesChannel: RealtimeChannelV2?
+    private var profileDetailsChannel: RealtimeChannelV2?
     private var changeListenerTask: Task<Void, Never>?
     private var stickyReminderListenerTask: Task<Void, Never>?
     private var countdownListenerTask: Task<Void, Never>?
+    private var profileListenerTask: Task<Void, Never>?
+    private var profileDetailListenerTask: Task<Void, Never>?
     private var currentAccountId: UUID?
 
     private init() {}
@@ -39,6 +43,12 @@ final class RealtimeSyncService: ObservableObject {
         // Subscribe to countdowns table changes for this account
         await subscribeToCountdowns(accountId: accountId)
 
+        // Subscribe to profiles table changes for synced profile updates
+        await subscribeToProfiles(accountId: accountId)
+
+        // Subscribe to profile_details table changes for synced profile detail updates
+        await subscribeToProfileDetails(accountId: accountId)
+
         #if DEBUG
         print("📡 RealtimeSyncService: Started listening for account \(accountId)")
         #endif
@@ -55,6 +65,12 @@ final class RealtimeSyncService: ObservableObject {
         countdownListenerTask?.cancel()
         countdownListenerTask = nil
 
+        profileListenerTask?.cancel()
+        profileListenerTask = nil
+
+        profileDetailListenerTask?.cancel()
+        profileDetailListenerTask = nil
+
         if let channel = appointmentsChannel {
             await supabase.realtimeV2.removeChannel(channel)
             appointmentsChannel = nil
@@ -68,6 +84,16 @@ final class RealtimeSyncService: ObservableObject {
         if let channel = countdownsChannel {
             await supabase.realtimeV2.removeChannel(channel)
             countdownsChannel = nil
+        }
+
+        if let channel = profilesChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            profilesChannel = nil
+        }
+
+        if let channel = profileDetailsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            profileDetailsChannel = nil
         }
 
         currentAccountId = nil
@@ -498,6 +524,212 @@ final class RealtimeSyncService: ObservableObject {
             )
         }
     }
+
+    // MARK: - Profiles Subscription (for synced profile updates)
+
+    private func subscribeToProfiles(accountId: UUID) async {
+        let channel = supabase.channel("profiles_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.profiles,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        profilesChannel = channel
+
+        // Listen for changes in a detached task
+        profileListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleProfileChange(change)
+            }
+        }
+    }
+
+    private func handleProfileChange(_ change: AnyAction) async {
+        #if DEBUG
+        print("📡 RealtimeSyncService: Received profile change")
+        #endif
+
+        switch change {
+        case .insert:
+            #if DEBUG
+            print("📡 RealtimeSyncService: Profile INSERT detected")
+            #endif
+            NotificationCenter.default.post(
+                name: .profilesDidChange,
+                object: nil,
+                userInfo: ["action": ProfileChangeAction.created]
+            )
+
+        case .update(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Profile UPDATE detected")
+            #endif
+            var userInfo: [String: Any] = ["action": ProfileChangeAction.updated]
+
+            if let idValue = action.record["id"],
+               let idString = extractStringValue(from: idValue),
+               let profileId = UUID(uuidString: idString) {
+                userInfo["profileId"] = profileId
+            }
+
+            // Check if this is a synced profile update (has source_user_id)
+            if let sourceUserIdValue = action.record["source_user_id"],
+               case .string(let sourceUserId) = sourceUserIdValue,
+               !sourceUserId.isEmpty {
+                userInfo["isSyncedProfile"] = true
+            }
+
+            NotificationCenter.default.post(
+                name: .profilesDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+
+        case .delete(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Profile DELETE detected")
+            #endif
+            var userInfo: [String: Any] = ["action": ProfileChangeAction.deleted]
+
+            if let idValue = action.oldRecord["id"],
+               let idString = extractStringValue(from: idValue),
+               let profileId = UUID(uuidString: idString) {
+                userInfo["profileId"] = profileId
+            }
+
+            NotificationCenter.default.post(
+                name: .profilesDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+        }
+    }
+
+    // MARK: - Profile Details Subscription (for synced profile detail updates)
+
+    private func subscribeToProfileDetails(accountId: UUID) async {
+        let channel = supabase.channel("profile_details_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.profileDetails,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        profileDetailsChannel = channel
+
+        // Listen for changes in a detached task
+        profileDetailListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleProfileDetailChange(change)
+            }
+        }
+    }
+
+    private func handleProfileDetailChange(_ change: AnyAction) async {
+        #if DEBUG
+        print("📡 RealtimeSyncService: Received profile detail change")
+        #endif
+
+        switch change {
+        case .insert(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Profile detail INSERT detected")
+            #endif
+            var userInfo: [String: Any] = [
+                "action": ProfileDetailChangeAction.created,
+                "isRemoteSync": true
+            ]
+
+            if let profileIdValue = action.record["profile_id"],
+               let profileIdString = extractStringValue(from: profileIdValue),
+               let profileId = UUID(uuidString: profileIdString) {
+                userInfo["profileId"] = profileId
+            }
+
+            NotificationCenter.default.post(
+                name: .profileDetailsDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+
+        case .update(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Profile detail UPDATE detected")
+            #endif
+            var userInfo: [String: Any] = [
+                "action": ProfileDetailChangeAction.updated,
+                "isRemoteSync": true
+            ]
+
+            if let idValue = action.record["id"],
+               let idString = extractStringValue(from: idValue),
+               let detailId = UUID(uuidString: idString) {
+                userInfo["detailId"] = detailId
+            }
+
+            if let profileIdValue = action.record["profile_id"],
+               let profileIdString = extractStringValue(from: profileIdValue),
+               let profileId = UUID(uuidString: profileIdString) {
+                userInfo["profileId"] = profileId
+            }
+
+            NotificationCenter.default.post(
+                name: .profileDetailsDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+
+        case .delete(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Profile detail DELETE detected")
+            #endif
+            var userInfo: [String: Any] = [
+                "action": ProfileDetailChangeAction.deleted,
+                "isRemoteSync": true
+            ]
+
+            if let idValue = action.oldRecord["id"],
+               let idString = extractStringValue(from: idValue),
+               let detailId = UUID(uuidString: idString) {
+                userInfo["detailId"] = detailId
+            }
+
+            if let profileIdValue = action.oldRecord["profile_id"],
+               let profileIdString = extractStringValue(from: profileIdValue),
+               let profileId = UUID(uuidString: profileIdString) {
+                userInfo["profileId"] = profileId
+            }
+
+            NotificationCenter.default.post(
+                name: .profileDetailsDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+        }
+    }
+}
+
+// MARK: - Profile Detail Change Action
+enum ProfileDetailChangeAction: String {
+    case created
+    case updated
+    case deleted
+}
+
+// MARK: - Profile Change Action
+enum ProfileChangeAction: String {
+    case created
+    case updated
+    case deleted
 }
 
 // MARK: - Sticky Reminder Change Action

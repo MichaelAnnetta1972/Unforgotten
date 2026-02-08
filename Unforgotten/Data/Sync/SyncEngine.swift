@@ -559,6 +559,8 @@ final class SyncEngine: ObservableObject {
             try await pushCountdownChange(change, type: changeType)
         case "stickyReminder":
             try await pushStickyReminderChange(change, type: changeType)
+        case "profileDetail":
+            try await pushProfileDetailChange(change, type: changeType)
         default:
             #if DEBUG
             print("🔄 Unknown entity type: \(change.entityType)")
@@ -579,6 +581,7 @@ final class SyncEngine: ObservableObject {
         switch type {
         case .create:
             let insert = ProfileInsert(
+                id: local.id,
                 accountId: local.accountId,
                 type: local.profileType,
                 fullName: local.fullName,
@@ -605,6 +608,23 @@ final class SyncEngine: ObservableObject {
         guard let local = try modelContext.fetch(descriptor).first else { return }
 
         switch type {
+        case .create:
+            let insert = MedicationInsert(
+                id: local.id,
+                accountId: local.accountId,
+                profileId: local.profileId,
+                name: local.name,
+                strength: local.strength,
+                form: local.form,
+                reason: local.reason,
+                prescribingDoctorId: local.prescribingDoctorId,
+                notes: local.notes,
+                imageUrl: local.imageUrl,
+                localImagePath: local.localImagePath,
+                intakeInstruction: local.intakeInstruction.flatMap { IntakeInstruction(rawValue: $0) },
+                isPaused: local.isPaused
+            )
+            _ = try await medicationRepository.createMedication(insert)
         case .update:
             _ = try await medicationRepository.updateMedication(local.toRemote())
         case .delete:
@@ -646,6 +666,7 @@ final class SyncEngine: ObservableObject {
         switch type {
         case .create:
             let insert = AppointmentInsert(
+                id: local.id,
                 accountId: local.accountId,
                 profileId: local.profileId,
                 title: local.title,
@@ -680,6 +701,7 @@ final class SyncEngine: ObservableObject {
         switch type {
         case .create:
             let insert = UsefulContactInsert(
+                id: local.id,
                 accountId: local.accountId,
                 name: local.name,
                 category: local.contactCategory,
@@ -798,6 +820,7 @@ final class SyncEngine: ObservableObject {
         switch type {
         case .create:
             let insert = StickyReminderInsert(
+                id: local.id,
                 accountId: local.accountId,
                 title: local.title,
                 message: local.message,
@@ -810,6 +833,45 @@ final class SyncEngine: ObservableObject {
             _ = try await stickyReminderRepository.updateReminder(local.toRemote())
         case .delete:
             try await stickyReminderRepository.deleteReminder(id: change.entityId)
+        default:
+            break
+        }
+
+        local.isSynced = true
+    }
+
+    private func pushProfileDetailChange(_ change: PendingChange, type: PendingChange.ChangeType?) async throws {
+        let entityId = change.entityId
+        let descriptor = FetchDescriptor<LocalProfileDetail>(
+            predicate: #Predicate { $0.id == entityId }
+        )
+
+        guard let local = try modelContext.fetch(descriptor).first else { return }
+
+        // Decode metadata from local storage
+        var metadataDict: [String: String]?
+        if let metadataData = local.metadata {
+            metadataDict = try? JSONDecoder().decode([String: String].self, from: metadataData)
+        }
+
+        switch type {
+        case .create:
+            let insert = ProfileDetailInsert(
+                id: local.id,
+                accountId: local.accountId,
+                profileId: local.profileId,
+                category: local.detailCategory,
+                label: local.label,
+                value: local.value,
+                status: local.status,
+                occasion: local.occasion,
+                metadata: metadataDict
+            )
+            _ = try await profileRepository.createProfileDetail(insert)
+        case .update:
+            _ = try await profileRepository.updateProfileDetail(local.toRemote())
+        case .delete:
+            try await profileRepository.deleteProfileDetail(id: change.entityId)
         default:
             break
         }

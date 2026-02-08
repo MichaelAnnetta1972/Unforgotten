@@ -94,57 +94,13 @@ struct SidePanelPresentation<PanelContent: View>: ViewModifier {
                 }
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isPresented)
         } else {
-            // Compact mode: Full-screen panel overlay
+            // iPhone: Standard full-screen sheet presentation (slides up from bottom)
             content
-                .overlay {
-                    if isPresented {
-                        // Dimmed background
-                        Color.black.opacity(0.4)
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                iPhoneDismissAction()
-                            }
-                            .transition(.opacity)
-                    }
+                .fullScreenCover(isPresented: $isPresented) {
+                    panelContent()
+                        .environment(\.sidePanelDismiss, iPhoneDismissAction)
                 }
-                .overlay {
-                    if isPresented {
-                        // Full-screen panel
-                        GeometryReader { geometry in
-                            iPhoneSlidePanelWrapper(panelWidth: geometry.size.width, maxHeight: geometry.size.height) {
-                                panelContent()
-                                    .environment(\.sidePanelDismiss, iPhoneDismissAction)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                        }
-                        .transition(.asymmetric(
-                            insertion: .modifier(
-                                active: SlidePanelTransition(offset: 400, opacity: 0, scale: 0.98),
-                                identity: SlidePanelTransition(offset: 0, opacity: 1, scale: 1)
-                            ),
-                            removal: .modifier(
-                                active: SlidePanelTransition(offset: 400, opacity: 0, scale: 0.98),
-                                identity: SlidePanelTransition(offset: 0, opacity: 1, scale: 1)
-                            )
-                        ))
-                    }
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isPresented)
         }
-    }
-}
-
-// MARK: - iPhone Slide Panel Wrapper
-/// Wrapper for iPhone slide panel - full screen width
-private struct iPhoneSlidePanelWrapper<Content: View>: View {
-    let panelWidth: CGFloat
-    let maxHeight: CGFloat
-    let content: () -> Content
-
-    var body: some View {
-        content()
-            .frame(width: panelWidth, height: maxHeight, alignment: .top)
-            .background(Color.appBackgroundLight)
     }
 }
 

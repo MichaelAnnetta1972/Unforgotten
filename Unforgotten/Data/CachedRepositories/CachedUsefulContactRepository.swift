@@ -91,6 +91,46 @@ final class CachedUsefulContactRepository {
         return try modelContext.fetch(descriptor).map { (local: LocalUsefulContact) in local.toRemote() }
     }
 
+    /// Force refresh contacts from network and update local cache
+    func refreshFromRemote(accountId: UUID) async throws -> [UsefulContact] {
+        guard networkMonitor.isConnected else {
+            return try await getContacts(accountId: accountId)
+        }
+
+        let remoteContacts = try await remoteRepository.getContacts(accountId: accountId)
+        let remoteIds = Set(remoteContacts.map { $0.id })
+
+        // Update local cache with remote data
+        for remote in remoteContacts {
+            let remoteId = remote.id
+            let existingDescriptor = FetchDescriptor<LocalUsefulContact>(
+                predicate: #Predicate { $0.id == remoteId }
+            )
+
+            if let existing = try modelContext.fetch(existingDescriptor).first {
+                existing.update(from: remote)
+            } else {
+                let local = LocalUsefulContact(from: remote)
+                modelContext.insert(local)
+            }
+        }
+
+        // Remove local contacts that no longer exist on server (orphans/duplicates)
+        let localDescriptor = FetchDescriptor<LocalUsefulContact>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted }
+        )
+        let localContacts = try modelContext.fetch(localDescriptor)
+
+        for local in localContacts {
+            if !remoteIds.contains(local.id) && local.isSynced {
+                modelContext.delete(local)
+            }
+        }
+
+        try? modelContext.save()
+        return remoteContacts
+    }
+
     // MARK: - Write Operations
 
     /// Create a new contact from a UsefulContactInsert struct

@@ -66,6 +66,7 @@ struct SettingsPanelView: View {
     @State private var selectedSubMenu: SettingsSubMenu?
     @State private var showSignOutConfirm = false
     @State private var showUpgradePrompt = false
+    @State private var userEmail: String = ""
 
     /// Whether to show split view (side-by-side) on iPad
     private var showSplitLayout: Bool {
@@ -133,6 +134,11 @@ struct SettingsPanelView: View {
             }
         } message: {
             Text("Are you sure you want to sign out?")
+        }
+        .task {
+            if let user = await SupabaseManager.shared.currentUser {
+                userEmail = user.email ?? ""
+            }
         }
     }
 
@@ -241,6 +247,14 @@ struct SettingsPanelView: View {
                                     icon: "person.badge.shield.checkmark",
                                     title: "Your Role",
                                     value: role.displayName
+                                )
+                            }
+
+                            if !userEmail.isEmpty {
+                                SettingsPanelInfoRow(
+                                    icon: "envelope",
+                                    title: "Email",
+                                    value: userEmail
                                 )
                             }
                         }
@@ -743,7 +757,7 @@ struct InviteMemberPanelContent: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccentColor) private var appAccentColor
 
-    @State private var email = ""
+    @State private var email: String
     @State private var selectedRole: MemberRole = .helper
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -751,6 +765,10 @@ struct InviteMemberPanelContent: View {
     @State private var inviteCode: String = ""
 
     private let availableRoles: [MemberRole] = [.admin, .helper, .viewer]
+
+    init(prefilledEmail: String? = nil) {
+        _email = State(initialValue: prefilledEmail ?? "")
+    }
 
     var body: some View {
         ScrollView {
@@ -1200,8 +1218,56 @@ struct JoinAccountPanelContent: View {
                 return
             }
 
-            // Accept the invitation first (adds user as account member)
-            try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
+            // Get the acceptor's account ID and primary profile ID for profile sync
+            let acceptorAccountId = appState.currentAccount?.id
+            var acceptorProfileId: UUID? = nil
+            if let account = appState.currentAccount {
+                if let primaryProfile = try? await appState.profileRepository.getPrimaryProfile(accountId: account.id) {
+                    if primaryProfile.linkedUserId == userId {
+                        acceptorProfileId = primaryProfile.id
+                    }
+                }
+            }
+
+            #if DEBUG
+            print("🔗 Panel Join: Accepting invitation with sync...")
+            print("🔗 Panel Join: Invitation ID: \(invitation.id)")
+            print("🔗 Panel Join: User ID: \(userId)")
+            print("🔗 Panel Join: Acceptor Account ID: \(acceptorAccountId?.uuidString ?? "nil")")
+            print("🔗 Panel Join: Acceptor Profile ID: \(acceptorProfileId?.uuidString ?? "nil")")
+            #endif
+
+            // Accept invitation with profile sync
+            do {
+                let syncResult = try await appState.invitationRepository.acceptInvitationWithSync(
+                    invitation: invitation,
+                    userId: userId,
+                    acceptorProfileId: acceptorProfileId,
+                    acceptorAccountId: acceptorAccountId
+                )
+
+                #if DEBUG
+                print("🔗 Panel Join: Sync completed!")
+                print("🔗 Panel Join: syncId = \(syncResult.syncId?.uuidString ?? "nil")")
+                print("🔗 Panel Join: acceptorSyncedProfileId = \(syncResult.acceptorSyncedProfileId?.uuidString ?? "nil")")
+                #endif
+
+                // Post notification about the new sync
+                if let syncId = syncResult.syncId {
+                    NotificationCenter.default.post(
+                        name: .profileSyncDidChange,
+                        object: nil,
+                        userInfo: ["syncId": syncId, "action": "created"]
+                    )
+                }
+            } catch {
+                // Fall back to regular invitation acceptance if sync RPC isn't available
+                #if DEBUG
+                print("🔗 Panel Join: Sync RPC failed: \(error)")
+                print("🔗 Panel Join: Falling back to regular acceptance...")
+                #endif
+                try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
+            }
 
             // Now fetch the account name (user has RLS permission after being added as member)
             let account = try await appState.accountRepository.getAccount(id: invitation.accountId)

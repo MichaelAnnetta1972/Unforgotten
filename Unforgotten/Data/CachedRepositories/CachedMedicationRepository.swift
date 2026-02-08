@@ -50,6 +50,46 @@ final class CachedMedicationRepository {
         return localMedications.map { (local: LocalMedication) in local.toRemote() }
     }
 
+    /// Force refresh medications from network and update local cache
+    func refreshMedications(accountId: UUID) async throws -> [Medication] {
+        guard networkMonitor.isConnected else {
+            return try await getMedications(accountId: accountId)
+        }
+
+        let remoteMedications = try await remoteRepository.getMedications(accountId: accountId)
+        let remoteIds = Set(remoteMedications.map { $0.id })
+
+        // Update local cache with remote data
+        for remote in remoteMedications {
+            let remoteId = remote.id
+            let existingDescriptor = FetchDescriptor<LocalMedication>(
+                predicate: #Predicate { $0.id == remoteId }
+            )
+
+            if let existing = try modelContext.fetch(existingDescriptor).first {
+                existing.update(from: remote)
+            } else {
+                let local = LocalMedication(from: remote)
+                modelContext.insert(local)
+            }
+        }
+
+        // Remove local medications that no longer exist on server (orphans/duplicates)
+        let localDescriptor = FetchDescriptor<LocalMedication>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted }
+        )
+        let localMedications = try modelContext.fetch(localDescriptor)
+
+        for local in localMedications {
+            if !remoteIds.contains(local.id) && local.isSynced {
+                modelContext.delete(local)
+            }
+        }
+
+        try? modelContext.save()
+        return remoteMedications
+    }
+
     /// Get medications for a specific profile
     func getMedications(profileId: UUID) async throws -> [Medication] {
         let descriptor = FetchDescriptor<LocalMedication>(

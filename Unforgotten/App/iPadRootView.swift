@@ -219,6 +219,13 @@ struct iPadRootView: View {
                 noteToEdit = note
                 showEditNote = true
             })
+            .environment(\.iPadAddProfileAction, {
+                if PremiumLimitsManager.shared.canCreateFriendProfile(appState: appState, currentCount: profileCount) {
+                    showAddProfile = true
+                } else {
+                    showUpgradePrompt = true
+                }
+            })
             .environment(\.iPadAddMedicationAction, {
                 if PremiumLimitsManager.shared.canCreateMedication(appState: appState, currentCount: medicationCount) {
                     showAddMedication = true
@@ -574,7 +581,7 @@ struct iPadRootView: View {
                 }
             },
             onAddCountdown: {
-                selectedContent = .birthdays
+                selectedContent = .countdownEvents
                 showAddCountdown = true
             }
         )

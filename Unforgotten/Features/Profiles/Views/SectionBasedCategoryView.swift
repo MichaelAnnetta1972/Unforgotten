@@ -83,6 +83,7 @@ struct SectionBasedCategoryView: View {
     @State private var showAddItem = false
     @State private var selectedSection: String?
     @State private var showSettings = false
+    @State private var syncedDetailIds: Set<UUID> = []
 
     /// Check if iPad environment actions are available
     private var hasiPadSectionAction: Bool {
@@ -171,6 +172,8 @@ struct SectionBasedCategoryView: View {
                                     sectionName: group.section,
                                     items: group.items,
                                     accentColor: appAccentColor,
+                                    syncedDetailIds: syncedDetailIds,
+                                    sourceName: profile.isSyncedProfile ? profile.displayName : nil,
                                     onAddItem: {
                                         // Use iPad full-screen action if available
                                         if hasiPadItemAction {
@@ -265,21 +268,48 @@ struct SectionBasedCategoryView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .profileDetailsDidChange)) { notification in
-            if let profileId = notification.userInfo?["profileId"] as? UUID, profileId == profile.id {
-                Task {
-                    await reloadDetails()
-                }
+            // Reload details when they change (e.g., from iPad full-screen overlay or remote sync)
+            let isRemoteSync = notification.userInfo?["isRemoteSync"] as? Bool ?? false
+
+            // For remote sync notifications, check if this is for our profile or if profileId is missing (common for deletes)
+            if let profileId = notification.userInfo?["profileId"] as? UUID {
+                guard profileId == profile.id else { return }
+            } else if !isRemoteSync {
+                // Local notification without profileId - ignore
+                return
             }
+            // Remote sync without profileId (e.g., delete) - refresh to be safe
+
+            Task {
+                await reloadDetails(forceRefresh: isRemoteSync)
+            }
+        }
+        .task {
+            // Always refresh from network on appear to ensure data is current
+            await reloadDetails(forceRefresh: true)
         }
     }
 
-    private func reloadDetails() async {
+    private func reloadDetails(forceRefresh: Bool = false) async {
         do {
-            let details = try await appState.profileRepository.getProfileDetails(
-                profileId: profile.id,
-                category: category.detailCategory
-            )
+            let details: [ProfileDetail]
+            if forceRefresh {
+                details = try await appState.profileRepository.refreshProfileDetails(
+                    profileId: profile.id,
+                    category: category.detailCategory
+                )
+            } else {
+                details = try await appState.profileRepository.getProfileDetails(
+                    profileId: profile.id,
+                    category: category.detailCategory
+                )
+            }
             currentDetails = details
+
+            // Load synced detail IDs if this is a synced profile
+            if profile.isSyncedProfile {
+                syncedDetailIds = try await appState.profileSyncRepository.getSyncedDetailIds(for: profile.id)
+            }
         } catch {
             #if DEBUG
             print("Failed to reload details: \(error)")
@@ -320,9 +350,22 @@ struct SectionCard: View {
     let sectionName: String
     let items: [ProfileDetail]
     let accentColor: Color
+    let syncedDetailIds: Set<UUID>
+    let sourceName: String?
     let onAddItem: () -> Void
     let onDeleteItem: (ProfileDetail) -> Void
     let onDeleteSection: () -> Void
+
+    init(sectionName: String, items: [ProfileDetail], accentColor: Color, syncedDetailIds: Set<UUID> = [], sourceName: String? = nil, onAddItem: @escaping () -> Void, onDeleteItem: @escaping (ProfileDetail) -> Void, onDeleteSection: @escaping () -> Void) {
+        self.sectionName = sectionName
+        self.items = items
+        self.accentColor = accentColor
+        self.syncedDetailIds = syncedDetailIds
+        self.sourceName = sourceName
+        self.onAddItem = onAddItem
+        self.onDeleteItem = onDeleteItem
+        self.onDeleteSection = onDeleteSection
+    }
 
     @State private var showDeleteConfirmation = false
 
@@ -364,6 +407,8 @@ struct SectionCard: View {
                     ItemTag(
                         text: item.value,
                         accentColor: accentColor,
+                        isSynced: syncedDetailIds.contains(item.id),
+                        sourceName: sourceName,
                         onDelete: { onDeleteItem(item) }
                     )
                 }
@@ -391,13 +436,27 @@ struct SectionCard: View {
 struct ItemTag: View {
     let text: String
     let accentColor: Color
+    let isSynced: Bool
+    let sourceName: String?
     let onDelete: () -> Void
+
+    init(text: String, accentColor: Color, isSynced: Bool = false, sourceName: String? = nil, onDelete: @escaping () -> Void) {
+        self.text = text
+        self.accentColor = accentColor
+        self.isSynced = isSynced
+        self.sourceName = sourceName
+        self.onDelete = onDelete
+    }
 
     var body: some View {
         HStack(spacing: 6) {
             Text(text)
                 .font(.appCaption)
                 .foregroundColor(.textPrimary)
+
+            if isSynced, let name = sourceName {
+                SyncIndicator(sourceName: name)
+            }
 
             Button(action: onDelete) {
                 Image(systemName: "xmark")

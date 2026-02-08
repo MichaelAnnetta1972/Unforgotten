@@ -11,44 +11,42 @@ struct AuthView: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                ZStack {
-                    // Background - stays fixed
-                    AuthBackgroundView()
-                        .ignoresSafeArea(.keyboard)
+            ZStack {
+                // Background - stays fixed
+                AuthBackgroundView()
+                    .ignoresSafeArea(.keyboard)
 
-                    // Content with logo at top, form at bottom
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            // Logo at top
-                            Image("unforgotten-logo")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(height: isRegularWidth ? 100 : 80)
-                                .padding(.top, geometry.safeAreaInsets.top + (isRegularWidth ? 60 : 40))
+                // Content with logo at top, form at bottom
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Logo at top
+                        Image("unforgotten-logo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: isRegularWidth ? 100 : 80)
+                            .padding(.top, isRegularWidth ? 60 : 40)
 
-                            Spacer(minLength: isRegularWidth ? 60 : 40)
+                        Spacer(minLength: isRegularWidth ? 60 : 40)
 
-                            // Auth Form content
-                            VStack(spacing: isRegularWidth ? 32 : 24) {
-                                if showSignUp {
-                                    SignUpForm(showSignUp: $showSignUp)
-                                } else {
-                                    SignInForm(showSignUp: $showSignUp)
-                                }
+                        // Auth Form content
+                        VStack(spacing: isRegularWidth ? 32 : 24) {
+                            if showSignUp {
+                                SignUpForm(showSignUp: $showSignUp)
+                            } else {
+                                SignInForm(showSignUp: $showSignUp)
                             }
-                            .padding(.horizontal, AppDimensions.screenPadding)
-                            .padding(.bottom, geometry.safeAreaInsets.bottom + (isRegularWidth ? 48 : 32))
-                            .frame(maxWidth: isRegularWidth ? 500 : 550)
                         }
-                        .frame(minHeight: geometry.size.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom)
-                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .padding(.bottom, isRegularWidth ? 48 : 32)
+                        .frame(maxWidth: isRegularWidth ? 500 : 550)
                     }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .scrollDismissesKeyboard(.interactively)
+                    .frame(maxWidth: .infinity)
+                    .containerRelativeFrame(.vertical) { height, _ in height }
                 }
-                .ignoresSafeArea()
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
             }
+            .ignoresSafeArea(.keyboard)
         }
     }
 }
@@ -289,7 +287,11 @@ struct SignInForm: View {
                 isLoading = false
             }
         case .failure(let error):
-            errorMessage = error.localizedDescription
+            // Ignore cancellation - user just dismissed the modal
+            if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                return
+            }
+            errorMessage = "Apple Sign In failed"
         }
     }
     
@@ -471,7 +473,11 @@ struct SignUpForm: View {
                 isLoading = false
             }
         case .failure(let error):
-            errorMessage = error.localizedDescription
+            // Ignore cancellation - user just dismissed the modal
+            if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                return
+            }
+            errorMessage = "Apple Sign Up failed"
         }
     }
 }

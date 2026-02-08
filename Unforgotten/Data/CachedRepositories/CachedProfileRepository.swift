@@ -51,6 +51,53 @@ final class CachedProfileRepository {
         return localProfiles.map { (local: LocalProfile) in local.toRemote() }
     }
 
+    /// Force refresh profiles from network and update local cache
+    /// Used when realtime sync notifies of remote changes
+    func refreshProfiles(accountId: UUID) async throws -> [Profile] {
+        guard networkMonitor.isConnected else {
+            // If offline, just return local cache
+            return try await getProfiles(accountId: accountId)
+        }
+
+        let remoteProfiles = try await remoteRepository.getProfiles(accountId: accountId)
+        let remoteIds = Set(remoteProfiles.map { $0.id })
+
+        // Update local cache with remote data
+        for remote in remoteProfiles {
+            let remoteId = remote.id
+            let existingDescriptor = FetchDescriptor<LocalProfile>(
+                predicate: #Predicate { $0.id == remoteId }
+            )
+
+            if let existingLocal = try modelContext.fetch(existingDescriptor).first {
+                // Update existing local profile with remote data
+                existingLocal.update(from: remote)
+            } else {
+                // Insert new profile
+                let local = LocalProfile(from: remote)
+                modelContext.insert(local)
+            }
+        }
+
+        // Remove local profiles that no longer exist on the server (orphans/duplicates)
+        // Only remove synced profiles that aren't pending local changes
+        let allLocalDescriptor = FetchDescriptor<LocalProfile>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted }
+        )
+        let allLocalProfiles = try modelContext.fetch(allLocalDescriptor)
+
+        for local in allLocalProfiles {
+            // If this local profile's ID is not in the remote set and it's already synced,
+            // it means it was a duplicate or has been deleted on the server
+            if !remoteIds.contains(local.id) && local.isSynced {
+                modelContext.delete(local)
+            }
+        }
+
+        try? modelContext.save()
+        return remoteProfiles
+    }
+
     /// Get a specific profile from local cache
     func getProfile(id: UUID) async throws -> Profile? {
         let descriptor = FetchDescriptor<LocalProfile>(
@@ -275,6 +322,62 @@ final class CachedProfileRepository {
         return localDetails.map { (local: LocalProfileDetail) in local.toRemote() }
     }
 
+    /// Force refresh profile details from network and update local cache
+    /// Used when realtime sync notifies of remote changes
+    func refreshProfileDetails(profileId: UUID, category: DetailCategory? = nil) async throws -> [ProfileDetail] {
+        guard networkMonitor.isConnected else {
+            return try await getProfileDetails(profileId: profileId, category: category)
+        }
+
+        let remoteDetails: [ProfileDetail]
+        if let category = category {
+            remoteDetails = try await remoteRepository.getProfileDetails(profileId: profileId, category: category)
+        } else {
+            remoteDetails = try await remoteRepository.getProfileDetails(profileId: profileId)
+        }
+
+        // Update local cache with remote data
+        for remote in remoteDetails {
+            let remoteId = remote.id
+            let existingDescriptor = FetchDescriptor<LocalProfileDetail>(
+                predicate: #Predicate { $0.id == remoteId }
+            )
+
+            if let existingLocal = try modelContext.fetch(existingDescriptor).first {
+                existingLocal.update(from: remote)
+            } else {
+                let local = LocalProfileDetail(from: remote)
+                modelContext.insert(local)
+            }
+        }
+
+        // Remove any local details that no longer exist remotely
+        // For refreshProfileDetails, we trust the server as the source of truth
+        let remoteIds = Set(remoteDetails.map { $0.id })
+        var localDescriptor: FetchDescriptor<LocalProfileDetail>
+        if let category = category {
+            let categoryValue = category.rawValue
+            localDescriptor = FetchDescriptor<LocalProfileDetail>(
+                predicate: #Predicate { $0.profileId == profileId && $0.category == categoryValue && !$0.locallyDeleted }
+            )
+        } else {
+            localDescriptor = FetchDescriptor<LocalProfileDetail>(
+                predicate: #Predicate { $0.profileId == profileId && !$0.locallyDeleted }
+            )
+        }
+        let localDetails = try modelContext.fetch(localDescriptor)
+        for local in localDetails {
+            if !remoteIds.contains(local.id) {
+                // This detail doesn't exist on server - delete it from local cache
+                // This handles both: items deleted on server, and stale cached items
+                modelContext.delete(local)
+            }
+        }
+
+        try? modelContext.save()
+        return remoteDetails
+    }
+
     /// Create a profile detail from a ProfileDetailInsert struct
     func createProfileDetail(_ insert: ProfileDetailInsert) async throws -> ProfileDetail {
         return try await createProfileDetail(
@@ -284,7 +387,8 @@ final class CachedProfileRepository {
             label: insert.label,
             value: insert.value,
             status: insert.status,
-            occasion: insert.occasion
+            occasion: insert.occasion,
+            metadata: insert.metadata
         )
     }
 
@@ -296,8 +400,17 @@ final class CachedProfileRepository {
         label: String,
         value: String,
         status: String? = nil,
-        occasion: String? = nil
+        occasion: String? = nil,
+        metadata: [String: String]? = nil
     ) async throws -> ProfileDetail {
+        // Encode metadata to Data if present
+        let metadataData: Data?
+        if let metadata = metadata {
+            metadataData = try? JSONEncoder().encode(metadata)
+        } else {
+            metadataData = nil
+        }
+
         let local = LocalProfileDetail(
             id: UUID(),
             accountId: accountId,
@@ -307,6 +420,7 @@ final class CachedProfileRepository {
             value: value,
             status: status,
             occasion: occasion,
+            metadata: metadataData,
             isSynced: false
         )
         modelContext.insert(local)
@@ -335,6 +449,12 @@ final class CachedProfileRepository {
             local.value = detail.value
             local.status = detail.status
             local.occasion = detail.occasion
+            // Update metadata
+            if let metadata = detail.metadata {
+                local.metadata = try? JSONEncoder().encode(metadata)
+            } else {
+                local.metadata = nil
+            }
             local.markAsModified()
 
             syncEngine.queueChange(

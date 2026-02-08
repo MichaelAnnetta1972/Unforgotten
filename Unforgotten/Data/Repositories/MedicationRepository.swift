@@ -525,6 +525,7 @@ final class MedicationRepository: MedicationRepositoryProtocol {
 
 // MARK: - Insert/Update Types
 struct MedicationInsert: Encodable {
+    let id: UUID?
     let accountId: UUID
     let profileId: UUID
     let name: String
@@ -539,6 +540,7 @@ struct MedicationInsert: Encodable {
     let isPaused: Bool
 
     enum CodingKeys: String, CodingKey {
+        case id
         case accountId = "account_id"
         case profileId = "profile_id"
         case name
@@ -554,6 +556,7 @@ struct MedicationInsert: Encodable {
     }
 
     init(
+        id: UUID? = nil,
         accountId: UUID,
         profileId: UUID,
         name: String,
@@ -567,6 +570,7 @@ struct MedicationInsert: Encodable {
         intakeInstruction: IntakeInstruction? = nil,
         isPaused: Bool = false
     ) {
+        self.id = id
         self.accountId = accountId
         self.profileId = profileId
         self.name = name

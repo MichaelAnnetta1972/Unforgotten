@@ -28,6 +28,12 @@ final class LocalProfile {
     var createdAt: Date
     var updatedAt: Date
 
+    // MARK: - Profile Sync Properties (for connected profiles)
+    var sourceUserId: UUID?
+    var syncedFields: [String]?
+    var isLocalOnly: Bool
+    var syncConnectionId: UUID?
+
     // MARK: - Sync Properties
     var isSynced: Bool
     var locallyDeleted: Bool
@@ -55,6 +61,10 @@ final class LocalProfile {
         sortOrder: Int = 0,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
+        sourceUserId: UUID? = nil,
+        syncedFields: [String]? = nil,
+        isLocalOnly: Bool = false,
+        syncConnectionId: UUID? = nil,
         isSynced: Bool = false,
         locallyDeleted: Bool = false
     ) {
@@ -79,6 +89,10 @@ final class LocalProfile {
         self.sortOrder = sortOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.sourceUserId = sourceUserId
+        self.syncedFields = syncedFields
+        self.isLocalOnly = isLocalOnly
+        self.syncConnectionId = syncConnectionId
         self.isSynced = isSynced
         self.locallyDeleted = locallyDeleted
     }
@@ -107,6 +121,10 @@ final class LocalProfile {
             sortOrder: remote.sortOrder,
             createdAt: remote.createdAt,
             updatedAt: remote.updatedAt,
+            sourceUserId: remote.sourceUserId,
+            syncedFields: remote.syncedFields,
+            isLocalOnly: remote.isLocalOnly,
+            syncConnectionId: remote.syncConnectionId,
             isSynced: true,
             locallyDeleted: false
         )
@@ -135,7 +153,11 @@ final class LocalProfile {
             photoUrl: photoUrl,
             sortOrder: sortOrder,
             createdAt: createdAt,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            sourceUserId: sourceUserId,
+            syncedFields: syncedFields,
+            isLocalOnly: isLocalOnly,
+            syncConnectionId: syncConnectionId
         )
     }
 
@@ -161,6 +183,10 @@ final class LocalProfile {
         self.sortOrder = remote.sortOrder
         self.createdAt = remote.createdAt
         self.updatedAt = remote.updatedAt
+        self.sourceUserId = remote.sourceUserId
+        self.syncedFields = remote.syncedFields
+        self.isLocalOnly = remote.isLocalOnly
+        self.syncConnectionId = remote.syncConnectionId
         self.isSynced = true
     }
 

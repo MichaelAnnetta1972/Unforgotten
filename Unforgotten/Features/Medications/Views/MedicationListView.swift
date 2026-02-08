@@ -47,11 +47,11 @@ struct MedicationListView: View {
             await viewModel.loadMedications(appState: appState)
         }
         .refreshable {
-            await viewModel.loadMedications(appState: appState)
+            await viewModel.loadMedications(appState: appState, forceRefresh: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .medicationsDidChange)) { _ in
             Task {
-                await viewModel.loadMedications(appState: appState)
+                await viewModel.loadMedications(appState: appState, forceRefresh: true)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
@@ -103,6 +103,8 @@ struct MedicationListView: View {
                     CustomizableHeaderView(
                         pageIdentifier: .medications,
                         title: "Medicines",
+                        showBackButton: iPadHomeAction == nil,
+                        backAction: { dismiss() },
                         showHomeButton: iPadHomeAction != nil,
                         homeAction: iPadHomeAction,
                         showAddButton: canEdit,
@@ -365,13 +367,17 @@ class MedicationListViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    func loadMedications(appState: AppState) async {
+    func loadMedications(appState: AppState, forceRefresh: Bool = false) async {
         guard let account = appState.currentAccount else { return }
 
         isLoading = true
 
         do {
-            medications = try await appState.medicationRepository.getMedications(accountId: account.id)
+            if forceRefresh {
+                medications = try await appState.medicationRepository.refreshMedications(accountId: account.id)
+            } else {
+                medications = try await appState.medicationRepository.getMedications(accountId: account.id)
+            }
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription
@@ -1219,7 +1225,7 @@ struct CalendarGridView: View {
                         )
                     } else {
                         Color.clear
-                            .frame(height: 44)
+                            .frame(height: 36)
                     }
                 }
             }
@@ -1265,7 +1271,7 @@ struct CalendarDayCell: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(height: 36)
             .background(backgroundColor)
             .cornerRadius(8)
             .overlay(

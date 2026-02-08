@@ -4,9 +4,20 @@ import SwiftUI
 struct FeatureVisibilityView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.sidePanelDismiss) private var sidePanelDismiss
+    @Environment(UserPreferences.self) private var userPreferences
+    @Environment(HeaderStyleManager.self) private var headerStyleManager
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(FeatureVisibilityManager.self) private var featureVisibility
+    @State private var isCheckmarkPressed = false
 
+    /// Computed effective accent color (respects hasCustomAccentColor flag)
+    private var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
     /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
     private func dismissView() {
         if let sidePanelDismiss {
@@ -20,17 +31,42 @@ struct FeatureVisibilityView: View {
         VStack(spacing: 0) {
             // Custom header with Done button
             HStack {
-                Text("Features")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
+
+                        Text("Toggle Features")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                    }
 
                 Spacer()
 
-                Button("Done") {
-                    dismissView()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isCheckmarkPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismissView()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.appBody.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(15)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                        )
+                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
-                .font(.appBody)
-                .foregroundColor(appAccentColor)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
@@ -39,14 +75,7 @@ struct FeatureVisibilityView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Header
-                    VStack(spacing: 12) {
-                        //Image(systemName: "square.grid.2x2")
-                        //    .font(.system(size: 50))
-                        //    .foregroundColor(appAccentColor)
-
-                        Text("Show/Hide Features")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
+                    VStack(alignment: .leading, spacing: 8) {
 
                         Text("Choose which features appear on your home screen. Hidden features can still be accessed from this menu.")
                             .font(.appBody)

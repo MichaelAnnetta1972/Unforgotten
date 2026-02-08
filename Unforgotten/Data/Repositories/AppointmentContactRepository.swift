@@ -177,6 +177,7 @@ final class AppointmentRepository: AppointmentRepositoryProtocol {
 
 // MARK: - Appointment Insert/Update Types
 struct AppointmentInsert: Encodable {
+    let id: UUID?
     let accountId: UUID
     let profileId: UUID
     let withProfileId: UUID?
@@ -189,6 +190,7 @@ struct AppointmentInsert: Encodable {
     let reminderOffsetMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case accountId = "account_id"
         case profileId = "profile_id"
         case withProfileId = "with_profile_id"
@@ -202,6 +204,7 @@ struct AppointmentInsert: Encodable {
     }
 
     init(
+        id: UUID? = nil,
         accountId: UUID,
         profileId: UUID,
         title: String,
@@ -213,6 +216,7 @@ struct AppointmentInsert: Encodable {
         notes: String? = nil,
         reminderOffsetMinutes: Int? = 60
     ) {
+        self.id = id
         self.accountId = accountId
         self.profileId = profileId
         self.withProfileId = withProfileId
@@ -228,6 +232,7 @@ struct AppointmentInsert: Encodable {
     // Custom encoding to handle date and time fields for PostgreSQL
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
         try container.encode(accountId, forKey: .accountId)
         try container.encode(profileId, forKey: .profileId)
         try container.encodeIfPresent(withProfileId, forKey: .withProfileId)
@@ -446,6 +451,7 @@ final class UsefulContactRepository: UsefulContactRepositoryProtocol {
 
 // MARK: - Useful Contact Insert/Update Types
 struct UsefulContactInsert: Encodable {
+    let id: UUID?
     let accountId: UUID
     let name: String
     let category: ContactCategory
@@ -456,8 +462,9 @@ struct UsefulContactInsert: Encodable {
     let address: String?
     let notes: String?
     let isFavourite: Bool
-    
+
     enum CodingKeys: String, CodingKey {
+        case id
         case accountId = "account_id"
         case name
         case category
@@ -469,8 +476,9 @@ struct UsefulContactInsert: Encodable {
         case notes
         case isFavourite = "is_favourite"
     }
-    
+
     init(
+        id: UUID? = nil,
         accountId: UUID,
         name: String,
         category: ContactCategory,
@@ -482,6 +490,7 @@ struct UsefulContactInsert: Encodable {
         notes: String? = nil,
         isFavourite: Bool = false
     ) {
+        self.id = id
         self.accountId = accountId
         self.name = name
         self.category = category
@@ -551,14 +560,17 @@ final class MoodRepository: MoodRepositoryProtocol {
         // Use UTC calendar for consistent date comparison with stored data
         var utcCalendar = Calendar(identifier: .gregorian)
         utcCalendar.timeZone = TimeZone(identifier: "UTC")!
-        let todayUTC = utcCalendar.startOfDay(for: Date())
+        let startOfDay = utcCalendar.startOfDay(for: Date())
+        let endOfDay = utcCalendar.date(byAdding: .day, value: 1, to: startOfDay)!
 
+        // Use range query to handle any timestamp precision differences
         let entries: [MoodEntry] = try await supabase
             .from(TableName.moodEntries)
             .select()
             .eq("account_id", value: accountId)
             .eq("user_id", value: userId)
-            .eq("date", value: todayUTC.ISO8601Format())
+            .gte("date", value: startOfDay.ISO8601Format())
+            .lt("date", value: endOfDay.ISO8601Format())
             .limit(1)
             .execute()
             .value

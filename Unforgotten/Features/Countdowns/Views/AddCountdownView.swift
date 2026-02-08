@@ -66,7 +66,7 @@ struct AddCountdownView: View {
 
                 Spacer()
 
-                Text("Add Countdown")
+                Text("Add an Event")
                     .font(.headline)
                     .foregroundColor(.textPrimary)
 

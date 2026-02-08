@@ -57,6 +57,8 @@ struct AppointmentListView: View {
                 CustomizableHeaderView(
                     pageIdentifier: .appointments,
                     title: "Appointments",
+                    showBackButton: iPadHomeAction == nil,
+                    backAction: { dismiss() },
                     showHomeButton: iPadHomeAction != nil,
                     homeAction: iPadHomeAction,
                     showAddButton: canEdit,
@@ -1778,7 +1780,7 @@ struct AppointmentCalendarGrid: View {
                         )
                     } else {
                         Color.clear
-                            .frame(height: 44)
+                            .frame(height: 36)
                     }
                 }
             }
@@ -1818,7 +1820,7 @@ struct AppointmentDayCell: View {
                     .frame(width: 6, height: 6)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(height: 36)
             .background(isSelected ? appAccentColor.opacity(0.2) : Color.clear)
             .cornerRadius(8)
             .overlay(

@@ -156,6 +156,60 @@ final class InvitationRepository: InvitationRepositoryProtocol {
         }
     }
 
+    // MARK: - Accept Invitation With Profile Sync
+    /// Accepts an invitation with automatic profile syncing between connected users
+    /// - Parameters:
+    ///   - invitation: The invitation to accept
+    ///   - userId: The ID of the user accepting the invitation
+    ///   - acceptorProfileId: Optional ID of the acceptor's primary profile (for bidirectional sync)
+    ///   - acceptorAccountId: Optional ID of the acceptor's account (ensures correct profile placement)
+    /// - Returns: The result of the profile sync operation
+    func acceptInvitationWithSync(
+        invitation: AccountInvitation,
+        userId: UUID,
+        acceptorProfileId: UUID?,
+        acceptorAccountId: UUID?
+    ) async throws -> ProfileSyncResult {
+        // Build params dictionary - handle optional parameters
+        var params: [String: String] = [
+            "p_invitation_id": invitation.id.uuidString,
+            "p_user_id": userId.uuidString
+        ]
+
+        if let profileId = acceptorProfileId {
+            params["p_acceptor_profile_id"] = profileId.uuidString
+        }
+
+        if let accountId = acceptorAccountId {
+            params["p_acceptor_account_id"] = accountId.uuidString
+        }
+
+        #if DEBUG
+        print("📡 RPC accept_invitation_with_sync params:")
+        print("📡   p_invitation_id: \(invitation.id.uuidString)")
+        print("📡   p_user_id: \(userId.uuidString)")
+        print("📡   p_acceptor_profile_id: \(acceptorProfileId?.uuidString ?? "not provided")")
+        print("📡   p_acceptor_account_id: \(acceptorAccountId?.uuidString ?? "not provided")")
+        #endif
+
+        // Call the RPC function that handles invitation acceptance + profile sync atomically
+        let result: ProfileSyncResult = try await supabase.rpc(
+            "accept_invitation_with_sync",
+            params: params
+        ).execute().value
+
+        #if DEBUG
+        print("📡 RPC accept_invitation_with_sync response:")
+        print("📡   success: \(result.success)")
+        print("📡   sync_id: \(result.syncId?.uuidString ?? "nil")")
+        print("📡   inviter_synced_profile_id: \(result.inviterSyncedProfileId?.uuidString ?? "nil")")
+        print("📡   acceptor_synced_profile_id: \(result.acceptorSyncedProfileId?.uuidString ?? "nil")")
+        print("📡   debug: \(result.debug ?? "none")")
+        #endif
+
+        return result
+    }
+
     // MARK: - Generate Invite Code
     private func generateInviteCode() -> String {
         // Generate a 6-character alphanumeric code (excluding confusing characters)

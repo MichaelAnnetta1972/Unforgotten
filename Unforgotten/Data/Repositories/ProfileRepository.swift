@@ -35,14 +35,22 @@ final class ProfileRepository: ProfileRepositoryProtocol {
     
     // MARK: - Get All Profiles
     func getProfiles(accountId: UUID) async throws -> [Profile] {
+        // Explicitly select all columns including sync-related ones
         let profiles: [Profile] = try await supabase
             .from(TableName.profiles)
-            .select()
+            .select("*, source_user_id, synced_fields, is_local_only, sync_connection_id")
             .eq("account_id", value: accountId)
             .order("sort_order")
             .order("full_name")
             .execute()
             .value
+
+        #if DEBUG
+        print("🔍 ProfileRepository: Loaded \(profiles.count) profiles, checking source_user_id:")
+        for profile in profiles {
+            print("🔍   \(profile.id.uuidString.prefix(8)): sourceUserId=\(profile.sourceUserId?.uuidString ?? "nil")")
+        }
+        #endif
 
         return profiles
     }
@@ -278,6 +286,7 @@ final class ProfileRepository: ProfileRepositoryProtocol {
 
 // MARK: - Insert/Update Types
 struct ProfileInsert: Encodable {
+    let id: UUID?
     let accountId: UUID
     let type: ProfileType
     let fullName: String
@@ -297,6 +306,7 @@ struct ProfileInsert: Encodable {
     let photoUrl: String?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case accountId = "account_id"
         case type
         case fullName = "full_name"
@@ -317,6 +327,7 @@ struct ProfileInsert: Encodable {
     }
 
     init(
+        id: UUID? = nil,
         accountId: UUID,
         type: ProfileType = .relative,
         fullName: String,
@@ -335,6 +346,7 @@ struct ProfileInsert: Encodable {
         linkedUserId: UUID? = nil,
         photoUrl: String? = nil
     ) {
+        self.id = id
         self.accountId = accountId
         self.type = type
         self.fullName = fullName
@@ -409,6 +421,7 @@ private struct ProfileUpdate: Encodable {
 }
 
 struct ProfileDetailInsert: Encodable {
+    let id: UUID?
     let accountId: UUID
     let profileId: UUID
     let category: DetailCategory
@@ -419,6 +432,7 @@ struct ProfileDetailInsert: Encodable {
     let metadata: [String: String]?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case accountId = "account_id"
         case profileId = "profile_id"
         case category
@@ -430,6 +444,7 @@ struct ProfileDetailInsert: Encodable {
     }
 
     init(
+        id: UUID? = nil,
         accountId: UUID,
         profileId: UUID,
         category: DetailCategory,
@@ -439,6 +454,7 @@ struct ProfileDetailInsert: Encodable {
         occasion: String? = nil,
         metadata: [String: String]? = nil
     ) {
+        self.id = id
         self.accountId = accountId
         self.profileId = profileId
         self.category = category

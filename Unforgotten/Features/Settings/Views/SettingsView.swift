@@ -40,6 +40,16 @@ struct SettingsView: View {
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
     @State private var userEmail: String = ""
+    @State private var isCheckmarkPressed = false
+
+    /// Computed effective accent color (respects hasCustomAccentColor flag)
+    private var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
 
     /// Helper/Viewer roles have limited access
     private var isLimitedAccess: Bool {
@@ -65,37 +75,53 @@ struct SettingsView: View {
         ZStack {
             Color.appBackground.ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Back button (navigates to Home tab)
-                    HStack {
-                        Button {
-                            navigateToHomeTab?()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 20, weight: .medium))
-                                .foregroundColor(.textPrimary)
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.top, 8)
-
-                    // Header
-                    VStack(spacing: 8) {
+            VStack(spacing: 0) {
+                // Custom header with Done button
+                HStack {
+                    HStack(spacing: 12) {
                         Image(systemName: "gearshape.fill")
-                            .font(.system(size: 50))
-                            .foregroundColor(appAccentColor)
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
 
                         Text("Settings")
-                            .font(.appLargeTitle)
+                            .font(.appTitle)
                             .foregroundColor(.textPrimary)
                     }
-                    .padding(.top, 0)
 
-                    // Viewing As Bar (shown when viewing another account)
+                    Spacer()
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isCheckmarkPressed = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            navigateToHomeTab?()
+                        }
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.appBody.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(15)
+                            .background(
+                                Circle()
+                                    .fill(.white.opacity(0.15))
+                            )
+                            .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
+                .background(Color.appBackground)
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Viewing As Bar (shown when viewing another account)
                     ViewingAsBar()
                         .padding(.horizontal, AppDimensions.screenPadding)
 
@@ -246,22 +272,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Mood section (only for full access)
-                    if appState.hasFullAccess {
-                        SettingsSection(title: "MOOD") {
-                            SettingsButtonRow(
-                                icon: "chart.line.uptrend.xyaxis",
-                                title: "View Mood History",
-                                action: {
-                                    if let action = iPadShowMoodHistoryAction {
-                                        action()
-                                    } else {
-                                        showMoodHistory = true
-                                    }
-                                }
-                            )
-                        }
-                    }
                     
                     // Upgrade section (only show if not premium)
                     if !isPremiumUser {
@@ -331,6 +341,7 @@ struct SettingsView: View {
                     Spacer()
                         .frame(height: 40)
                 }
+            }
             }
         }
         .navigationTitle("Settings")
@@ -555,16 +566,32 @@ struct InviteMemberView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
-
-    @State private var email = ""
+    @Environment(UserPreferences.self) private var userPreferences
+    @Environment(UserHeaderOverrides.self) private var headerOverrides
+    @Environment(HeaderStyleManager.self) private var headerStyleManager
+    @State private var email: String
     @State private var selectedRole: MemberRole = .helper
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSuccess = false
     @State private var inviteCode: String = ""
     @State private var showShareSheet = false
-
+    @State private var isCheckmarkPressed = false
     private let availableRoles: [MemberRole] = [.admin, .helper, .viewer]
+
+    init(prefilledEmail: String? = nil) {
+        _email = State(initialValue: prefilledEmail ?? "")
+    }
+
+
+    /// Computed effective accent color (respects hasCustomAccentColor flag)
+    private var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
 
     /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
     private func dismissView() {
@@ -579,23 +606,42 @@ struct InviteMemberView: View {
         VStack(spacing: 0) {
             // Custom header with Cancel button
             HStack {
-                Button("Cancel") {
-                    dismissView()
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
+
+                        Text("Invite a member")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                    }
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isCheckmarkPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismissView()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.appBody.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(15)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                        )
+                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
-                .font(.appBody)
-                .foregroundColor(appAccentColor)
-
-                Spacer()
-
-                Text("Invite Member")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                // Invisible spacer for centering
-                Text("Cancel").opacity(0)
-                    .font(.appBody)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
@@ -604,21 +650,13 @@ struct InviteMemberView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Explanation
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.badge.plus")
-                            .font(.system(size: 50))
-                            .foregroundColor(appAccentColor)
+                    VStack(alignment: .leading, spacing: 8) {
 
-                        Text("Invite Family Member")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
-
-                        Text("Share access to this account with a family member or carer.")
+                        Text("Invite someone to share access to this account. By doing this you can have a family member or carer help maintain your account or join a Family Calendar.")
                             .font(.appBody)
                             .foregroundColor(.textSecondary)
-                            .multilineTextAlignment(.center)
                     }
-                    .padding(.top, 24)
+                    .padding(.top, 12)
 
                     // Email input
                     VStack(alignment: .leading, spacing: 8) {
@@ -654,6 +692,9 @@ struct InviteMemberView: View {
                         Task { await sendInvite() }
                     }
                     .disabled(email.isBlank || !email.isValidEmail)
+
+                    Spacer()
+                        .frame(height: 80)
                 }
                 .padding(AppDimensions.screenPadding)
             }
@@ -943,10 +984,23 @@ struct ManageMembersView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(UserPreferences.self) private var userPreferences
+    @Environment(UserHeaderOverrides.self) private var headerOverrides
+    @Environment(HeaderStyleManager.self) private var headerStyleManager
     @StateObject private var viewModel = ManageMembersViewModel()
     @State private var memberToRemove: MemberWithEmail?
     @State private var showRemoveConfirm = false
+    @State private var isCheckmarkPressed = false
 
+
+    /// Computed effective accent color (respects hasCustomAccentColor flag)
+    private var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
     /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
     private func dismissView() {
         if let sidePanelDismiss {
@@ -960,17 +1014,42 @@ struct ManageMembersView: View {
         VStack(spacing: 0) {
             // Custom header with Done button
             HStack {
-                Text("Manage Members")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
+
+                        Text("Manage Members")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                    }
 
                 Spacer()
 
-                Button("Done") {
-                    dismissView()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isCheckmarkPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismissView()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.appBody.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(15)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                        )
+                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
-                .font(.appBody)
-                .foregroundColor(appAccentColor)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
@@ -979,14 +1058,7 @@ struct ManageMembersView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Header
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 50))
-                            .foregroundColor(appAccentColor)
-
-                        Text("Manage Members")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
+                    VStack(alignment: .leading, spacing: 8) {
 
                         Text("View and manage who has access to this account.")
                             .font(.appBody)
@@ -1392,14 +1464,26 @@ struct JoinAccountView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
-
+    @Environment(UserPreferences.self) private var userPreferences
+    @Environment(UserHeaderOverrides.self) private var headerOverrides
+    @Environment(HeaderStyleManager.self) private var headerStyleManager
     @State private var inviteCode = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSuccess = false
     @State private var joinedAccountName: String = ""
 
-    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
+
+    /// Computed effective accent color (respects hasCustomAccentColor flag)
+    private var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
+
+    @State private var isCheckmarkPressed = false    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
     private func dismissView() {
         if let sidePanelDismiss {
             sidePanelDismiss()
@@ -1412,23 +1496,42 @@ struct JoinAccountView: View {
         VStack(spacing: 0) {
             // Custom header with Cancel button
             HStack {
-                Button("Cancel") {
-                    dismissView()
+                    HStack(spacing: 12) {
+                        Image(systemName: "envelope.badge")
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
+
+                        Text("Join an Account")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                    }
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isCheckmarkPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismissView()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.appBody.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(15)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                        )
+                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
-                .font(.appBody)
-                .foregroundColor(appAccentColor)
-
-                Spacer()
-
-                Text("Join Account")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                // Invisible spacer for centering
-                Text("Cancel").opacity(0)
-                    .font(.appBody)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
@@ -1437,19 +1540,11 @@ struct JoinAccountView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Header
-                    VStack(spacing: 12) {
-                        Image(systemName: "envelope.badge")
-                            .font(.system(size: 50))
-                            .foregroundColor(appAccentColor)
-
-                        Text("Join Another Account")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
+                    VStack(alignment: .leading, spacing: 8) {
 
                         Text("Enter the invitation code you received to join a family account.")
                             .font(.appBody)
                             .foregroundColor(.textSecondary)
-                            .multilineTextAlignment(.center)
                     }
                     .padding(.top, 24)
 
@@ -1535,8 +1630,56 @@ struct JoinAccountView: View {
                 return
             }
 
-            // Accept the invitation first (adds user as account member)
-            try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
+            // Get the acceptor's account ID and primary profile ID for profile sync
+            let acceptorAccountId = appState.currentAccount?.id
+            var acceptorProfileId: UUID? = nil
+            if let account = appState.currentAccount {
+                if let primaryProfile = try? await appState.profileRepository.getPrimaryProfile(accountId: account.id) {
+                    if primaryProfile.linkedUserId == userId {
+                        acceptorProfileId = primaryProfile.id
+                    }
+                }
+            }
+
+            #if DEBUG
+            print("🔗 Settings Join: Accepting invitation with sync...")
+            print("🔗 Settings Join: Invitation ID: \(invitation.id)")
+            print("🔗 Settings Join: User ID: \(userId)")
+            print("🔗 Settings Join: Acceptor Account ID: \(acceptorAccountId?.uuidString ?? "nil")")
+            print("🔗 Settings Join: Acceptor Profile ID: \(acceptorProfileId?.uuidString ?? "nil")")
+            #endif
+
+            // Accept invitation with profile sync
+            do {
+                let syncResult = try await appState.invitationRepository.acceptInvitationWithSync(
+                    invitation: invitation,
+                    userId: userId,
+                    acceptorProfileId: acceptorProfileId,
+                    acceptorAccountId: acceptorAccountId
+                )
+
+                #if DEBUG
+                print("🔗 Settings Join: Sync completed!")
+                print("🔗 Settings Join: syncId = \(syncResult.syncId?.uuidString ?? "nil")")
+                print("🔗 Settings Join: acceptorSyncedProfileId = \(syncResult.acceptorSyncedProfileId?.uuidString ?? "nil")")
+                #endif
+
+                // Post notification about the new sync
+                if let syncId = syncResult.syncId {
+                    NotificationCenter.default.post(
+                        name: .profileSyncDidChange,
+                        object: nil,
+                        userInfo: ["syncId": syncId, "action": "created"]
+                    )
+                }
+            } catch {
+                // Fall back to regular invitation acceptance if sync RPC isn't available
+                #if DEBUG
+                print("🔗 Settings Join: Sync RPC failed: \(error)")
+                print("🔗 Settings Join: Falling back to regular acceptance...")
+                #endif
+                try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
+            }
 
             // Now fetch the account name (user has RLS permission after being added as member)
             let account = try await appState.accountRepository.getAccount(id: invitation.accountId)
@@ -1560,10 +1703,21 @@ struct EditAccountNameView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
-
+    @Environment(UserPreferences.self) private var userPreferences
+    @Environment(HeaderStyleManager.self) private var headerStyleManager
+    @State private var isCheckmarkPressed = false
     @State private var accountName: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
+   
+    /// Computed effective accent color (respects hasCustomAccentColor flag)
+    private var effectiveAccentColor: Color {
+        if userPreferences.hasCustomAccentColor {
+            return userPreferences.accentColor
+        } else {
+            return headerStyleManager.defaultAccentColor
+        }
+    }
 
     /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
     private func dismissView() {
@@ -1574,27 +1728,47 @@ struct EditAccountNameView: View {
         }
     }
 
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with Cancel button
+            // Custom header with Done button
             HStack {
-                Button("Cancel") {
-                    dismissView()
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.circle")
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
+
+                        Text("Edit Account Name")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                    }
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isCheckmarkPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismissView()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.appBody.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(15)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                        )
+                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
-                .font(.appBody)
-                .foregroundColor(appAccentColor)
-
-                Spacer()
-
-                Text("Edit Account Name")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                // Invisible spacer for centering
-                Text("Cancel").opacity(0)
-                    .font(.appBody)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
@@ -1603,14 +1777,7 @@ struct EditAccountNameView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Header
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.circle")
-                            .font(.system(size: 50))
-                            .foregroundColor(appAccentColor)
-
-                        Text("Edit Account Name")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
+                    VStack(alignment: .leading, spacing: 8) {
 
                         Text("This name helps identify the account for family members.")
                             .font(.appBody)

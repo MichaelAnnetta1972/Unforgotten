@@ -40,7 +40,8 @@
       "Bash(swift build:*)",
       "Bash(wc:*)",
       "Bash(swift --version:*)",
-      "Bash(/usr/bin/xcodebuild:*)"
+      "Bash(/usr/bin/xcodebuild:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

@@ -20,103 +20,116 @@ struct OnboardingActivationView: View {
 
     private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
-    // Features to activate
-    private let features = [
-        "Profiles",
-        "Calendar",
-        "To Do Lists",
-        "Appointments",
-        "Notes",
-        "Medications",
-        "Contacts"
-    ]
+    /// Features to activate - includes required features plus user-selected features
+    private var features: [String] {
+        var featureNames: [String] = []
+
+        // Always include required features first
+        for feature in Feature.requiredFeatures {
+            featureNames.append(feature.displayName)
+        }
+
+        // Add user-selected features (sorted for consistent order)
+        let selectedFeatures = onboardingData.selectedFeatures
+            .sorted { $0.rawValue < $1.rawValue }
+
+        for feature in selectedFeatures {
+            featureNames.append(feature.displayName)
+        }
+
+        return featureNames
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
-                .frame(height: isRegularWidth ? 80 : 60)
+        ScrollView {
+            VStack(spacing: 0) {
+                Spacer()
+                    .frame(height: isRegularWidth ? 80 : 60)
 
-            // Header
-            Text("Activating your workspace")
-                .font(.appLargeTitle)
-                .foregroundColor(.textPrimary)
-                .multilineTextAlignment(.center)
-                .opacity(hasAppeared ? 1 : 0)
-                .offset(y: hasAppeared ? 0 : 20)
-                .animation(
-                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                    value: hasAppeared
-                )
-
-            Spacer()
-                .frame(height: isRegularWidth ? 48 : 40)
-
-            // Feature checklist - cards appear one at a time as they're checked
-            VStack(spacing: isRegularWidth ? 12 : 8) {
-                ForEach(Array(features.enumerated()), id: \.offset) { index, feature in
-                    ActivationFeatureRow(
-                        title: feature,
-                        isActivated: activatedFeatures.contains(index),
-                        accentColor: accentColor
-                    )
-                    .opacity(visibleFeatures.contains(index) ? 1 : 0)
-                    .offset(y: visibleFeatures.contains(index) ? 0 : 20)
+                // Header
+                Text("Activating your workspace")
+                    .font(.appLargeTitle)
+                    .foregroundColor(.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .opacity(hasAppeared ? 1 : 0)
+                    .offset(y: hasAppeared ? 0 : 20)
                     .animation(
                         reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                        value: visibleFeatures.contains(index)
+                        value: hasAppeared
                     )
-                }
-            }
-            .frame(maxWidth: isRegularWidth ? 500 : .infinity)
-            .padding(.horizontal, AppDimensions.screenPadding)
 
-            Spacer()
+                Spacer()
+                    .frame(height: isRegularWidth ? 48 : 40)
 
-            // Completion message and button
-            VStack(spacing: isRegularWidth ? 32 : 24) {
-                if allFeaturesActivated {
-                    Text("You're all set up")
-                        .font(.appTitle)
-                        .foregroundColor(.textPrimary)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-
-                // Error message
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.appCaption)
-                        .foregroundColor(.medicalRed)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                }
-
-                // Let's go button (only shown when all features activated)
-                if allFeaturesActivated {
-                    Button(action: onComplete) {
-                        HStack {
-                            if isCompleting {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Text("Let's go!")
-                                    .font(.appBodyMedium)
-                            }
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: AppDimensions.buttonHeight)
-                        .background(accentColor)
-                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                // Feature checklist - cards appear one at a time as they're checked
+                VStack(spacing: isRegularWidth ? 12 : 8) {
+                    ForEach(Array(features.enumerated()), id: \.offset) { index, feature in
+                        ActivationFeatureRow(
+                            title: feature,
+                            isActivated: activatedFeatures.contains(index),
+                            accentColor: accentColor
+                        )
+                        .opacity(visibleFeatures.contains(index) ? 1 : 0)
+                        .offset(y: visibleFeatures.contains(index) ? 0 : 20)
+                        .animation(
+                            reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
+                            value: visibleFeatures.contains(index)
+                        )
                     }
-                    .disabled(isCompleting)
-                    .frame(maxWidth: isRegularWidth ? 400 : .infinity)
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+                .frame(maxWidth: isRegularWidth ? 500 : .infinity)
+                .padding(.horizontal, AppDimensions.screenPadding)
+
+                Spacer()
+                    .frame(height: isRegularWidth ? 48 : 40)
+
+                // Completion message and button
+                VStack(spacing: isRegularWidth ? 32 : 24) {
+                    if allFeaturesActivated {
+                        Text("You're all set up")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
+                    // Error message
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                    }
+
+                    // Let's go button (only shown when all features activated)
+                    if allFeaturesActivated {
+                        Button(action: onComplete) {
+                            HStack {
+                                if isCompleting {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                } else {
+                                    Text("Let's go!")
+                                        .font(.appBodyMedium)
+                                }
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: AppDimensions.buttonHeight)
+                            .background(accentColor)
+                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                        }
+                        .disabled(isCompleting)
+                        .frame(maxWidth: isRegularWidth ? 400 : .infinity)
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+                }
+                .padding(.bottom, isRegularWidth ? 64 : 48)
+                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: allFeaturesActivated)
             }
-            .padding(.bottom, isRegularWidth ? 64 : 48)
-            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: allFeaturesActivated)
         }
+        .scrollBounceBehavior(.basedOnSize)
         .onAppear {
             guard !hasAppeared else { return }
             hasAppeared = true

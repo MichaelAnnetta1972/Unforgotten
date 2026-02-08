@@ -112,6 +112,120 @@ enum InvitationStatus: String, Codable {
     case revoked
 }
 
+// MARK: - Profile Sync
+/// Tracks the bidirectional sync relationship between two connected users' profiles
+struct ProfileSync: Codable, Identifiable, Equatable {
+    let id: UUID
+    let invitationId: UUID?
+
+    // Inviter side (the user who sent the invitation)
+    let inviterUserId: UUID
+    let inviterAccountId: UUID
+    let inviterSourceProfileId: UUID
+    var inviterSyncedProfileId: UUID?
+
+    // Acceptor side (the user who accepted the invitation)
+    let acceptorUserId: UUID
+    let acceptorAccountId: UUID
+    var acceptorSourceProfileId: UUID?
+    var acceptorSyncedProfileId: UUID?
+
+    // Status tracking
+    var status: ProfileSyncStatus
+    var severedAt: Date?
+    var severedBy: UUID?
+
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case invitationId = "invitation_id"
+        case inviterUserId = "inviter_user_id"
+        case inviterAccountId = "inviter_account_id"
+        case inviterSourceProfileId = "inviter_source_profile_id"
+        case inviterSyncedProfileId = "inviter_synced_profile_id"
+        case acceptorUserId = "acceptor_user_id"
+        case acceptorAccountId = "acceptor_account_id"
+        case acceptorSourceProfileId = "acceptor_source_profile_id"
+        case acceptorSyncedProfileId = "acceptor_synced_profile_id"
+        case status
+        case severedAt = "severed_at"
+        case severedBy = "severed_by"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    /// Check if a given user ID is the inviter in this sync
+    func isInviter(_ userId: UUID) -> Bool {
+        inviterUserId == userId
+    }
+
+    /// Check if a given user ID is the acceptor in this sync
+    func isAcceptor(_ userId: UUID) -> Bool {
+        acceptorUserId == userId
+    }
+
+    /// Get the source profile ID for a given user
+    func sourceProfileId(for userId: UUID) -> UUID? {
+        if isInviter(userId) {
+            return inviterSourceProfileId
+        } else if isAcceptor(userId) {
+            return acceptorSourceProfileId
+        }
+        return nil
+    }
+
+    /// Get the synced profile ID for a given user (the profile created in their account from the other user)
+    func syncedProfileId(for userId: UUID) -> UUID? {
+        if isInviter(userId) {
+            return inviterSyncedProfileId
+        } else if isAcceptor(userId) {
+            return acceptorSyncedProfileId
+        }
+        return nil
+    }
+}
+
+enum ProfileSyncStatus: String, Codable {
+    case active
+    case severed
+}
+
+/// Tracks which ProfileDetails are synced copies of source details
+struct ProfileDetailSync: Codable, Identifiable, Equatable {
+    let id: UUID
+    let syncConnectionId: UUID
+    let sourceDetailId: UUID
+    let syncedDetailId: UUID
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case syncConnectionId = "sync_connection_id"
+        case sourceDetailId = "source_detail_id"
+        case syncedDetailId = "synced_detail_id"
+        case createdAt = "created_at"
+    }
+}
+
+/// Result returned from the accept_invitation_with_sync RPC function
+struct ProfileSyncResult: Codable {
+    let success: Bool
+    let syncId: UUID?
+    let inviterSyncedProfileId: UUID?
+    let acceptorSyncedProfileId: UUID?
+    let debug: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case syncId = "sync_id"
+        case inviterSyncedProfileId = "inviter_synced_profile_id"
+        case acceptorSyncedProfileId = "acceptor_synced_profile_id"
+        case debug
+    }
+}
+
 // MARK: - Profile
 struct Profile: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
@@ -136,6 +250,16 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
     let createdAt: Date
     var updatedAt: Date
 
+    // MARK: - Profile Sync Fields
+    /// When set, indicates this profile is a synced copy from another user's account
+    var sourceUserId: UUID?
+    /// List of field keys that are synced from the source profile
+    var syncedFields: [String]?
+    /// True if this was once synced but the connection was severed
+    var isLocalOnly: Bool
+    /// Links to the profile_syncs record that created this synced profile
+    var syncConnectionId: UUID?
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
@@ -158,6 +282,10 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         case sortOrder = "sort_order"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case sourceUserId = "source_user_id"
+        case syncedFields = "synced_fields"
+        case isLocalOnly = "is_local_only"
+        case syncConnectionId = "sync_connection_id"
     }
 
     // Memberwise initializer
@@ -182,7 +310,11 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         photoUrl: String? = nil,
         sortOrder: Int = 0,
         createdAt: Date,
-        updatedAt: Date
+        updatedAt: Date,
+        sourceUserId: UUID? = nil,
+        syncedFields: [String]? = nil,
+        isLocalOnly: Bool = false,
+        syncConnectionId: UUID? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -205,6 +337,10 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         self.sortOrder = sortOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.sourceUserId = sourceUserId
+        self.syncedFields = syncedFields
+        self.isLocalOnly = isLocalOnly
+        self.syncConnectionId = syncConnectionId
     }
 
     // Custom decoder to provide default for sort_order, includeInFamilyTree, and isDeceased
@@ -231,6 +367,10 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        sourceUserId = try container.decodeIfPresent(UUID.self, forKey: .sourceUserId)
+        syncedFields = try container.decodeIfPresent([String].self, forKey: .syncedFields)
+        isLocalOnly = try container.decodeIfPresent(Bool.self, forKey: .isLocalOnly) ?? false
+        syncConnectionId = try container.decodeIfPresent(UUID.self, forKey: .syncConnectionId)
     }
 
     var displayName: String {
@@ -248,6 +388,31 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         let components = calendar.dateComponents([.year], from: birthday, to: deathDate)
         return components.year
     }
+
+    // MARK: - Profile Sync Helpers
+
+    /// Whether this profile is a synced copy from another user's account
+    var isSyncedProfile: Bool {
+        sourceUserId != nil && !isLocalOnly
+    }
+
+    /// Check if a specific field is synced from the source profile
+    /// If syncedFields is nil but profile is synced, all syncable fields are considered synced
+    func isFieldSynced(_ fieldName: String) -> Bool {
+        guard isSyncedProfile else { return false }
+        // If syncedFields is nil, assume all syncable fields are synced
+        if let fields = syncedFields {
+            return fields.contains(fieldName)
+        }
+        // No explicit list means all syncable fields are synced
+        return Self.syncableFieldNames.contains(fieldName)
+    }
+
+    /// All fields that can be synced between profiles
+    static let syncableFieldNames: [String] = [
+        "full_name", "preferred_name", "birthday",
+        "address", "phone", "email", "photo_url"
+    ]
 }
 
 enum ProfileType: String, Codable, CaseIterable {
@@ -1606,6 +1771,7 @@ enum CountdownType: String, Codable, CaseIterable, Identifiable {
     case anniversary
     case holiday
     case countdown
+    case event
     case task
     case custom
 
@@ -1615,6 +1781,7 @@ enum CountdownType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .anniversary: return "Anniversary"
         case .holiday: return "Holiday"
+        case .event: return "Event"
         case .countdown: return "Countdown"
         case .task: return "Task"
         case .custom: return "Custom"
@@ -1625,6 +1792,7 @@ enum CountdownType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .anniversary: return "heart.fill"
         case .holiday: return "star.fill"
+        case .event: return "balloon.fill"
         case .countdown: return "clock.fill"
         case .task: return "checklist"
         case .custom: return "tag.fill"
@@ -1635,6 +1803,7 @@ enum CountdownType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .anniversary: return .pink
         case .holiday: return .yellow
+        case .event: return .orange
         case .countdown: return .blue
         case .task: return .green
         case .custom: return .purple

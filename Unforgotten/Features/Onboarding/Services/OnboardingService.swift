@@ -128,44 +128,101 @@ final class OnboardingService {
             userPreferences.resetToStyleDefault()
         }
 
-        // 3. Handle friend code connection
-        if let invitation = data.connectedInvitation {
-            // Accept the invitation
-            if let userId = await supabase.currentUserId {
-                try await appState.invitationRepository.acceptInvitation(
-                    invitation: invitation,
-                    userId: userId
-                )
-            }
+        // 3. ALWAYS create the user's own account and profile first
+        // This ensures they have their own account for profile sync to work
+        try await appState.completeOnboarding(
+            accountName: data.accountName,
+            primaryProfileName: data.fullName,
+            birthday: nil
+        )
 
-            // The user is joining an existing account, not creating a new one
-            // Load the account they're joining
-            await appState.loadAccountData()
-        } else {
-            // Create new account and profile
-            try await appState.completeOnboarding(
-                accountName: data.accountName,
-                primaryProfileName: data.fullName,
-                birthday: nil
-            )
-
-            // Update profile with photo URL if we uploaded one
-            if let url = photoURL {
-                // Access main actor-isolated property
-                let account = await MainActor.run { appState.currentAccount }
-                if let account = account {
-                    // Get the primary profile and update it
-                    let profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
-                    if let primaryProfile = profiles.first(where: { $0.type == .primary }) {
-                        var updatedProfile = primaryProfile
-                        updatedProfile.photoUrl = url
-                        try await appState.profileRepository.updateProfile(updatedProfile)
-                    }
+        // Update profile with photo URL if we uploaded one
+        if let url = photoURL {
+            // Access main actor-isolated property
+            let account = await MainActor.run { appState.currentAccount }
+            if let account = account {
+                // Get the primary profile and update it
+                let profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+                if let primaryProfile = profiles.first(where: { $0.type == .primary }) {
+                    var updatedProfile = primaryProfile
+                    updatedProfile.photoUrl = url
+                    try await appState.profileRepository.updateProfile(updatedProfile)
                 }
             }
         }
 
-        // 4. Store subscription status locally (subscription tier persisted via StoreKit receipts)
+        // 4. Handle friend code connection AFTER creating the user's own account
+        // This allows profile sync to copy the inviter's profile to the new user's account
+        if let invitation = data.connectedInvitation {
+            if let userId = await supabase.currentUserId {
+                #if DEBUG
+                print("🔗 Profile Sync: Starting invitation acceptance...")
+                print("🔗 Profile Sync: Invitation ID: \(invitation.id)")
+                print("🔗 Profile Sync: User ID: \(userId)")
+                print("🔗 Profile Sync: Invited by: \(invitation.invitedBy)")
+                print("🔗 Profile Sync: Account to join: \(invitation.accountId)")
+                #endif
+
+                // Get the acceptor's account ID and primary profile ID from their newly created account
+                let acceptorAccountId = await MainActor.run { appState.currentAccount?.id }
+                let acceptorProfileId = await getAcceptorPrimaryProfileId(appState: appState, userId: userId)
+
+                #if DEBUG
+                print("🔗 Profile Sync: Acceptor account ID: \(acceptorAccountId?.uuidString ?? "NOT FOUND")")
+                print("🔗 Profile Sync: Acceptor profile ID: \(acceptorProfileId?.uuidString ?? "NOT FOUND")")
+                if acceptorProfileId == nil {
+                    let currentAccount = await MainActor.run { appState.currentAccount }
+                    print("🔗 Profile Sync: currentAccount = \(currentAccount?.id.uuidString ?? "nil")")
+                }
+                #endif
+
+                // Use the sync-enabled acceptance method
+                do {
+                    #if DEBUG
+                    print("🔗 Profile Sync: Calling acceptInvitationWithSync RPC...")
+                    #endif
+
+                    let syncResult = try await appState.invitationRepository.acceptInvitationWithSync(
+                        invitation: invitation,
+                        userId: userId,
+                        acceptorProfileId: acceptorProfileId,
+                        acceptorAccountId: acceptorAccountId
+                    )
+
+                    #if DEBUG
+                    print("🔗 Profile Sync: RPC completed successfully!")
+                    print("🔗 Profile Sync: success = \(syncResult.success)")
+                    print("🔗 Profile Sync: syncId = \(syncResult.syncId?.uuidString ?? "nil")")
+                    print("🔗 Profile Sync: inviterSyncedProfileId = \(syncResult.inviterSyncedProfileId?.uuidString ?? "nil")")
+                    print("🔗 Profile Sync: acceptorSyncedProfileId = \(syncResult.acceptorSyncedProfileId?.uuidString ?? "nil")")
+                    #endif
+
+                    // Post notification about the new sync
+                    if let syncId = syncResult.syncId {
+                        NotificationCenter.default.post(
+                            name: .profileSyncDidChange,
+                            object: nil,
+                            userInfo: ["syncId": syncId, "action": "created"]
+                        )
+                    }
+                } catch {
+                    // Fall back to regular invitation acceptance if sync RPC isn't available
+                    #if DEBUG
+                    print("🔗 Profile Sync: RPC FAILED with error: \(error)")
+                    print("🔗 Profile Sync: Falling back to regular acceptance...")
+                    #endif
+                    try await appState.invitationRepository.acceptInvitation(
+                        invitation: invitation,
+                        userId: userId
+                    )
+                }
+            }
+
+            // Reload account data to include the newly joined account
+            await appState.loadAccountData()
+        }
+
+        // 5. Store subscription status locally (subscription tier persisted via StoreKit receipts)
         if data.isPremium {
             // Save the subscription tier
             UserDefaults.standard.set(data.subscriptionTier.rawValue, forKey: "user_subscription_tier")
@@ -174,7 +231,65 @@ final class OnboardingService {
             }
         }
 
-        // 5. Notification status is already handled by NotificationService
+        // 6. Notification status is already handled by NotificationService
+    }
+}
+
+// MARK: - Profile Sync Helpers
+extension OnboardingService {
+    /// Get the acceptor's primary profile ID if they have an existing account
+    /// This is used for bidirectional profile syncing when accepting an invitation
+    private func getAcceptorPrimaryProfileId(appState: AppState, userId: UUID) async -> UUID? {
+        // Check if the user already has an account (they might be joining another account
+        // while already having their own)
+        let currentAccount = await MainActor.run { appState.currentAccount }
+
+        #if DEBUG
+        print("🔍 getAcceptorPrimaryProfileId: Looking for profile...")
+        print("🔍 getAcceptorPrimaryProfileId: currentAccount = \(currentAccount?.id.uuidString ?? "nil")")
+        print("🔍 getAcceptorPrimaryProfileId: userId = \(userId.uuidString)")
+        #endif
+
+        guard let account = currentAccount else {
+            #if DEBUG
+            print("🔍 getAcceptorPrimaryProfileId: No current account found")
+            #endif
+            return nil
+        }
+
+        // Try to find their primary profile
+        do {
+            if let primaryProfile = try await appState.profileRepository.getPrimaryProfile(accountId: account.id) {
+                #if DEBUG
+                print("🔍 getAcceptorPrimaryProfileId: Found profile: \(primaryProfile.id)")
+                print("🔍 getAcceptorPrimaryProfileId: linkedUserId = \(primaryProfile.linkedUserId?.uuidString ?? "nil")")
+                #endif
+
+                // During onboarding, we just created this profile for the current user
+                // The linkedUserId check is a safety measure, but during onboarding we trust the profile
+                // because we just created it moments ago
+                if primaryProfile.linkedUserId == userId || primaryProfile.linkedUserId == nil {
+                    #if DEBUG
+                    print("🔍 getAcceptorPrimaryProfileId: Returning profile ID: \(primaryProfile.id)")
+                    #endif
+                    return primaryProfile.id
+                } else {
+                    #if DEBUG
+                    print("🔍 getAcceptorPrimaryProfileId: linkedUserId mismatch - expected \(userId), got \(primaryProfile.linkedUserId?.uuidString ?? "nil")")
+                    #endif
+                }
+            } else {
+                #if DEBUG
+                print("🔍 getAcceptorPrimaryProfileId: No primary profile found")
+                #endif
+            }
+        } catch {
+            #if DEBUG
+            print("🔍 getAcceptorPrimaryProfileId: Error: \(error)")
+            #endif
+        }
+
+        return nil
     }
 }
 

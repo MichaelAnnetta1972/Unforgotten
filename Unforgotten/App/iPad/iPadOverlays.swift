@@ -173,7 +173,7 @@ struct iPadAddMenuOverlay: View {
                                     dismissAndExecute { onAddStickyReminder() }
                                 }
 
-                                iPadAddMenuRow(icon: "clock.badge.checkmark", title: "Countdown") {
+                                iPadAddMenuRow(icon: "clock.badge.checkmark", title: "Event") {
                                     dismissAndExecute { onAddCountdown() }
                                 }
                             }

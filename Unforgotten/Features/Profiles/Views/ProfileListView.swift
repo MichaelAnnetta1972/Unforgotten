@@ -7,6 +7,7 @@ struct ProfileListView: View {
     @Environment(\.navigateToRoot) var navigateToRoot
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadHomeAction) private var iPadHomeAction
+    @Environment(\.iPadAddProfileAction) private var iPadAddProfileAction
 
     @StateObject private var viewModel = ProfileListViewModel()
     @State private var showAddProfile = false
@@ -50,10 +51,16 @@ struct ProfileListView: View {
                         homeAction: iPadHomeAction,
                         showAddButton: true,
                         addAction: {
-                            if canAddProfile {
-                                showAddProfile = true
+                            // On iPad, use the environment action to trigger the root-level panel
+                            if let iPadAddAction = iPadAddProfileAction {
+                                iPadAddAction()
                             } else {
-                                showUpgradePrompt = true
+                                // On iPhone, use local state
+                                if canAddProfile {
+                                    showAddProfile = true
+                                } else {
+                                    showUpgradePrompt = true
+                                }
                             }
                         }
                     )
@@ -112,10 +119,16 @@ struct ProfileListView: View {
                                 message: "Add your first family member or friend",
                                 buttonTitle: "Add Person",
                                 buttonAction: {
-                                    if canAddProfile {
-                                        showAddProfile = true
+                                    // On iPad, use the environment action to trigger the root-level panel
+                                    if let iPadAddAction = iPadAddProfileAction {
+                                        iPadAddAction()
                                     } else {
-                                        showUpgradePrompt = true
+                                        // On iPhone, use local state
+                                        if canAddProfile {
+                                            showAddProfile = true
+                                        } else {
+                                            showUpgradePrompt = true
+                                        }
                                     }
                                 }
                             )
@@ -160,7 +173,8 @@ struct ProfileListView: View {
             }
             .ignoresSafeArea(edges: .top)
         }
-        .sheet(isPresented: $showAddProfile) {
+        // Only show sidePanel on iPhone - iPad handles this at iPadRootView level
+        .sidePanel(isPresented: iPadHomeAction == nil ? $showAddProfile : .constant(false)) {
             AddProfileView { newProfile in
                 Task {
                     await viewModel.loadProfiles(appState: appState)
@@ -179,7 +193,8 @@ struct ProfileListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .profilesDidChange)) { _ in
             Task {
-                await viewModel.loadProfiles(appState: appState)
+                // Force refresh from network to get synced profile updates
+                await viewModel.loadProfiles(appState: appState, forceRefresh: true)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
@@ -223,8 +238,8 @@ struct ProfileListRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            // Full card navigation link
+        HStack(spacing: 0) {
+            // Navigation link for the main content area
             NavigationLink(destination: ProfileDetailView(profile: profile)) {
                 HStack(spacing: 12) {
                     // Profile photo with optional deceased indicator
@@ -251,6 +266,16 @@ struct ProfileListRow: View {
                             .foregroundColor(.textPrimary)
 
                         HStack(spacing: 8) {
+                            if profile.isSyncedProfile {
+                                Text("Connected")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.accentYellow)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.accentYellow.opacity(0.15))
+                                    .cornerRadius(4)
+                            }
+
                             if let subtitle = profile.relationship {
                                 Text(subtitle)
                                     .font(.appCaption)
@@ -269,34 +294,25 @@ struct ProfileListRow: View {
                         }
                     }
 
-                    Spacer(minLength: 0)
-
-                    // Invisible spacer for delete button area
-                    Color.clear
-                        .frame(width: 44, height: 44)
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity)
                 .padding(AppDimensions.cardPadding)
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-                .contentShape(Rectangle())
+                .padding(.trailing, 44) // Make room for delete button
             }
             .buttonStyle(PlainButtonStyle())
 
-            // Delete button - overlaid on top
-            Button {
-                onDelete()
-            } label: {
+            // Delete button - separate from NavigationLink
+            Button(action: onDelete) {
                 Image(systemName: "trash")
                     .font(.system(size: 16))
-                    .foregroundColor(.red.opacity(0.8))
+                    .foregroundColor(.textSecondary)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
-            .padding(.trailing, AppDimensions.cardPadding)
         }
-        .frame(maxWidth: .infinity)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 }
 
@@ -363,13 +379,26 @@ class ProfileListViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    func loadProfiles(appState: AppState) async {
+    func loadProfiles(appState: AppState, forceRefresh: Bool = false) async {
         guard let account = appState.currentAccount else { return }
 
         isLoading = true
 
         do {
-            profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+            // Use refreshProfiles when force refresh is requested (e.g., from realtime notification)
+            if forceRefresh {
+                profiles = try await appState.profileRepository.refreshProfiles(accountId: account.id)
+            } else {
+                profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+            }
+
+            #if DEBUG
+            print("📋 ProfileListViewModel: Loaded \(profiles.count) profiles for account \(account.id) (forceRefresh: \(forceRefresh))")
+            for profile in profiles {
+                print("📋   - [\(profile.id.uuidString)] \(profile.fullName): type=\(profile.type.rawValue), sourceUserId=\(profile.sourceUserId?.uuidString ?? "nil"), isLocalOnly=\(profile.isLocalOnly), isSyncedProfile=\(profile.isSyncedProfile)")
+            }
+            #endif
+
             // Filter out primary profile for family list
             profiles = profiles.filter { $0.type != .primary }
             // Sort alphabetically by first name (case-insensitive)
@@ -406,6 +435,10 @@ struct ProfileDetailView: View {
     @StateObject private var viewModel = ProfileDetailViewModel()
     @State private var showEditProfile = false
     @State private var showSettings = false
+    @State private var showInviteMember = false
+    @State private var inviteEmail: String = ""
+    @State private var showUpgradePrompt = false
+    @State private var syncedDetailIds: Set<UUID> = []
 
     /// Whether the current user has full access (owner or admin)
     private var hasFullAccess: Bool {
@@ -463,8 +496,21 @@ struct ProfileDetailView: View {
                 }
             }
         }
+        .sidePanel(isPresented: $showInviteMember) {
+            InviteMemberView(prefilledEmail: inviteEmail)
+        }
         .task {
             await viewModel.loadDetails(profile: profile, appState: appState)
+            // Load synced detail IDs if this is a synced profile
+            if profile.isSyncedProfile {
+                do {
+                    syncedDetailIds = try await appState.profileSyncRepository.getSyncedDetailIds(for: profile.id)
+                } catch {
+                    #if DEBUG
+                    print("Error loading synced detail IDs: \(error)")
+                    #endif
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .profilesDidChange)) { _ in
             // Reload the profile when it changes (e.g., after editing from iPad overlay)
@@ -477,9 +523,28 @@ struct ProfileDetailView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .profileDetailsDidChange)) { notification in
             // Reload details when profile details change (medical conditions, gift ideas, clothing sizes)
-            if let profileId = notification.userInfo?["profileId"] as? UUID, profileId == profile.id {
-                Task {
-                    await viewModel.loadDetails(profile: profile, appState: appState)
+            let isRemoteSync = notification.userInfo?["isRemoteSync"] as? Bool ?? false
+
+            // For remote sync notifications, check if this is for our profile or if profileId is missing (common for deletes)
+            if let profileId = notification.userInfo?["profileId"] as? UUID {
+                guard profileId == profile.id else { return }
+            } else if !isRemoteSync {
+                // Local notification without profileId - ignore
+                return
+            }
+            // Remote sync without profileId (e.g., delete) - refresh to be safe
+
+            Task {
+                await viewModel.loadDetails(profile: profile, appState: appState)
+                // Reload synced detail IDs if this is a synced profile
+                if profile.isSyncedProfile {
+                    do {
+                        syncedDetailIds = try await appState.profileSyncRepository.getSyncedDetailIds(for: profile.id)
+                    } catch {
+                        #if DEBUG
+                        print("Error reloading synced detail IDs: \(error)")
+                        #endif
+                    }
                 }
             }
         }
@@ -502,6 +567,9 @@ struct ProfileDetailView: View {
             if let error = viewModel.error {
                 Text(error)
             }
+        }
+        .sheet(isPresented: $showUpgradePrompt) {
+            UpgradeView()
         }
     }
 
@@ -540,33 +608,12 @@ struct ProfileDetailView: View {
 
                     // Birthday with age at death
                     if let birthday = profile.birthday {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Birthday")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-
-                                Text(birthday.formattedBirthday())
-                                    .font(.appCardTitle)
-                                    .foregroundColor(.textPrimary)
-                            }
-
-                            Spacer()
-
-                            if let ageAtDeath = profile.ageAtDeath {
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text("\(ageAtDeath)")
-                                        .font(.appTitle)
-                                        .foregroundColor(.textSecondary)
-                                    Text("years old")
-                                        .font(.appCaption)
-                                        .foregroundColor(.textMuted)
-                                }
-                            }
-                        }
-                        .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        ProfileBirthdayCard(
+                            birthday: birthday,
+                            age: profile.ageAtDeath,
+                            isSynced: profile.isFieldSynced("birthday"),
+                            sourceName: profile.isSyncedProfile ? profile.displayName : nil
+                        )
                     }
 
                     // Date of Death
@@ -711,45 +758,57 @@ struct ProfileDetailView: View {
                         }
 
                         if let address = profile.address {
-                            DetailItemCard(label: "Address", value: address)
+                            DetailItemCard(
+                                label: "Address",
+                                value: address,
+                                isSynced: profile.isFieldSynced("address"),
+                                sourceName: profile.isSyncedProfile ? profile.displayName : nil
+                            )
                         }
 
                         if let phone = profile.phone {
-                            DetailItemCard(label: "Phone", value: phone)
+                            DetailItemCard(
+                                label: "Phone",
+                                value: phone,
+                                isSynced: profile.isFieldSynced("phone"),
+                                sourceName: profile.isSyncedProfile ? profile.displayName : nil
+                            )
                         }
 
                         if let email = profile.email {
-                            DetailItemCard(label: "Email", value: email)
+                            EmailCardWithInvite(
+                                email: email,
+                                isSynced: profile.isFieldSynced("email"),
+                                sourceName: profile.isSyncedProfile ? profile.displayName : nil,
+                                showInviteButton: !profile.isSyncedProfile,
+                                canInvite: appState.currentUserRole?.canManageMembers == true && PremiumLimitsManager.shared.canInviteMembers(appState: appState),
+                                onInvite: {
+                                    inviteEmail = email
+                                    showInviteMember = true
+                                },
+                                onUpgradeRequired: {
+                                    showUpgradePrompt = true
+                                }
+                            )
                         }
 
                         if let birthday = profile.birthday {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Birthday")
-                                        .font(.appCaption)
-                                        .foregroundColor(.textSecondary)
-
-                                    Text(birthday.formattedBirthday())
-                                        .font(.appCardTitle)
-                                        .foregroundColor(.textPrimary)
-                                }
-
-                                Spacer()
-
-                                if let age = profile.age {
-                                    Text("\(age)")
-                                        .font(.appTitle)
-                                        .foregroundColor(.textSecondary)
-                                }
-                            }
-                            .padding(AppDimensions.cardPadding)
-                            .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.cardCornerRadius)
+                            ProfileBirthdayCard(
+                                birthday: birthday,
+                                age: profile.age,
+                                isSynced: profile.isFieldSynced("birthday"),
+                                sourceName: profile.isSyncedProfile ? profile.displayName : nil
+                            )
                         }
 
                         // Custom Fields (Additional Information)
                         ForEach(viewModel.customFields) { field in
-                            DetailItemCard(label: field.label, value: field.value)
+                            DetailItemCard(
+                                label: field.label,
+                                value: field.value,
+                                isSynced: syncedDetailIds.contains(field.id),
+                                sourceName: syncedDetailIds.contains(field.id) ? profile.displayName : nil
+                            )
                         }
                     }
                 }
@@ -803,6 +862,154 @@ struct ProfileDetailHeaderView: View {
                     .padding(.bottom, 70) // Position above the name text
             }
         }
+        .overlay(alignment: .bottomLeading) {
+            // "Connected" tag for synced profiles - positioned above the name
+            if profile.isSyncedProfile {
+                Text("Connected")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.accentYellow)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.accentYellow.opacity(0.2))
+                    .cornerRadius(6)
+                    .padding(.leading, AppDimensions.screenPadding)
+                    .padding(.bottom, 52) // Position above the name text
+            }
+        }
+    }
+}
+
+// MARK: - Email Card With Invite Button
+/// A detail card for email that optionally shows an "Invite" button
+struct EmailCardWithInvite: View {
+    let email: String
+    let isSynced: Bool
+    let sourceName: String?
+    let showInviteButton: Bool
+    let canInvite: Bool
+    let onInvite: () -> Void
+    let onUpgradeRequired: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    init(
+        email: String,
+        isSynced: Bool = false,
+        sourceName: String? = nil,
+        showInviteButton: Bool,
+        canInvite: Bool,
+        onInvite: @escaping () -> Void,
+        onUpgradeRequired: @escaping () -> Void
+    ) {
+        self.email = email
+        self.isSynced = isSynced
+        self.sourceName = sourceName
+        self.showInviteButton = showInviteButton
+        self.canInvite = canInvite
+        self.onInvite = onInvite
+        self.onUpgradeRequired = onUpgradeRequired
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Email")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+
+                    if isSynced, let name = sourceName {
+                        SyncIndicator(sourceName: name)
+                    }
+                }
+
+                Text(email)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+            }
+
+            Spacer()
+
+            if showInviteButton {
+                if canInvite {
+                    Button(action: onInvite) {
+                        Text("Invite")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(appAccentColor)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                } else {
+                    Button(action: onUpgradeRequired) {
+                        Text("Invite")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.textSecondary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.textSecondary.opacity(0.2))
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+    }
+}
+
+// MARK: - Profile Birthday Card
+/// A detail card for birthday on profile detail view with optional sync indicator and age display
+struct ProfileBirthdayCard: View {
+    let birthday: Date
+    let age: Int?
+    let isSynced: Bool
+    let sourceName: String?
+
+    init(
+        birthday: Date,
+        age: Int? = nil,
+        isSynced: Bool = false,
+        sourceName: String? = nil
+    ) {
+        self.birthday = birthday
+        self.age = age
+        self.isSynced = isSynced
+        self.sourceName = sourceName
+    }
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Birthday")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+
+                    if isSynced, let name = sourceName {
+                        SyncIndicator(sourceName: name)
+                    }
+                }
+
+                Text(birthday.formattedBirthday())
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+            }
+
+            Spacer()
+
+            if let age = age {
+                Text("\(age)")
+                    .font(.appTitle)
+                    .foregroundColor(.textSecondary)
+            }
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 }
 
@@ -933,11 +1140,13 @@ class ProfileDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    func loadDetails(profile: Profile, appState: AppState) async {
+    func loadDetails(profile: Profile, appState: AppState, forceRefresh: Bool = false) async {
         isLoading = true
 
         do {
-            let allDetails = try await appState.profileRepository.getProfileDetails(profileId: profile.id)
+            // Always refresh from network to ensure data is current
+            let allDetails: [ProfileDetail]
+            allDetails = try await appState.profileRepository.refreshProfileDetails(profileId: profile.id)
 
             clothingSizes = allDetails.filter { $0.category == .clothing }
             giftIdeas = allDetails.filter { $0.category == .giftIdea }

@@ -209,6 +209,7 @@ final class AppState: ObservableObject {
     let invitationRepository = InvitationRepository()
     let appUserRepository = AppUserRepository()
     let familyCalendarRepository = FamilyCalendarRepository()
+    let profileSyncRepository = ProfileSyncRepository()
 
     // MARK: - Cached Repositories (offline-first)
     let cachedProfileRepository: CachedProfileRepository
@@ -518,6 +519,25 @@ final class AppState: ObservableObject {
     private func cacheAccountsLocally(_ accountsWithRoles: [AccountWithRole]) async {
         guard let userId = await SupabaseManager.shared.currentUserId else { return }
 
+        // Get the set of account IDs the user currently has access to
+        let currentAccountIds = Set(accountsWithRoles.map { $0.account.id })
+
+        // Remove memberships for accounts the user no longer has access to
+        let allMembershipsDescriptor = FetchDescriptor<LocalAccountMember>(
+            predicate: #Predicate { $0.userId == userId }
+        )
+        if let allMemberships = try? modelContext.fetch(allMembershipsDescriptor) {
+            for membership in allMemberships {
+                if !currentAccountIds.contains(membership.accountId) {
+                    // User no longer has access to this account - remove the membership
+                    modelContext.delete(membership)
+                    #if DEBUG
+                    print("🗑️ Removed cached membership for account: \(membership.accountId)")
+                    #endif
+                }
+            }
+        }
+
         for accountWithRole in accountsWithRoles {
             let account = accountWithRole.account
 
@@ -778,7 +798,8 @@ final class AppState: ObservableObject {
             accountId: account.id,
             type: .primary,
             fullName: primaryProfileName,
-            birthday: birthday
+            birthday: birthday,
+            linkedUserId: userId
         )
         let profile = try await profileRepository.createProfile(profileInsert)
         #if DEBUG

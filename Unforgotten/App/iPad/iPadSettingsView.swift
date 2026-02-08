@@ -34,6 +34,7 @@ struct iPadSettingsContentView: View {
     @State private var showSignOutConfirm = false
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
+    @State private var userEmail: String = ""
 
     var body: some View {
         settingsListView
@@ -55,6 +56,11 @@ struct iPadSettingsContentView: View {
             }
             .sheet(isPresented: $showTermsOfService) {
                 TermsOfServiceView()
+            }
+            .task {
+                if let user = await SupabaseManager.shared.currentUser {
+                    userEmail = user.email ?? ""
+                }
             }
     }
 
@@ -123,6 +129,14 @@ struct iPadSettingsContentView: View {
                                         icon: "person.badge.shield.checkmark",
                                         title: "Your Role",
                                         value: role.displayName
+                                    )
+                                }
+
+                                if !userEmail.isEmpty {
+                                    SettingsPanelInfoRow(
+                                        icon: "envelope",
+                                        title: "Email",
+                                        value: userEmail
                                     )
                                 }
                             }

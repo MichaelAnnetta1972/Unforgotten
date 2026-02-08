@@ -18,6 +18,8 @@ struct AppearanceSettingsView: View {
         }
     }
 
+    @State private var isCheckmarkPressed = false
+
     /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
     private func dismissView() {
         if let sidePanelDismiss {
@@ -31,17 +33,42 @@ struct AppearanceSettingsView: View {
         VStack(spacing: 0) {
             // Custom header with Done button
             HStack {
-                Text("Appearance")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
+                    HStack(spacing: 12) {
+                        Image(systemName: "paintpalette.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(effectiveAccentColor)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(effectiveAccentColor.opacity(0.15))
+                            )
+
+                        Text("Appearance")
+                            .font(.appTitle)
+                            .foregroundColor(.textPrimary)
+                    }
 
                 Spacer()
 
-                Button("Done") {
-                    dismissView()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isCheckmarkPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismissView()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.appBody.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(15)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                        )
+                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
-                .font(.appBody)
-                .foregroundColor(effectiveAccentColor)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
@@ -50,20 +77,16 @@ struct AppearanceSettingsView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Header
-                    VStack(spacing: 8) {
-                        Image(systemName: "paintpalette.fill")
-                            .font(.system(size: 50))
-                            .foregroundColor(effectiveAccentColor)
+                    VStack(alignment: .leading, spacing: 8) {
 
-                        Text("Appearance")
-                            .font(.appLargeTitle)
-                            .foregroundColor(.textPrimary)
 
-                        Text("Personalize how Unforgotten looks")
+                        Text("Personalise the appearance of the app by choosing a theme, or choose your own colour. You can even add images from your photo library to the header section of each page to really make it your own.")
                             .font(.appBody)
                             .foregroundColor(.textSecondary)
                     }
-                    .padding(.top, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.top, 12)
 
                     // Header Style Section
                     HeaderStylePicker()

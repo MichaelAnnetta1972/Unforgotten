@@ -76,7 +76,8 @@ struct iPadProfileListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .profilesDidChange)) { _ in
             Task {
-                await viewModel.loadProfiles(appState: appState)
+                // Force refresh from network to get synced profile updates
+                await viewModel.loadProfiles(appState: appState, forceRefresh: true)
                 if let selected = selectedProfile,
                    let updated = viewModel.profiles.first(where: { $0.id == selected.id }) {
                     selectedProfile = updated
@@ -238,11 +239,21 @@ struct iPadProfileRowView: View {
                 profileImage
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
+                    HStack(spacing: 6) {
                         Text(profile.displayName)
                             .font(.appCardTitle)
                             .foregroundColor(.textPrimary)
                             .lineLimit(1)
+
+                        if profile.isSyncedProfile {
+                            Text("Connected")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.accentYellow)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.accentYellow.opacity(0.15))
+                                .cornerRadius(4)
+                        }
 
                         if profile.isFavourite {
                             Image(systemName: "star.fill")
@@ -510,10 +521,20 @@ struct iPadProfileDetailPane: View {
             }
 
             VStack(spacing: 4) {
-                HStack {
+                HStack(spacing: 8) {
                     Text(profile.displayName)
                         .font(.appLargeTitle)
                         .foregroundColor(.textPrimary)
+
+                    if profile.isSyncedProfile {
+                        Text("Connected")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.accentYellow)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.accentYellow.opacity(0.15))
+                            .cornerRadius(4)
+                    }
 
                     if profile.isFavourite {
                         Image(systemName: "star.fill")

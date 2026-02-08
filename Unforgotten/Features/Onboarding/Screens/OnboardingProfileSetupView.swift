@@ -127,7 +127,7 @@ struct OnboardingProfileSetupView: View {
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: AppDimensions.buttonHeight)
-                                    .background(buttonGradient)
+                                    .background(accentColor)
                                     .cornerRadius(AppDimensions.buttonCornerRadius)
                             }
                             .disabled(!onboardingData.isProfileValid)

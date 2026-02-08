@@ -670,61 +670,38 @@ struct TodayBirthdayRow: View {
 // MARK: - Today Countdown Row
 struct TodayCountdownRow: View {
     let countdown: Countdown
-    @State private var showOptions = false
     @State private var navigateToDetail = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Tappable area for navigation
-            Button {
-                navigateToDetail = true
-            } label: {
-                HStack(spacing: 12) {
-                    // Icon - use the countdown type's icon and color
-                    Image(systemName: countdown.type.icon)
-                        .font(.system(size: 18))
-                        .foregroundColor(countdown.type.color)
-                        .frame(width: 32, height: 32)
+        Button {
+            navigateToDetail = true
+        } label: {
+            HStack(spacing: 12) {
+                // Icon - use the countdown type's icon and color
+                Image(systemName: countdown.type.icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(countdown.type.color)
+                    .frame(width: 32, height: 32)
 
-                    // Info
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(countdown.title)
-                            .font(.appCardTitle)
-                            .foregroundColor(.textPrimary)
+                // Info
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(countdown.title)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
 
-                        Text(countdown.displayTypeName)
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-                    }
-
-                    Spacer()
+                    Text(countdown.displayTypeName)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
 
-            // Options button (vertical dots)
-            Button {
-                showOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
-                    .font(.system(size: 16))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 32, height: 44)
-                    .contentShape(Rectangle())
+                Spacer()
             }
-            .buttonStyle(PlainButtonStyle())
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PlainButtonStyle())
         .padding(AppDimensions.cardPadding)
         .navigationDestination(isPresented: $navigateToDetail) {
             CountdownDetailView(countdown: countdown)
-        }
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button("View details") {
-                navigateToDetail = true
-            }
-            Button("Cancel", role: .cancel) { }
         }
     }
 }

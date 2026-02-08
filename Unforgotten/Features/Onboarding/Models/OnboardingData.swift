@@ -27,6 +27,11 @@ class OnboardingData {
     // MARK: - Notifications (Screen 7)
     var notificationsEnabled: Bool = false
 
+    // MARK: - Feature Selection
+    /// Features the user has selected to show on their home screen
+    /// Defaults to all toggleable features selected
+    var selectedFeatures: Set<Feature> = Set(Feature.allCases.filter { $0.canBeHidden })
+
     // MARK: - Computed Properties
 
     /// Full name combining first and last name
@@ -72,6 +77,7 @@ class OnboardingData {
         subscriptionProductId = nil
         subscriptionTier = .free
         notificationsEnabled = false
+        selectedFeatures = Set(Feature.allCases.filter { $0.canBeHidden })
     }
 }
 
@@ -81,13 +87,15 @@ enum OnboardingScreen: Int, CaseIterable {
     case welcome = 0
     case profileSetup = 1
     case themeSelection = 2
-    case friendCode = 3
-    case premium = 4
-    case freeTier = 5
-    case notifications = 6
-    case activation = 7
+    case featureSelection = 3
+    case friendCode = 4
+    case premium = 5
+    case freeTier = 6
+    case notifications = 7
+    case activation = 8
 
     /// The total number of progress steps (excluding welcome and activation)
+    /// Includes: 6 main screens (profile, theme, features, friendCode, premium/freeTier, notifications)
     static let progressStepCount = 6
 
     /// Whether this screen shows progress dots
@@ -110,12 +118,14 @@ enum OnboardingScreen: Int, CaseIterable {
             return 0
         case .themeSelection:
             return 1
-        case .friendCode:
+        case .featureSelection:
             return 2
-        case .premium, .freeTier:
+        case .friendCode:
             return 3
-        case .notifications:
+        case .premium, .freeTier:
             return 4
+        case .notifications:
+            return 5
         }
     }
 
@@ -138,8 +148,10 @@ enum OnboardingScreen: Int, CaseIterable {
             return .welcome
         case .themeSelection:
             return .profileSetup
-        case .friendCode:
+        case .featureSelection:
             return .themeSelection
+        case .friendCode:
+            return .featureSelection
         case .premium:
             return .friendCode
         case .freeTier:

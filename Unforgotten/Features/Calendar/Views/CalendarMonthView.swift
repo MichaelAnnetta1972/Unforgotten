@@ -183,7 +183,7 @@ private struct CalendarMonthDayCell: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(height: 36)
             .background(backgroundColor)
             .cornerRadius(8)
         }

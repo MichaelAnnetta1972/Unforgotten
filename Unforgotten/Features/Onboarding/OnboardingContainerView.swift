@@ -6,6 +6,7 @@ struct OnboardingContainerView: View {
     @EnvironmentObject var appState: AppState
     @Environment(HeaderStyleManager.self) private var headerStyleManager
     @Environment(UserPreferences.self) private var userPreferences
+    @Environment(FeatureVisibilityManager.self) private var featureVisibility
 
     // MARK: - State
     @State private var currentScreen: OnboardingScreen = .welcome
@@ -133,6 +134,15 @@ struct OnboardingContainerView: View {
                 OnboardingThemeSelectionView(
                     themeManager: themeManager,
                     onContinue: {
+                        navigateTo(.featureSelection)
+                    }
+                )
+
+            case .featureSelection:
+                OnboardingFeatureSelectionView(
+                    onboardingData: onboardingData,
+                    accentColor: themeManager.accentColor,
+                    onContinue: {
                         navigateTo(.friendCode)
                     }
                 )
@@ -251,6 +261,17 @@ struct OnboardingContainerView: View {
         }
     }
 
+    // MARK: - Apply Feature Selections
+
+    /// Applies the user's feature selections to the FeatureVisibilityManager
+    private func applyFeatureSelections() {
+        // For each toggleable feature, set its visibility based on user selection
+        for feature in Feature.allCases where feature.canBeHidden {
+            let isVisible = onboardingData.selectedFeatures.contains(feature)
+            featureVisibility.setVisibility(feature, isVisible: isVisible)
+        }
+    }
+
     // MARK: - Complete Onboarding
 
     private func completeOnboarding() {
@@ -259,19 +280,26 @@ struct OnboardingContainerView: View {
 
         Task {
             do {
-                // Apply theme to main app
-                themeManager.applyToMainTheme(
+                // Apply feature visibility selections
+                applyFeatureSelections()
+
+                #if DEBUG
+                print("🎯 OnboardingContainerView: Starting completeOnboarding")
+                print("🎯 OnboardingContainerView: connectedInvitation = \(onboardingData.connectedInvitation?.id.uuidString ?? "nil")")
+                #endif
+
+                // Use OnboardingService to complete onboarding
+                // This handles photo upload, theme settings, account creation, AND friend code connection
+                try await OnboardingService.shared.completeOnboarding(
+                    data: onboardingData,
+                    appState: appState,
                     headerStyleManager: headerStyleManager,
                     userPreferences: userPreferences
                 )
 
-                // Complete onboarding in AppState
-                try await appState.completeOnboarding(
-                    accountName: onboardingData.accountName,
-                    primaryProfileName: onboardingData.fullName,
-                    birthday: nil, // Birthday not collected in new flow
-                    firstAction: .exploreApp // Default action - go to home
-                )
+                #if DEBUG
+                print("🎯 OnboardingContainerView: Onboarding completed successfully")
+                #endif
 
                 // The RootView will automatically show MainAppView
 
@@ -300,4 +328,5 @@ private enum OnboardingSlideDirection {
         .environmentObject(AppState.forPreview())
         .environment(HeaderStyleManager())
         .environment(UserPreferences())
+        .environment(FeatureVisibilityManager())
 }

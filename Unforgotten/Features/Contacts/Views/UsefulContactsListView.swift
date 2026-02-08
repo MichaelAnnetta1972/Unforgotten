@@ -284,11 +284,11 @@ struct UsefulContactsListView: View {
             await viewModel.loadContacts(appState: appState)
         }
         .refreshable {
-            await viewModel.loadContacts(appState: appState)
+            await viewModel.loadContacts(appState: appState, forceRefresh: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .contactsDidChange)) { _ in
             Task {
-                await viewModel.loadContacts(appState: appState)
+                await viewModel.loadContacts(appState: appState, forceRefresh: true)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
@@ -515,13 +515,17 @@ class UsefulContactsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    func loadContacts(appState: AppState) async {
+    func loadContacts(appState: AppState, forceRefresh: Bool = false) async {
         guard let account = appState.currentAccount else { return }
 
         isLoading = true
 
         do {
-            contacts = try await appState.usefulContactRepository.getContacts(accountId: account.id)
+            if forceRefresh {
+                contacts = try await appState.usefulContactRepository.refreshFromRemote(accountId: account.id)
+            } else {
+                contacts = try await appState.usefulContactRepository.getContacts(accountId: account.id)
+            }
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription

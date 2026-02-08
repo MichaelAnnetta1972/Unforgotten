@@ -189,6 +189,7 @@ struct HeaderStyleCarouselCell: View {
                     }
                 }
                 .frame(width: 280, height: 280)
+                .contentShape(Rectangle())
                 .cornerRadius(AppDimensions.smallCornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: AppDimensions.smallCornerRadius)
@@ -200,6 +201,7 @@ struct HeaderStyleCarouselCell: View {
                     .font(.appCaption)
                     .foregroundColor(isSelected ? style.defaultAccentColor : .textSecondary)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

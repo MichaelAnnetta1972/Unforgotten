@@ -102,6 +102,7 @@ struct ProfileCategoryListView: View {
     @State private var editingDetail: ProfileDetail?
     @State private var showEditClothing = false
     @State private var showEditGift = false
+    @State private var syncedDetailIds: Set<UUID> = []
 
     /// Whether to use side panel presentation (iPad full-screen)
     private var useSidePanel: Bool {
@@ -182,6 +183,8 @@ struct ProfileCategoryListView: View {
                                 case .clothing:
                                     ClothingCardWithOverlay(
                                         detail: detail,
+                                        isSynced: syncedDetailIds.contains(detail.id),
+                                        sourceName: syncedDetailIds.contains(detail.id) ? profile.displayName : nil,
                                         onEdit: {
                                             // Use iPad full-screen overlay if available
                                             if let iPadAction = iPadEditClothingSizeAction {
@@ -203,6 +206,8 @@ struct ProfileCategoryListView: View {
                                         detail: detail,
                                         status: giftStatus(from: detail.status),
                                         isActive: false,
+                                        isSynced: syncedDetailIds.contains(detail.id),
+                                        sourceName: syncedDetailIds.contains(detail.id) ? profile.displayName : nil,
                                         onStatusChange: { newStatus in
                                             Task {
                                                 await updateGiftStatus(detail: detail, newStatus: newStatus)
@@ -228,6 +233,8 @@ struct ProfileCategoryListView: View {
                                     MedicalConditionCard(
                                         type: detail.category == .allergy ? "Allergy" : "Medical Condition",
                                         condition: detail.value.isEmpty ? detail.label : detail.value,
+                                        isSynced: syncedDetailIds.contains(detail.id),
+                                        sourceName: syncedDetailIds.contains(detail.id) ? profile.displayName : nil,
                                         onDelete: {
                                             Task {
                                                 await deleteDetail(detail: detail)
@@ -323,22 +330,74 @@ struct ProfileCategoryListView: View {
             )
         }
         .onReceive(NotificationCenter.default.publisher(for: .profileDetailsDidChange)) { notification in
-            // Reload details when they change (e.g., from iPad full-screen overlay)
-            if let profileId = notification.userInfo?["profileId"] as? UUID, profileId == profile.id {
-                Task {
-                    await reloadDetails()
-                }
+            // Reload details when they change (e.g., from iPad full-screen overlay or remote sync)
+            let isRemoteSync = notification.userInfo?["isRemoteSync"] as? Bool ?? false
+
+            // For remote sync notifications, check if this is for our profile or if profileId is missing (common for deletes)
+            if let profileId = notification.userInfo?["profileId"] as? UUID {
+                guard profileId == profile.id else { return }
+            } else if !isRemoteSync {
+                // Local notification without profileId - ignore
+                return
             }
+            // Remote sync without profileId (e.g., delete) - refresh to be safe
+
+            Task {
+                await reloadDetails(forceRefresh: isRemoteSync)
+            }
+        }
+        .task {
+            // Always refresh from network on appear to ensure data is current
+            await reloadDetails(forceRefresh: true)
         }
     }
 
-    private func reloadDetails() async {
+    private func reloadDetails(forceRefresh: Bool = false) async {
         do {
-            let details = try await appState.profileRepository.getProfileDetails(
-                profileId: profile.id,
-                category: category.detailCategory
-            )
+            let details: [ProfileDetail]
+
+            // Medical category needs to fetch both medical conditions and allergies
+            if category == .medical {
+                let conditions: [ProfileDetail]
+                let allergies: [ProfileDetail]
+
+                if forceRefresh {
+                    conditions = try await appState.profileRepository.refreshProfileDetails(
+                        profileId: profile.id,
+                        category: .medicalCondition
+                    )
+                    allergies = try await appState.profileRepository.refreshProfileDetails(
+                        profileId: profile.id,
+                        category: .allergy
+                    )
+                } else {
+                    conditions = try await appState.profileRepository.getProfileDetails(
+                        profileId: profile.id,
+                        category: .medicalCondition
+                    )
+                    allergies = try await appState.profileRepository.getProfileDetails(
+                        profileId: profile.id,
+                        category: .allergy
+                    )
+                }
+                details = conditions + allergies
+            } else if forceRefresh {
+                details = try await appState.profileRepository.refreshProfileDetails(
+                    profileId: profile.id,
+                    category: category.detailCategory
+                )
+            } else {
+                details = try await appState.profileRepository.getProfileDetails(
+                    profileId: profile.id,
+                    category: category.detailCategory
+                )
+            }
             currentDetails = details
+
+            // Load synced detail IDs if this is a synced profile
+            if profile.isSyncedProfile {
+                syncedDetailIds = try await appState.profileSyncRepository.getSyncedDetailIds(for: profile.id)
+            }
         } catch {
             #if DEBUG
             print("Failed to reload details: \(error)")
@@ -3115,9 +3174,22 @@ struct GiftCardWithOverlay: View {
     let detail: ProfileDetail
     let status: GiftItemCard.GiftStatus
     let isActive: Bool
+    let isSynced: Bool
+    let sourceName: String?
     let onStatusChange: (GiftItemCard.GiftStatus) -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
+
+    init(detail: ProfileDetail, status: GiftItemCard.GiftStatus, isActive: Bool, isSynced: Bool = false, sourceName: String? = nil, onStatusChange: @escaping (GiftItemCard.GiftStatus) -> Void, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) {
+        self.detail = detail
+        self.status = status
+        self.isActive = isActive
+        self.isSynced = isSynced
+        self.sourceName = sourceName
+        self.onStatusChange = onStatusChange
+        self.onEdit = onEdit
+        self.onDelete = onDelete
+    }
 
     @Environment(\.appAccentColor) private var appAccentColor
 
@@ -3134,11 +3206,15 @@ struct GiftCardWithOverlay: View {
             // Tappable content area for editing
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(detail.label)
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
 
-
-                    Text(detail.label)
-                        .font(.appCardTitle)
-                        .foregroundColor(.textPrimary)
+                        if isSynced, let name = sourceName {
+                            SyncIndicator(sourceName: name)
+                        }
+                    }
                 }
 
                 Spacer()
@@ -3183,8 +3259,18 @@ struct GiftCardWithOverlay: View {
 // MARK: - Clothing Card
 struct ClothingCardWithOverlay: View {
     let detail: ProfileDetail
+    let isSynced: Bool
+    let sourceName: String?
     let onEdit: () -> Void
     let onDelete: () -> Void
+
+    init(detail: ProfileDetail, isSynced: Bool = false, sourceName: String? = nil, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) {
+        self.detail = detail
+        self.isSynced = isSynced
+        self.sourceName = sourceName
+        self.onEdit = onEdit
+        self.onDelete = onDelete
+    }
 
     @Environment(\.appAccentColor) private var appAccentColor
     @State private var showingBrandsPopover = false
@@ -3205,9 +3291,15 @@ struct ClothingCardWithOverlay: View {
             // Tappable content area for editing
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Clothing")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                    HStack(spacing: 6) {
+                        Text("Clothing")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        if isSynced, let name = sourceName {
+                            SyncIndicator(sourceName: name)
+                        }
+                    }
 
                     HStack(spacing: 6) {
                         Text(detail.label)
@@ -3545,10 +3637,22 @@ struct ProfileConnectionRow: View {
 
                 // Profile info
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(profile.fullName)
-                        .font(.appBody)
-                        .fontWeight(isSelected ? .semibold : .regular)
-                        .foregroundColor(isSelected ? accentColor : .textPrimary)
+                    HStack(spacing: 6) {
+                        Text(profile.fullName)
+                            .font(.appBody)
+                            .fontWeight(isSelected ? .semibold : .regular)
+                            .foregroundColor(isSelected ? accentColor : .textPrimary)
+
+                        if profile.isSyncedProfile {
+                            Text("Connected")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.accentYellow)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.accentYellow.opacity(0.15))
+                                .cornerRadius(3)
+                        }
+                    }
 
                     if let relationship = profile.relationship {
                         Text(relationship)

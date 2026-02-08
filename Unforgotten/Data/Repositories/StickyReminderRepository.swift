@@ -154,6 +154,7 @@ final class StickyReminderRepository: StickyReminderRepositoryProtocol {
 
 // MARK: - Sticky Reminder Insert Type
 struct StickyReminderInsert: Encodable {
+    let id: UUID?
     let accountId: UUID
     let title: String
     let message: String?
@@ -162,6 +163,7 @@ struct StickyReminderInsert: Encodable {
     let isActive: Bool
 
     enum CodingKeys: String, CodingKey {
+        case id
         case accountId = "account_id"
         case title
         case message
@@ -171,6 +173,7 @@ struct StickyReminderInsert: Encodable {
     }
 
     init(
+        id: UUID? = nil,
         accountId: UUID,
         title: String,
         message: String? = nil,
@@ -178,6 +181,7 @@ struct StickyReminderInsert: Encodable {
         repeatInterval: StickyReminderInterval = .everyHour,
         isActive: Bool = true
     ) {
+        self.id = id
         self.accountId = accountId
         self.title = title
         self.message = message

@@ -107,20 +107,26 @@ struct DetailItemCard: View {
     let label: String
     let value: String
     let showChevron: Bool
+    let isSynced: Bool
+    let sourceName: String?
     let action: (() -> Void)?
-    
+
     init(
         label: String,
         value: String,
         showChevron: Bool = false,
+        isSynced: Bool = false,
+        sourceName: String? = nil,
         action: (() -> Void)? = nil
     ) {
         self.label = label
         self.value = value
         self.showChevron = showChevron
+        self.isSynced = isSynced
+        self.sourceName = sourceName
         self.action = action
     }
-    
+
     var body: some View {
         Group {
             if let action = action {
@@ -133,21 +139,27 @@ struct DetailItemCard: View {
             }
         }
     }
-    
+
     private var cardContent: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
-                
+                HStack(spacing: 6) {
+                    Text(label)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+
+                    if isSynced, let name = sourceName {
+                        SyncIndicator(sourceName: name)
+                    }
+                }
+
                 Text(value)
                     .font(.appCardTitle)
                     .foregroundColor(.textPrimary)
             }
-            
+
             Spacer()
-            
+
             if showChevron {
                 Image(systemName: "chevron.right")
                     .font(.body)
@@ -355,12 +367,16 @@ struct GiftItemCard: View {
 struct MedicalConditionCard: View {
     let type: String
     let condition: String
+    let isSynced: Bool
+    let sourceName: String?
     let action: (() -> Void)?
     let onDelete: (() -> Void)?
 
-    init(type: String, condition: String, action: (() -> Void)? = nil, onDelete: (() -> Void)? = nil) {
+    init(type: String, condition: String, isSynced: Bool = false, sourceName: String? = nil, action: (() -> Void)? = nil, onDelete: (() -> Void)? = nil) {
         self.type = type
         self.condition = condition
+        self.isSynced = isSynced
+        self.sourceName = sourceName
         self.action = action
         self.onDelete = onDelete
     }
@@ -381,9 +397,15 @@ struct MedicalConditionCard: View {
     private var cardContent: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(type)
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
+                HStack(spacing: 6) {
+                    Text(type)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+
+                    if isSynced, let name = sourceName {
+                        SyncIndicator(sourceName: name)
+                    }
+                }
 
                 Text(condition)
                     .font(.appCardTitle)
@@ -676,7 +698,7 @@ struct BottomNavBar: View {
                                     onAddStickyReminder?()
                                 }
 
-                                AddMenuRow(icon: "clock.badge.checkmark", title: "Countdown") {
+                                AddMenuRow(icon: "clock.badge.checkmark", title: "Event") {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                         showAddMenu = false
                                     }
@@ -684,7 +706,7 @@ struct BottomNavBar: View {
                                 }
                             }
                         }
-                        .background(Color.cardBackgroundLight.opacity(0.5))
+                        .background(Color.cardBackgroundLight)
                         .overlay(
                             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
                                 .stroke(Color.cardBackgroundLight, lineWidth: 1)
