@@ -13,6 +13,7 @@ struct MedicationListView: View {
     @State private var showUpgradePrompt = false
     @State private var medicationToDelete: Medication?
     @State private var showDeleteConfirmation = false
+    @State private var listContentHeight: CGFloat = 0
 
     /// Check if user can add more medications
     private var canAddMedication: Bool {
@@ -102,7 +103,7 @@ struct MedicationListView: View {
                     // Header scrolls with content - uses style-based assets from HeaderStyleManager
                     CustomizableHeaderView(
                         pageIdentifier: .medications,
-                        title: "Medicines",
+                        title: "Medications",
                         showBackButton: iPadHomeAction == nil,
                         backAction: { dismiss() },
                         showHomeButton: iPadHomeAction != nil,
@@ -149,16 +150,46 @@ struct MedicationListView: View {
                         .cornerRadius(AppDimensions.cardCornerRadius)
                     }
 
-                    // Medications list
-                    LazyVStack(spacing: AppDimensions.cardSpacing) {
-                        ForEach(viewModel.medications) { medication in
-                            MedicationListRow(
-                                medication: medication,
-                                onDelete: {
-                                    medicationToDelete = medication
-                                    showDeleteConfirmation = true
+                    // Medications list with swipe-to-delete
+                    if !viewModel.medications.isEmpty {
+                        List {
+                            ForEach(viewModel.medications) { medication in
+                                ZStack {
+                                    NavigationLink(destination: MedicationDetailView(medication: medication)) {
+                                        EmptyView()
+                                    }
+                                    .opacity(0)
+
+                                    MedicationListRow(medication: medication)
                                 }
-                            )
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    if canEdit {
+                                        Button(role: .destructive) {
+                                            medicationToDelete = medication
+                                            showDeleteConfirmation = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
+                            }
+                        }
+                        .listStyle(.plain)
+                        .scrollDisabled(true)
+                        .scrollContentBackground(.hidden)
+                        .frame(height: listContentHeight)
+                        .onChange(of: viewModel.medications.count) { _, count in
+                            let rowHeight: CGFloat = 80
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(count) * (rowHeight + spacing)
+                        }
+                        .onAppear {
+                            let rowHeight: CGFloat = 80
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(viewModel.medications.count) * (rowHeight + spacing)
                         }
                     }
 
@@ -274,9 +305,9 @@ struct MedicationHeaderView: View {
 // MARK: - Medication List Row
 struct MedicationListRow: View {
     let medication: Medication
-    let onDelete: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.appAccentColor) private var appAccentColor
 
     /// Adaptive thumbnail size: larger on iPad
     private var thumbnailSize: CGFloat {
@@ -285,20 +316,30 @@ struct MedicationListRow: View {
 
     var body: some View {
         HStack {
-            NavigationLink(destination: MedicationDetailView(medication: medication)) {
                 HStack {
                     // Photo thumbnail
-                    if let localPath = medication.localImagePath,
-                       let image = LocalImageService.shared.loadMedicationPhoto(fileName: localPath) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: thumbnailSize, height: thumbnailSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    if let urlString = medication.imageUrl, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: thumbnailSize, height: thumbnailSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            default:
+                                Image(systemName: "pills.fill")
+                                    .font(.system(size: horizontalSizeClass == .regular ? 28 : 24))
+                                    .foregroundColor(appAccentColor)
+                                    .frame(width: thumbnailSize, height: thumbnailSize)
+                                    .background(Color.cardBackgroundSoft)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                        }
                     } else {
                         Image(systemName: "pills.fill")
                             .font(.system(size: horizontalSizeClass == .regular ? 28 : 24))
-                            .foregroundColor(.medicalRed)
+                            .foregroundColor(appAccentColor)
                             .frame(width: thumbnailSize, height: thumbnailSize)
                             .background(Color.cardBackgroundSoft)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -336,26 +377,10 @@ struct MedicationListRow: View {
 
                     Spacer()
                 }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
-
-            // Delete button
-            Button {
-                onDelete()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: horizontalSizeClass == .regular ? 18 : 16))
-                    .foregroundColor(.red.opacity(0.8))
-                    .frame(width: horizontalSizeClass == .regular ? 52 : 44, height: horizontalSizeClass == .regular ? 52 : 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
-        .contentShape(Rectangle())
         .opacity(medication.isPaused ? 0.7 : 1.0)
     }
 }
@@ -391,6 +416,7 @@ class MedicationListViewModel: ObservableObject {
         do {
             try await appState.medicationRepository.deleteMedication(id: id)
             medications.removeAll { $0.id == id }
+            NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
         } catch {
             self.error = "Failed to delete medication: \(error.localizedDescription)"
         }
@@ -577,16 +603,25 @@ struct MedicationDetailView: View {
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
                         // Photo (if available) - tap to view fullscreen
-                        if let localPath = medication.localImagePath,
-                           let image = LocalImageService.shared.loadMedicationPhoto(fileName: localPath) {
+                        if let urlString = medication.imageUrl, let url = URL(string: urlString) {
                             Button {
                                 showFullscreenImage = true
                             } label: {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(height: 200)
-                                    .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                                AsyncImage(url: url) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(height: 200)
+                                            .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                                    case .empty:
+                                        ProgressView()
+                                            .frame(height: 200)
+                                    default:
+                                        EmptyView()
+                                    }
+                                }
                             }
                             .padding(.horizontal, AppDimensions.screenPadding)
                         }
@@ -701,9 +736,8 @@ struct MedicationDetailView: View {
             }
         }
         .fullScreenCover(isPresented: $showFullscreenImage) {
-            if let localPath = medication.localImagePath,
-               let image = LocalImageService.shared.loadMedicationPhoto(fileName: localPath) {
-                FullscreenImageView(image: image, title: medication.displayName)
+            if let urlString = medication.imageUrl {
+                RemoteFullscreenImageView(imageUrl: urlString, title: medication.displayName)
             }
         }
         .task {
@@ -1774,11 +1808,24 @@ class MedicationCalendarViewModel: ObservableObject {
         let endOfMonth = calendar.date(byAdding: DateComponents(month: 1), to: startOfMonth)!
 
         do {
+            // First fetch existing logs
             allLogs = try await appState.medicationRepository.getLogsForAccount(
                 accountId: account.id,
                 from: startOfMonth,
                 to: endOfMonth
             )
+
+            // Backfill missed logs for past days that have no records
+            let backfilled = try await backfillMissedLogs(appState: appState, startOfMonth: startOfMonth, endOfMonth: endOfMonth)
+
+            // If we backfilled any logs, re-fetch to include them
+            if backfilled {
+                allLogs = try await appState.medicationRepository.getLogsForAccount(
+                    accountId: account.id,
+                    from: startOfMonth,
+                    to: endOfMonth
+                )
+            }
 
             calculateDayStatuses()
             calculateMonthlySummary()
@@ -1787,6 +1834,60 @@ class MedicationCalendarViewModel: ObservableObject {
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    /// Backfill missed medication logs for past days in the month that have no log records.
+    /// Returns true if any logs were backfilled.
+    private func backfillMissedLogs(appState: AppState, startOfMonth: Date, endOfMonth: Date) async throws -> Bool {
+        guard let account = appState.currentAccount else { return false }
+
+        let today = calendar.startOfDay(for: Date())
+        let monthStart = calendar.startOfDay(for: startOfMonth)
+
+        // Only backfill up to yesterday
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return false }
+
+        // Don't backfill if the entire month is in the future
+        guard monthStart <= yesterday else { return false }
+
+        // Group existing logs by day to know which days already have logs
+        let existingLogDays = Set(allLogs.map { calendar.startOfDay(for: $0.scheduledAt) })
+
+        var checkDate = monthStart
+        let backfillEnd = min(yesterday, calendar.date(byAdding: .day, value: -1, to: endOfMonth)!)
+        var didBackfill = false
+
+        while checkDate <= backfillEnd {
+            let dayStart = calendar.startOfDay(for: checkDate)
+
+            // Only backfill days that have no existing logs AND have scheduled medications
+            if !existingLogDays.contains(dayStart) && hasMedicationsScheduledFor(date: checkDate) {
+                // Generate log entries for this past day
+                try await appState.medicationRepository.generateDailyLogs(accountId: account.id, date: checkDate)
+
+                // Fetch the newly created logs and mark them as missed
+                let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+                let newLogs = try await appState.medicationRepository.getLogsForAccount(
+                    accountId: account.id,
+                    from: dayStart,
+                    to: nextDay
+                )
+
+                for log in newLogs where log.status == .scheduled {
+                    _ = try await appState.medicationRepository.updateLogStatus(
+                        logId: log.id,
+                        status: .missed,
+                        takenAt: nil
+                    )
+                }
+
+                didBackfill = true
+            }
+
+            checkDate = calendar.date(byAdding: .day, value: 1, to: checkDate) ?? backfillEnd
+        }
+
+        return didBackfill
     }
 
     func calculateDayStatuses() {
@@ -2276,7 +2377,6 @@ struct AddMedicationView: View {
                         Spacer()
                         ImageSourcePicker(
                             selectedImage: $selectedImage,
-                            currentImagePath: nil,
                             onImageSelected: { _ in }
                         )
                         Spacer()
@@ -2407,13 +2507,6 @@ struct AddMedicationView: View {
         isLoading = true
         errorMessage = nil
 
-        // Save photo locally if selected
-        var localImagePath: String?
-        let tempMedicationId = UUID()
-        if let image = selectedImage {
-            localImagePath = LocalImageService.shared.saveMedicationPhoto(image, medicationId: tempMedicationId)
-        }
-
         let medicationInsert = MedicationInsert(
             accountId: account.id,
             profileId: primaryProfile.id,
@@ -2422,21 +2515,17 @@ struct AddMedicationView: View {
             form: form.isBlank ? nil : form,
             reason: reason.isBlank ? nil : reason,
             notes: notes.isBlank ? nil : notes,
-            localImagePath: localImagePath,
             intakeInstruction: intakeInstruction
         )
 
         do {
             var medication = try await appState.medicationRepository.createMedication(medicationInsert)
 
-            // If we saved a photo with temp ID, rename it with actual medication ID
-            if let oldPath = localImagePath {
-                LocalImageService.shared.deleteMedicationPhoto(fileName: oldPath)
-                if let image = selectedImage {
-                    let newPath = LocalImageService.shared.saveMedicationPhoto(image, medicationId: medication.id)
-                    medication.localImagePath = newPath
-                    medication = try await appState.medicationRepository.updateMedication(medication)
-                }
+            // Upload photo to Supabase Storage after creation (so we have the real ID)
+            if let image = selectedImage {
+                let photoURL = try await ImageUploadService.shared.uploadMedicationPhoto(image: image, medicationId: medication.id)
+                medication.imageUrl = photoURL
+                medication = try await appState.medicationRepository.updateMedication(medication)
             }
 
             // Create schedule if needed
@@ -2520,6 +2609,7 @@ struct EditMedicationView: View {
     @State private var doseDescription: String = ""
     @State private var existingSchedule: MedicationSchedule?
     @State private var selectedImage: UIImage?
+    @State private var removePhoto = false
 
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -2596,8 +2686,9 @@ struct EditMedicationView: View {
                         Spacer()
                         ImageSourcePicker(
                             selectedImage: $selectedImage,
-                            currentImagePath: medication.localImagePath,
-                            onImageSelected: { _ in }
+                            currentImageUrl: medication.imageUrl,
+                            onImageSelected: { _ in removePhoto = false },
+                            onRemove: { removePhoto = true }
                         )
                         Spacer()
                     }
@@ -2781,16 +2872,6 @@ struct EditMedicationView: View {
         isLoading = true
         errorMessage = nil
 
-        // Update photo if changed
-        var localImagePath = medication.localImagePath
-        if let image = selectedImage {
-            // Delete old photo if exists
-            if let oldPath = medication.localImagePath {
-                LocalImageService.shared.deleteMedicationPhoto(fileName: oldPath)
-            }
-            localImagePath = LocalImageService.shared.saveMedicationPhoto(image, medicationId: medication.id)
-        }
-
         // Create updated medication
         var updatedMedication = medication
         updatedMedication.name = name
@@ -2799,7 +2880,25 @@ struct EditMedicationView: View {
         updatedMedication.reason = reason.isBlank ? nil : reason
         updatedMedication.notes = notes.isBlank ? nil : notes
         updatedMedication.intakeInstruction = intakeInstruction
-        updatedMedication.localImagePath = localImagePath
+
+        // Handle photo changes - upload to Supabase Storage
+        if let image = selectedImage {
+            do {
+                let photoURL = try await ImageUploadService.shared.uploadMedicationPhoto(image: image, medicationId: medication.id)
+                updatedMedication.imageUrl = photoURL
+            } catch {
+                #if DEBUG
+                print("Failed to upload medication photo: \(error)")
+                #endif
+            }
+        } else if removePhoto {
+            // User explicitly removed the photo
+            if medication.imageUrl != nil {
+                let storagePath = "medications/\(medication.id.uuidString)/photo.jpg"
+                try? await ImageUploadService.shared.deleteImage(bucket: SupabaseConfig.medicationPhotosBucket, path: storagePath)
+            }
+            updatedMedication.imageUrl = nil
+        }
 
         do {
             let savedMedication = try await appState.medicationRepository.updateMedication(updatedMedication)
@@ -2852,12 +2951,14 @@ struct EditMedicationView: View {
         isLoading = true
 
         do {
-            // Delete local photo if exists
-            if let localPath = medication.localImagePath {
-                LocalImageService.shared.deleteMedicationPhoto(fileName: localPath)
+            // Delete photo from Supabase Storage if exists
+            if medication.imageUrl != nil {
+                let storagePath = "medications/\(medication.id.uuidString)/photo.jpg"
+                try? await ImageUploadService.shared.deleteImage(bucket: SupabaseConfig.medicationPhotosBucket, path: storagePath)
             }
 
             try await appState.medicationRepository.deleteMedication(id: medication.id)
+            NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
             dismissView()
         } catch {
             errorMessage = "Failed to delete medication: \(error.localizedDescription)"

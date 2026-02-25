@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import UIKit
 import UserNotifications
+import WidgetKit
 
 // MARK: - App Delegate for Orientation Lock and Notifications
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -80,6 +81,9 @@ struct UnforgottenApp: App {
                     featureVisibility.currentAccountId = nil
                 }
             }
+            .onOpenURL { url in
+                handleDeepLink(url)
+            }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     // App became active - check for pending notification navigation
@@ -98,6 +102,11 @@ struct UnforgottenApp: App {
                     // This catches any changes made on other devices
                     Task {
                         await appState.refreshDataFromRemote()
+                    }
+
+                    // Update widget with latest briefing data
+                    Task {
+                        await WidgetBriefingService.shared.updateWidgetData(appState: appState)
                     }
                 }
             }
@@ -123,6 +132,31 @@ struct UnforgottenApp: App {
 
         // Load preferences from Supabase
         await PreferencesSyncService.shared.loadFromRemote(userId: userId, accountId: account.id)
+    }
+
+    /// Handle deep links (e.g., unforgotten://invite/XXXXXX)
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "unforgotten" else { return }
+
+        if url.host == "home" {
+            // Navigate to home screen (e.g., from Live Activity tap)
+            appState.pendingNavigateToHome = true
+        } else if url.host == "invite" {
+            let code = url.lastPathComponent.uppercased()
+            guard code.count == 6, !code.isEmpty, code != "invite" else { return }
+
+            #if DEBUG
+            print("🔗 Deep link received: invite code \(code)")
+            #endif
+
+            appState.pendingInviteCode = code
+
+            // If user is already authenticated, show the accept modal
+            if appState.isAuthenticated {
+                appState.showInviteAcceptModal = true
+            }
+            // Otherwise, code will be picked up by OnboardingFriendCodeView
+        }
     }
 }
 
@@ -195,6 +229,11 @@ final class AppState: ObservableObject {
     @Published var pendingAppointmentId: UUID?
     @Published var pendingProfileId: UUID?
     @Published var pendingStickyReminderId: UUID?
+    @Published var pendingNavigateToHome: Bool = false
+
+    // MARK: - Invitation Deep Link State
+    @Published var pendingInviteCode: String?
+    @Published var showInviteAcceptModal = false
 
     // MARK: - Post-Onboarding Navigation
     @Published var pendingOnboardingAction: OnboardingFirstAction?
@@ -210,6 +249,7 @@ final class AppState: ObservableObject {
     let appUserRepository = AppUserRepository()
     let familyCalendarRepository = FamilyCalendarRepository()
     let profileSyncRepository = ProfileSyncRepository()
+    let profileSharingPreferencesRepository = ProfileSharingPreferencesRepository()
 
     // MARK: - Cached Repositories (offline-first)
     let cachedProfileRepository: CachedProfileRepository
@@ -221,6 +261,7 @@ final class AppState: ObservableObject {
     let cachedImportantAccountRepository: CachedImportantAccountRepository
     let cachedStickyReminderRepository: CachedStickyReminderRepository
     let cachedCountdownRepository: CachedCountdownRepository
+    let cachedMealPlannerRepository: CachedMealPlannerRepository
 
     // MARK: - Legacy Repository Access (for backward compatibility)
     // These provide access to cached repositories through the old property names
@@ -233,6 +274,7 @@ final class AppState: ObservableObject {
     var importantAccountRepository: CachedImportantAccountRepository { cachedImportantAccountRepository }
     var stickyReminderRepository: CachedStickyReminderRepository { cachedStickyReminderRepository }
     var countdownRepository: CachedCountdownRepository { cachedCountdownRepository }
+    var mealPlannerRepository: CachedMealPlannerRepository { cachedMealPlannerRepository }
     // Note: Notes feature uses its own SwiftData container (see Features/Notes/)
 
     // MARK: - App Admin State
@@ -340,6 +382,11 @@ final class AppState: ObservableObject {
             remoteRepository: CountdownRepository(),
             syncEngine: syncEngine
         )
+        self.cachedMealPlannerRepository = CachedMealPlannerRepository(
+            modelContext: modelContext,
+            remoteRepository: MealPlannerRepository(),
+            syncEngine: syncEngine
+        )
 
         // Setup notification categories and delegate
         NotificationService.shared.setupNotificationCategories()
@@ -351,6 +398,12 @@ final class AppState: ObservableObject {
             _ = await NotificationService.shared.requestPermission()
             // Re-schedule notifications on app launch
             await rescheduleNotifications()
+            // Schedule daily morning briefing trigger
+            await NotificationService.shared.scheduleMorningBriefingTrigger()
+            // Cancel any previously scheduled daily summary (feature disabled)
+            NotificationService.shared.cancelDailySummary()
+            // Update widget with today's briefing data
+            await WidgetBriefingService.shared.updateWidgetData(appState: self)
             // Process any pending notifications after app is fully loaded
             // Small delay to ensure views are mounted and ready to observe changes
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
@@ -643,12 +696,88 @@ final class AppState: ObservableObject {
             // Perform full sync for all entity data
             await syncEngine.performFullSync(accountId: account.id)
 
+            // Migrate existing multi-day countdowns to grouped individual records
+            await migrateMultiDayCountdowns(accountId: account.id)
+
             #if DEBUG
-            print("🔄 Background sync completed for account: \(account.id)")
+            print("Background sync completed for account: \(account.id)")
             #endif
         } catch {
             #if DEBUG
             print("🔄 Background sync failed: \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - Migrate Multi-Day Countdowns
+    /// One-time migration: convert multi-day countdowns (endDate) to grouped individual records
+    private func migrateMultiDayCountdowns(accountId: UUID) async {
+        let migrationKey = "countdownMultiDayMigrated_\(accountId.uuidString)"
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+
+        do {
+            let allCountdowns = try await countdownRepository.getCountdowns(accountId: accountId)
+            let multiDayCountdowns = allCountdowns.filter { $0.endDate != nil && $0.groupId == nil }
+
+            guard !multiDayCountdowns.isEmpty else {
+                UserDefaults.standard.set(true, forKey: migrationKey)
+                return
+            }
+
+            let calendar = Calendar.current
+
+            for countdown in multiDayCountdowns {
+                guard let endDate = countdown.endDate else { continue }
+
+                let groupId = UUID()
+                let startDay = calendar.startOfDay(for: countdown.date)
+                let endDay = calendar.startOfDay(for: endDate)
+                var currentDay = startDay
+                var isFirst = true
+
+                while currentDay <= endDay {
+                    if isFirst {
+                        // Update the original record: set groupId, clear endDate
+                        var updated = countdown
+                        updated.groupId = groupId
+                        updated.endDate = nil
+                        _ = try await countdownRepository.updateCountdown(updated)
+                        isFirst = false
+                    } else {
+                        // Create new records for subsequent days
+                        var dayDate = currentDay
+                        if countdown.hasTime {
+                            let timeComponents = calendar.dateComponents([.hour, .minute], from: countdown.date)
+                            dayDate = calendar.date(bySettingHour: timeComponents.hour ?? 0, minute: timeComponents.minute ?? 0, second: 0, of: currentDay) ?? currentDay
+                        }
+
+                        let insert = CountdownInsert(
+                            accountId: countdown.accountId,
+                            title: countdown.title,
+                            date: dayDate,
+                            hasTime: countdown.hasTime,
+                            type: countdown.type,
+                            customType: countdown.customType,
+                            notes: countdown.notes,
+                            imageUrl: countdown.imageUrl,
+                            groupId: groupId,
+                            isRecurring: countdown.isRecurring
+                        )
+                        _ = try await countdownRepository.createCountdown(insert)
+                    }
+
+                    guard let nextDay = calendar.date(byAdding: .day, value: 1, to: currentDay) else { break }
+                    currentDay = nextDay
+                }
+            }
+
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            #if DEBUG
+            print("Migrated \(multiDayCountdowns.count) multi-day countdowns to grouped records")
+            #endif
+        } catch {
+            #if DEBUG
+            print("Multi-day countdown migration failed: \(error)")
             #endif
         }
     }
@@ -955,6 +1084,11 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Daily Summary Notification (DISABLED - may revisit later)
+    // The daily summary notification code remains in NotificationService.swift
+    // but is not called. To re-enable, restore scheduleDailySummaryNotification()
+    // and testDailySummaryNotification() methods and add UI controls in Settings.
+
     // MARK: - Sync Sticky Reminder Notifications
     /// Syncs sticky reminders from Supabase and schedules local notifications.
     /// Called when app comes to foreground to catch any changes made while inactive.
@@ -1006,6 +1140,30 @@ final class AppState: ObservableObject {
         print("📱 Refreshing data from remote for account: \(account.id)")
         #endif
 
+        // Refresh profiles and their details
+        do {
+            let profiles = try await profileRepository.refreshProfiles(accountId: account.id)
+            NotificationCenter.default.post(name: .profilesDidChange, object: nil)
+
+            // Refresh profile details for each profile
+            for profile in profiles {
+                _ = try await profileRepository.refreshProfileDetails(profileId: profile.id)
+            }
+            NotificationCenter.default.post(
+                name: .profileDetailsDidChange,
+                object: nil,
+                userInfo: ["isRemoteSync": true]
+            )
+
+            #if DEBUG
+            print("📱 Refreshed profiles and details from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing profiles: \(error)")
+            #endif
+        }
+
         // Refresh countdowns
         do {
             _ = try await countdownRepository.refreshFromRemote(accountId: account.id)
@@ -1044,6 +1202,76 @@ final class AppState: ObservableObject {
             print("📱 Error refreshing sticky reminders: \(error)")
             #endif
         }
+
+        // Refresh medications
+        do {
+            _ = try await medicationRepository.refreshMedications(accountId: account.id)
+            NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed medications from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing medications: \(error)")
+            #endif
+        }
+
+        // Refresh useful contacts
+        do {
+            _ = try await usefulContactRepository.refreshFromRemote(accountId: account.id)
+            NotificationCenter.default.post(name: .contactsDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed useful contacts from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing useful contacts: \(error)")
+            #endif
+        }
+
+        // Refresh recipes and planned meals
+        do {
+            _ = try await mealPlannerRepository.refreshRecipesFromRemote(accountId: account.id)
+            _ = try await mealPlannerRepository.refreshPlannedMealsFromRemote(accountId: account.id)
+            NotificationCenter.default.post(name: .mealsDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed meals from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing meals: \(error)")
+            #endif
+        }
+
+        // Refresh to-do lists
+        do {
+            _ = try await toDoRepository.refreshFromRemote(accountId: account.id)
+            NotificationCenter.default.post(name: .todosDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed to-do lists from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing to-do lists: \(error)")
+            #endif
+        }
+
+        // Refresh important accounts for each profile
+        do {
+            let profiles = try await profileRepository.getProfiles(accountId: account.id)
+            for profile in profiles {
+                _ = try await importantAccountRepository.refreshAccounts(profileId: profile.id)
+            }
+            NotificationCenter.default.post(name: .importantAccountsDidChange, object: nil)
+            #if DEBUG
+            print("📱 Refreshed important accounts from remote")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Error refreshing important accounts: \(error)")
+            #endif
+        }
+
     }
 
     // MARK: - Schedule Birthday Reminder
@@ -1103,6 +1331,8 @@ extension AppState: NotificationHandlerDelegate {
                 #if DEBUG
                 print("📱 Marked medication as taken: \(medicationId)")
                 #endif
+                // Update widget with latest data
+                await WidgetBriefingService.shared.updateWidgetData(appState: self)
             } else {
                 #if DEBUG
                 print("📱 Could not find medication log to mark as taken")

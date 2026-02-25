@@ -13,11 +13,27 @@ final class RealtimeSyncService: ObservableObject {
     private var countdownsChannel: RealtimeChannelV2?
     private var profilesChannel: RealtimeChannelV2?
     private var profileDetailsChannel: RealtimeChannelV2?
+    private var medicationsChannel: RealtimeChannelV2?
+    private var usefulContactsChannel: RealtimeChannelV2?
+    private var todoListsChannel: RealtimeChannelV2?
+    private var todoItemsChannel: RealtimeChannelV2?
+    private var recipesChannel: RealtimeChannelV2?
+    private var plannedMealsChannel: RealtimeChannelV2?
+    private var moodEntriesChannel: RealtimeChannelV2?
+    private var importantAccountsChannel: RealtimeChannelV2?
     private var changeListenerTask: Task<Void, Never>?
     private var stickyReminderListenerTask: Task<Void, Never>?
     private var countdownListenerTask: Task<Void, Never>?
     private var profileListenerTask: Task<Void, Never>?
     private var profileDetailListenerTask: Task<Void, Never>?
+    private var medicationListenerTask: Task<Void, Never>?
+    private var usefulContactListenerTask: Task<Void, Never>?
+    private var todoListListenerTask: Task<Void, Never>?
+    private var todoItemListenerTask: Task<Void, Never>?
+    private var recipeListenerTask: Task<Void, Never>?
+    private var plannedMealListenerTask: Task<Void, Never>?
+    private var moodEntryListenerTask: Task<Void, Never>?
+    private var importantAccountListenerTask: Task<Void, Never>?
     private var currentAccountId: UUID?
 
     private init() {}
@@ -49,6 +65,30 @@ final class RealtimeSyncService: ObservableObject {
         // Subscribe to profile_details table changes for synced profile detail updates
         await subscribeToProfileDetails(accountId: accountId)
 
+        // Subscribe to medications table changes for this account
+        await subscribeToMedications(accountId: accountId)
+
+        // Subscribe to useful_contacts table changes for this account
+        await subscribeToUsefulContacts(accountId: accountId)
+
+        // Subscribe to todo_lists table changes for this account
+        await subscribeToToDoLists(accountId: accountId)
+
+        // Subscribe to todo_items table changes for this account
+        await subscribeToToDoItems(accountId: accountId)
+
+        // Subscribe to recipes table changes for this account
+        await subscribeToRecipes(accountId: accountId)
+
+        // Subscribe to planned_meals table changes for this account
+        await subscribeToPlannedMeals(accountId: accountId)
+
+        // Subscribe to mood_entries table changes for this account
+        await subscribeToMoodEntries(accountId: accountId)
+
+        // Subscribe to important_accounts table changes
+        await subscribeToImportantAccounts(accountId: accountId)
+
         #if DEBUG
         print("📡 RealtimeSyncService: Started listening for account \(accountId)")
         #endif
@@ -70,6 +110,30 @@ final class RealtimeSyncService: ObservableObject {
 
         profileDetailListenerTask?.cancel()
         profileDetailListenerTask = nil
+
+        medicationListenerTask?.cancel()
+        medicationListenerTask = nil
+
+        usefulContactListenerTask?.cancel()
+        usefulContactListenerTask = nil
+
+        todoListListenerTask?.cancel()
+        todoListListenerTask = nil
+
+        todoItemListenerTask?.cancel()
+        todoItemListenerTask = nil
+
+        recipeListenerTask?.cancel()
+        recipeListenerTask = nil
+
+        plannedMealListenerTask?.cancel()
+        plannedMealListenerTask = nil
+
+        moodEntryListenerTask?.cancel()
+        moodEntryListenerTask = nil
+
+        importantAccountListenerTask?.cancel()
+        importantAccountListenerTask = nil
 
         if let channel = appointmentsChannel {
             await supabase.realtimeV2.removeChannel(channel)
@@ -94,6 +158,46 @@ final class RealtimeSyncService: ObservableObject {
         if let channel = profileDetailsChannel {
             await supabase.realtimeV2.removeChannel(channel)
             profileDetailsChannel = nil
+        }
+
+        if let channel = medicationsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            medicationsChannel = nil
+        }
+
+        if let channel = usefulContactsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            usefulContactsChannel = nil
+        }
+
+        if let channel = todoListsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            todoListsChannel = nil
+        }
+
+        if let channel = todoItemsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            todoItemsChannel = nil
+        }
+
+        if let channel = recipesChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            recipesChannel = nil
+        }
+
+        if let channel = plannedMealsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            plannedMealsChannel = nil
+        }
+
+        if let channel = moodEntriesChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            moodEntriesChannel = nil
+        }
+
+        if let channel = importantAccountsChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            importantAccountsChannel = nil
         }
 
         currentAccountId = nil
@@ -715,6 +819,254 @@ final class RealtimeSyncService: ObservableObject {
                 userInfo: userInfo
             )
         }
+    }
+
+    // MARK: - Medications Subscription
+
+    private func subscribeToMedications(accountId: UUID) async {
+        let channel = supabase.channel("medications_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.medications,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        medicationsChannel = channel
+
+        medicationListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleGenericChange(change, notificationName: .medicationsDidChange, entityName: "medication")
+            }
+        }
+    }
+
+    // MARK: - Useful Contacts Subscription
+
+    private func subscribeToUsefulContacts(accountId: UUID) async {
+        let channel = supabase.channel("useful_contacts_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.usefulContacts,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        usefulContactsChannel = channel
+
+        usefulContactListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleGenericChange(change, notificationName: .contactsDidChange, entityName: "useful contact")
+            }
+        }
+    }
+
+    // MARK: - To Do Lists Subscription
+
+    private func subscribeToToDoLists(accountId: UUID) async {
+        let channel = supabase.channel("todo_lists_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.todoLists,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        todoListsChannel = channel
+
+        todoListListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleGenericChange(change, notificationName: .todosDidChange, entityName: "to-do list")
+            }
+        }
+    }
+
+    // MARK: - To Do Items Subscription
+
+    private func subscribeToToDoItems(accountId: UUID) async {
+        let channel = supabase.channel("todo_items_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.todoItems
+        )
+
+        await channel.subscribe()
+        todoItemsChannel = channel
+
+        todoItemListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleGenericChange(change, notificationName: .todosDidChange, entityName: "to-do item")
+            }
+        }
+    }
+
+    // MARK: - Recipes Subscription
+
+    private func subscribeToRecipes(accountId: UUID) async {
+        let channel = supabase.channel("recipes_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.recipes,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        recipesChannel = channel
+
+        recipeListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleGenericChange(change, notificationName: .mealsDidChange, entityName: "recipe")
+            }
+        }
+    }
+
+    // MARK: - Planned Meals Subscription
+
+    private func subscribeToPlannedMeals(accountId: UUID) async {
+        let channel = supabase.channel("planned_meals_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.plannedMeals,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        plannedMealsChannel = channel
+
+        plannedMealListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleGenericChange(change, notificationName: .mealsDidChange, entityName: "planned meal")
+            }
+        }
+    }
+
+    // MARK: - Mood Entries Subscription
+
+    private func subscribeToMoodEntries(accountId: UUID) async {
+        let channel = supabase.channel("mood_entries_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.moodEntries,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        moodEntriesChannel = channel
+
+        moodEntryListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleGenericChange(change, notificationName: .moodEntriesDidChange, entityName: "mood entry")
+            }
+        }
+    }
+
+    // MARK: - Important Accounts Subscription
+
+    private func subscribeToImportantAccounts(accountId: UUID) async {
+        let channel = supabase.channel("important_accounts_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.importantAccounts
+        )
+
+        await channel.subscribe()
+        importantAccountsChannel = channel
+
+        importantAccountListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleImportantAccountChange(change)
+            }
+        }
+    }
+
+    private func handleImportantAccountChange(_ change: AnyAction) async {
+        #if DEBUG
+        print("📡 RealtimeSyncService: Received important account change")
+        #endif
+
+        var userInfo: [String: Any] = [:]
+
+        switch change {
+        case .insert(let action):
+            if let profileIdValue = action.record["profile_id"],
+               let profileIdString = extractStringValue(from: profileIdValue),
+               let profileId = UUID(uuidString: profileIdString) {
+                userInfo["profileId"] = profileId
+            }
+        case .update(let action):
+            if let profileIdValue = action.record["profile_id"],
+               let profileIdString = extractStringValue(from: profileIdValue),
+               let profileId = UUID(uuidString: profileIdString) {
+                userInfo["profileId"] = profileId
+            }
+        case .delete(let action):
+            if let profileIdValue = action.oldRecord["profile_id"],
+               let profileIdString = extractStringValue(from: profileIdValue),
+               let profileId = UUID(uuidString: profileIdString) {
+                userInfo["profileId"] = profileId
+            }
+        }
+
+        NotificationCenter.default.post(
+            name: .importantAccountsDidChange,
+            object: nil,
+            userInfo: userInfo
+        )
+    }
+
+    // MARK: - Generic Change Handler
+
+    /// Handles changes for entities that just need a simple notification post
+    private func handleGenericChange(_ change: AnyAction, notificationName: Notification.Name, entityName: String) async {
+        let action: DataChangeAction
+
+        switch change {
+        case .insert:
+            action = .created
+            #if DEBUG
+            print("📡 RealtimeSyncService: \(entityName) INSERT detected")
+            #endif
+        case .update:
+            action = .updated
+            #if DEBUG
+            print("📡 RealtimeSyncService: \(entityName) UPDATE detected")
+            #endif
+        case .delete:
+            action = .deleted
+            #if DEBUG
+            print("📡 RealtimeSyncService: \(entityName) DELETE detected")
+            #endif
+        }
+
+        NotificationCenter.default.post(
+            name: notificationName,
+            object: nil,
+            userInfo: ["action": action.rawValue]
+        )
     }
 }
 

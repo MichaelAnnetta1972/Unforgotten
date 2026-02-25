@@ -16,7 +16,10 @@ final class LocalAppointment {
     var time: Date?
     var location: String?
     var notes: String?
+    var imageUrl: String?
     var reminderOffsetMinutes: Int?
+    var repeatInterval: Int?
+    var repeatUnit: String?
     var isCompleted: Bool
     var createdAt: Date
     var updatedAt: Date
@@ -37,7 +40,10 @@ final class LocalAppointment {
         time: Date? = nil,
         location: String? = nil,
         notes: String? = nil,
+        imageUrl: String? = nil,
         reminderOffsetMinutes: Int? = nil,
+        repeatInterval: Int? = nil,
+        repeatUnit: String? = nil,
         isCompleted: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -54,7 +60,10 @@ final class LocalAppointment {
         self.time = time
         self.location = location
         self.notes = notes
+        self.imageUrl = imageUrl
         self.reminderOffsetMinutes = reminderOffsetMinutes
+        self.repeatInterval = repeatInterval
+        self.repeatUnit = repeatUnit
         self.isCompleted = isCompleted
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -75,7 +84,10 @@ final class LocalAppointment {
             time: remote.time,
             location: remote.location,
             notes: remote.notes,
+            imageUrl: remote.imageUrl,
             reminderOffsetMinutes: remote.reminderOffsetMinutes,
+            repeatInterval: remote.repeatInterval,
+            repeatUnit: remote.repeatUnit,
             isCompleted: remote.isCompleted,
             createdAt: remote.createdAt,
             updatedAt: remote.updatedAt,
@@ -97,7 +109,10 @@ final class LocalAppointment {
             time: time,
             location: location,
             notes: notes,
+            imageUrl: imageUrl,
             reminderOffsetMinutes: reminderOffsetMinutes,
+            repeatInterval: repeatInterval,
+            repeatUnit: repeatUnit,
             isCompleted: isCompleted,
             createdAt: createdAt,
             updatedAt: updatedAt
@@ -115,7 +130,10 @@ final class LocalAppointment {
         self.time = remote.time
         self.location = remote.location
         self.notes = remote.notes
+        self.imageUrl = remote.imageUrl
         self.reminderOffsetMinutes = remote.reminderOffsetMinutes
+        self.repeatInterval = remote.repeatInterval
+        self.repeatUnit = remote.repeatUnit
         self.isCompleted = remote.isCompleted
         self.createdAt = remote.createdAt
         self.updatedAt = remote.updatedAt

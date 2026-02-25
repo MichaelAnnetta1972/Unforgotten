@@ -37,6 +37,16 @@ struct HeaderStyleAssets: Codable, Equatable {
     let appointmentDetail: HeaderAsset
     let contactDetail: HeaderAsset
     let medicationDetail: HeaderAsset
+    // Feature page assets
+    let calendar: HeaderAsset
+    let mealPlanner: HeaderAsset
+    let todoLists: HeaderAsset
+    let notes: HeaderAsset
+    let notesDetail: HeaderAsset
+    let stickyReminders: HeaderAsset
+    let countdowns: HeaderAsset
+    let birthdays: HeaderAsset
+    let mood: HeaderAsset
 
     /// Get the asset for a specific page
     func asset(for page: PageIdentifier) -> HeaderAsset {
@@ -57,7 +67,25 @@ struct HeaderStyleAssets: Codable, Equatable {
             return contactDetail
         case .medicationDetail:
             return medicationDetail
-        case .birthdays, .countdownEvents, .contacts, .notes, .mood, .todoLists, .todoDetail, .settings, .stickyReminders, .calendar:
+        case .calendar:
+            return calendar
+        case .mealPlanner:
+            return mealPlanner
+        case .todoLists, .todoDetail:
+            return todoLists
+        case .notes:
+            return notes
+        case .notesDetail:
+            return notesDetail
+        case .stickyReminders:
+            return stickyReminders
+        case .birthdays:
+            return birthdays
+        case .mood:
+            return mood
+        case .countdownEvents:
+            return countdowns
+        case .contacts, .settings:
             return defaultHeader
         }
     }
@@ -108,7 +136,16 @@ extension HeaderStyle {
             profileDetail: HeaderAsset(fileName: "style_one_profile_detail", type: .image),
             appointmentDetail: HeaderAsset(fileName: "style_one_appointment_detail", type: .image),
             contactDetail: HeaderAsset(fileName: "style_one_contact_detail", type: .image),
-            medicationDetail: HeaderAsset(fileName: "style_one_medication_detail", type: .image)
+            medicationDetail: HeaderAsset(fileName: "style_one_medication_detail", type: .image),
+            calendar: HeaderAsset(fileName: "style_one_calendar", type: .image),
+            mealPlanner: HeaderAsset(fileName: "style_one_meal_planner", type: .image),
+            todoLists: HeaderAsset(fileName: "style_one_todo_lists", type: .image),
+            notes: HeaderAsset(fileName: "style_one_notes", type: .image),
+            notesDetail: HeaderAsset(fileName: "style_one_notes_detail", type: .image),
+            stickyReminders: HeaderAsset(fileName: "style_one_sticky_reminders", type: .image),
+            countdowns: HeaderAsset(fileName: "style_one_countdowns", type: .image),
+            birthdays: HeaderAsset(fileName: "style_one_birthdays", type: .image),
+            mood: HeaderAsset(fileName: "style_one_mood", type: .image)
         )
     )
 
@@ -126,7 +163,16 @@ extension HeaderStyle {
             profileDetail: HeaderAsset(fileName: "style_two_profile_detail", type: .image),
             appointmentDetail: HeaderAsset(fileName: "style_two_appointment_detail", type: .image),
             contactDetail: HeaderAsset(fileName: "style_two_contact_detail", type: .image),
-            medicationDetail: HeaderAsset(fileName: "style_two_medication_detail", type: .image)
+            medicationDetail: HeaderAsset(fileName: "style_two_medication_detail", type: .image),
+            calendar: HeaderAsset(fileName: "style_two_calendar", type: .image),
+            mealPlanner: HeaderAsset(fileName: "style_two_meal_planner", type: .image),
+            todoLists: HeaderAsset(fileName: "style_two_todo_lists", type: .image),
+            notes: HeaderAsset(fileName: "style_two_notes", type: .image),
+            notesDetail: HeaderAsset(fileName: "style_two_notes_detail", type: .image),
+            stickyReminders: HeaderAsset(fileName: "style_two_sticky_reminders", type: .image),
+            countdowns: HeaderAsset(fileName: "style_two_countdowns", type: .image),
+            birthdays: HeaderAsset(fileName: "style_two_birthdays", type: .image),
+            mood: HeaderAsset(fileName: "style_two_mood", type: .image)
         )
     )
 
@@ -144,7 +190,16 @@ extension HeaderStyle {
             profileDetail: HeaderAsset(fileName: "style_three_profile_detail", type: .image),
             appointmentDetail: HeaderAsset(fileName: "style_three_appointment_detail", type: .image),
             contactDetail: HeaderAsset(fileName: "style_three_contact_detail", type: .image),
-            medicationDetail: HeaderAsset(fileName: "style_three_medication_detail", type: .image)
+            medicationDetail: HeaderAsset(fileName: "style_three_medication_detail", type: .image),
+            calendar: HeaderAsset(fileName: "style_three_calendar", type: .image),
+            mealPlanner: HeaderAsset(fileName: "style_three_meal_planner", type: .image),
+            todoLists: HeaderAsset(fileName: "style_three_todo_lists", type: .image),
+            notes: HeaderAsset(fileName: "style_three_notes", type: .image),
+            notesDetail: HeaderAsset(fileName: "style_three_notes_detail", type: .image),
+            stickyReminders: HeaderAsset(fileName: "style_three_sticky_reminders", type: .image),
+            countdowns: HeaderAsset(fileName: "style_three_countdowns", type: .image),
+            birthdays: HeaderAsset(fileName: "style_three_birthdays", type: .image),
+            mood: HeaderAsset(fileName: "style_three_mood", type: .image)
         )
     )
 
@@ -162,7 +217,16 @@ extension HeaderStyle {
             profileDetail: HeaderAsset(fileName: "style_four_profile_detail", type: .image),
             appointmentDetail: HeaderAsset(fileName: "style_four_appointment_detail", type: .image),
             contactDetail: HeaderAsset(fileName: "style_four_contact_detail", type: .image),
-            medicationDetail: HeaderAsset(fileName: "style_four_medication_detail", type: .image)
+            medicationDetail: HeaderAsset(fileName: "style_four_medication_detail", type: .image),
+            calendar: HeaderAsset(fileName: "style_four_calendar", type: .image),
+            mealPlanner: HeaderAsset(fileName: "style_four_meal_planner", type: .image),
+            todoLists: HeaderAsset(fileName: "style_four_todo_lists", type: .image),
+            notes: HeaderAsset(fileName: "style_four_notes", type: .image),
+            notesDetail: HeaderAsset(fileName: "style_four_notes_detail", type: .image),
+            stickyReminders: HeaderAsset(fileName: "style_four_sticky_reminders", type: .image),
+            countdowns: HeaderAsset(fileName: "style_four_countdowns", type: .image),
+            birthdays: HeaderAsset(fileName: "style_four_birthdays", type: .image),
+            mood: HeaderAsset(fileName: "style_four_mood", type: .image)
         )
     )
 

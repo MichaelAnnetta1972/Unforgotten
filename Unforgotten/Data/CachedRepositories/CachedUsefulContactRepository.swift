@@ -162,6 +162,32 @@ final class CachedUsefulContactRepository {
         notes: String? = nil,
         isFavourite: Bool = false
     ) async throws -> UsefulContact {
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let insert = UsefulContactInsert(
+                    accountId: accountId,
+                    name: name,
+                    category: category,
+                    companyName: companyName,
+                    phone: phone,
+                    email: email,
+                    website: website,
+                    address: address,
+                    notes: notes,
+                    isFavourite: isFavourite
+                )
+                let remote = try await remoteRepository.createContact(insert)
+                let local = LocalUsefulContact(from: remote)
+                modelContext.insert(local)
+                try? modelContext.save()
+                return remote
+            } catch {
+                print("[CachedContactRepo] Remote createContact failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: create locally and queue for sync
         let local = LocalUsefulContact(
             id: UUID(),
             accountId: accountId,
@@ -196,31 +222,44 @@ final class CachedUsefulContactRepository {
             predicate: #Predicate { $0.id == contactId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.name = contact.name
-            local.category = contact.category.rawValue
-            local.companyName = contact.companyName
-            local.phone = contact.phone
-            local.email = contact.email
-            local.website = contact.website
-            local.address = contact.address
-            local.notes = contact.notes
-            local.isFavourite = contact.isFavourite
-            local.sortOrder = contact.sortOrder
-            local.markAsModified()
-
-            syncEngine.queueChange(
-                entityType: "usefulContact",
-                entityId: contact.id,
-                accountId: contact.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.name = contact.name
+        local.category = contact.category.rawValue
+        local.companyName = contact.companyName
+        local.phone = contact.phone
+        local.email = contact.email
+        local.website = contact.website
+        local.address = contact.address
+        local.notes = contact.notes
+        local.isFavourite = contact.isFavourite
+        local.sortOrder = contact.sortOrder
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let updated = try await remoteRepository.updateContact(contact)
+                local.isSynced = true
+                try modelContext.save()
+                return updated
+            } catch {
+                print("[CachedContactRepo] Remote updateContact failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "usefulContact",
+            entityId: contact.id,
+            accountId: contact.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Delete a contact
@@ -229,19 +268,32 @@ final class CachedUsefulContactRepository {
             predicate: #Predicate { $0.id == id }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.locallyDeleted = true
-            local.markAsModified()
+        guard let local = try modelContext.fetch(descriptor).first else { return }
 
-            syncEngine.queueChange(
-                entityType: "usefulContact",
-                entityId: id,
-                accountId: local.accountId,
-                changeType: .delete
-            )
+        local.locallyDeleted = true
+        local.markAsModified()
 
-            try modelContext.save()
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.deleteContact(id: id)
+                local.isSynced = true
+                try modelContext.save()
+                return
+            } catch {
+                print("[CachedContactRepo] Remote deleteContact failed: \(error). Saving locally.")
+            }
         }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "usefulContact",
+            entityId: id,
+            accountId: local.accountId,
+            changeType: .delete
+        )
+
+        try modelContext.save()
     }
 
     /// Update sort orders for multiple contacts
@@ -256,12 +308,28 @@ final class CachedUsefulContactRepository {
                 local.sortOrder = update.sortOrder
                 local.markAsModified()
 
-                syncEngine.queueChange(
-                    entityType: "usefulContact",
-                    entityId: update.id,
-                    accountId: local.accountId,
-                    changeType: .update
-                )
+                // When online, try remote first
+                if networkMonitor.isConnected {
+                    do {
+                        _ = try await remoteRepository.updateContact(local.toRemote())
+                        local.isSynced = true
+                    } catch {
+                        print("[CachedContactRepo] Remote updateContactSortOrder failed: \(error). Queuing for sync.")
+                        syncEngine.queueChange(
+                            entityType: "usefulContact",
+                            entityId: update.id,
+                            accountId: local.accountId,
+                            changeType: .update
+                        )
+                    }
+                } else {
+                    syncEngine.queueChange(
+                        entityType: "usefulContact",
+                        entityId: update.id,
+                        accountId: local.accountId,
+                        changeType: .update
+                    )
+                }
             }
         }
 

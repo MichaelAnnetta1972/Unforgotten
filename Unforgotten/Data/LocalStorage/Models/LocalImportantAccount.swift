@@ -17,6 +17,7 @@ final class LocalImportantAccount {
     var recoveryHint: String?
     var notes: String?
     var category: String?  // Store as raw value
+    var imageUrl: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -37,6 +38,7 @@ final class LocalImportantAccount {
         recoveryHint: String? = nil,
         notes: String? = nil,
         category: String? = nil,
+        imageUrl: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isSynced: Bool = false,
@@ -53,6 +55,7 @@ final class LocalImportantAccount {
         self.recoveryHint = recoveryHint
         self.notes = notes
         self.category = category
+        self.imageUrl = imageUrl
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isSynced = isSynced
@@ -73,6 +76,7 @@ final class LocalImportantAccount {
             recoveryHint: remote.recoveryHint,
             notes: remote.notes,
             category: remote.category?.rawValue,
+            imageUrl: remote.imageUrl,
             createdAt: remote.createdAt,
             updatedAt: remote.updatedAt,
             isSynced: true,
@@ -94,6 +98,7 @@ final class LocalImportantAccount {
             recoveryHint: recoveryHint,
             notes: notes,
             category: category.flatMap { AccountCategory(rawValue: $0) },
+            imageUrl: imageUrl,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -111,6 +116,7 @@ final class LocalImportantAccount {
         self.recoveryHint = remote.recoveryHint
         self.notes = remote.notes
         self.category = remote.category?.rawValue
+        self.imageUrl = remote.imageUrl
         self.createdAt = remote.createdAt
         self.updatedAt = remote.updatedAt
         self.isSynced = true

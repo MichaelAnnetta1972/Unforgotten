@@ -8,6 +8,7 @@ struct MoodDashboardView: View {
     @Environment(\.iPadHomeAction) private var iPadHomeAction
     @StateObject private var viewModel = MoodDashboardViewModel()
     @State private var showMoodPrompt = false
+    @State private var editingEntry: MoodEntry? = nil
 
     private let moodEmojis = ["", "😢", "😕", "😐", "🙂", "😊"]
     private let moodLabels = ["", "Sad", "Not Great", "Okay", "Good", "Great"]
@@ -32,7 +33,9 @@ struct MoodDashboardView: View {
                     VStack(spacing: AppDimensions.cardSpacing) {
                             // Today's mood or prompt to record
                             if let todayMood = viewModel.todaysMood {
-                                TodayMoodCard(entry: todayMood, moodEmojis: moodEmojis, moodLabels: moodLabels)
+                                TodayMoodCard(entry: todayMood, moodEmojis: moodEmojis, moodLabels: moodLabels) {
+                                    editingEntry = todayMood
+                                }
                             } else {
                                 RecordMoodCard {
                                     showMoodPrompt = true
@@ -97,6 +100,14 @@ struct MoodDashboardView: View {
             MoodPromptView()
                 .environmentObject(appState)
         }
+        .sheet(item: $editingEntry, onDismiss: {
+            Task {
+                await viewModel.loadData(appState: appState)
+            }
+        }) { entry in
+            MoodPromptView(existingEntry: entry)
+                .environmentObject(appState)
+        }
         .task {
             await viewModel.loadData(appState: appState)
         }
@@ -104,6 +115,11 @@ struct MoodDashboardView: View {
             await viewModel.loadData(appState: appState)
         }
         .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
+            Task {
+                await viewModel.loadData(appState: appState)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .moodEntriesDidChange)) { _ in
             Task {
                 await viewModel.loadData(appState: appState)
             }
@@ -116,6 +132,7 @@ struct TodayMoodCard: View {
     let entry: MoodEntry
     let moodEmojis: [String]
     let moodLabels: [String]
+    var onEdit: (() -> Void)? = nil
 
     @Environment(\.appAccentColor) private var appAccentColor
 
@@ -135,6 +152,18 @@ struct TodayMoodCard: View {
                     .foregroundColor(appAccentColor)
 
                 Spacer()
+
+                if let onEdit {
+                    Button(action: onEdit) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pencil")
+                                .font(.caption)
+                            Text("Edit")
+                                .font(.appCaption)
+                        }
+                        .foregroundColor(appAccentColor)
+                    }
+                }
 
                 Text(dateFormatter.string(from: entry.date))
                     .font(.appCaption)

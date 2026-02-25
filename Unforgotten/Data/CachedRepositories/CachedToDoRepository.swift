@@ -69,6 +69,58 @@ final class CachedToDoRepository {
         return results
     }
 
+    /// Force refresh lists from network and update local cache
+    func refreshFromRemote(accountId: UUID) async throws -> [ToDoList] {
+        guard networkMonitor.isConnected else {
+            return try await getLists(accountId: accountId)
+        }
+
+        let remoteLists = try await remoteRepository.getLists(accountId: accountId)
+
+        // Update local cache with remote data
+        for remote in remoteLists {
+            let remoteListId = remote.id
+            let existingDescriptor = FetchDescriptor<LocalToDoList>(
+                predicate: #Predicate { $0.id == remoteListId }
+            )
+
+            if let existingLocal = try modelContext.fetch(existingDescriptor).first {
+                existingLocal.update(from: remote)
+            } else {
+                let local = LocalToDoList(from: remote)
+                modelContext.insert(local)
+            }
+
+            // Also refresh items for this list
+            for remoteItem in remote.items {
+                let remoteItemId = remoteItem.id
+                let existingItemDescriptor = FetchDescriptor<LocalToDoItem>(
+                    predicate: #Predicate { $0.id == remoteItemId }
+                )
+
+                if let existingItem = try modelContext.fetch(existingItemDescriptor).first {
+                    existingItem.update(from: remoteItem)
+                } else {
+                    let localItem = LocalToDoItem(from: remoteItem)
+                    modelContext.insert(localItem)
+                }
+            }
+        }
+
+        // Remove synced local lists that no longer exist on server
+        let remoteIds = Set(remoteLists.map { $0.id })
+        let allLocalDescriptor = FetchDescriptor<LocalToDoList>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted }
+        )
+        let allLocalLists = try modelContext.fetch(allLocalDescriptor)
+        for local in allLocalLists where !remoteIds.contains(local.id) && local.isSynced {
+            modelContext.delete(local)
+        }
+
+        try? modelContext.save()
+        return remoteLists
+    }
+
     /// Get a specific list
     func getList(id: UUID) async throws -> ToDoList? {
         let descriptor = FetchDescriptor<LocalToDoList>(
@@ -85,12 +137,27 @@ final class CachedToDoRepository {
     // MARK: - List Write Operations
 
     /// Create a new list
-    func createList(accountId: UUID, title: String, listType: String? = nil) async throws -> ToDoList {
+    func createList(accountId: UUID, title: String, listType: String? = nil, dueDate: Date? = nil) async throws -> ToDoList {
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let remote = try await remoteRepository.createList(accountId: accountId, title: title, listType: listType, dueDate: dueDate)
+                let local = LocalToDoList(from: remote)
+                modelContext.insert(local)
+                try? modelContext.save()
+                return remote
+            } catch {
+                print("[CachedToDoRepo] Remote createList failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: create locally and queue for sync
         let local = LocalToDoList(
             id: UUID(),
             accountId: accountId,
             title: title,
             listType: listType,
+            dueDate: dueDate,
             isSynced: false
         )
         modelContext.insert(local)
@@ -113,23 +180,37 @@ final class CachedToDoRepository {
             predicate: #Predicate { $0.id == listId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.title = list.title
-            local.listType = list.listType
-            local.markAsModified()
-
-            syncEngine.queueChange(
-                entityType: "toDoList",
-                entityId: list.id,
-                accountId: list.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote(with: list.items)
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.title = list.title
+        local.listType = list.listType
+        local.dueDate = list.dueDate
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.updateList(list)
+                local.isSynced = true
+                try modelContext.save()
+                return local.toRemote(with: list.items)
+            } catch {
+                print("[CachedToDoRepo] Remote updateList failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "toDoList",
+            entityId: list.id,
+            accountId: list.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote(with: list.items)
     }
 
     /// Delete a list
@@ -138,28 +219,41 @@ final class CachedToDoRepository {
             predicate: #Predicate { $0.id == id }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.locallyDeleted = true
-            local.markAsModified()
+        guard let local = try modelContext.fetch(descriptor).first else { return }
 
-            // Also mark all items as deleted
-            let itemDescriptor = FetchDescriptor<LocalToDoItem>(
-                predicate: #Predicate { $0.listId == id }
-            )
-            let items = try modelContext.fetch(itemDescriptor)
-            for item in items {
-                item.locallyDeleted = true
-            }
+        local.locallyDeleted = true
+        local.markAsModified()
 
-            syncEngine.queueChange(
-                entityType: "toDoList",
-                entityId: id,
-                accountId: local.accountId,
-                changeType: .delete
-            )
-
-            try modelContext.save()
+        // Also mark all items as deleted
+        let itemDescriptor = FetchDescriptor<LocalToDoItem>(
+            predicate: #Predicate { $0.listId == id }
+        )
+        let items = try modelContext.fetch(itemDescriptor)
+        for item in items {
+            item.locallyDeleted = true
         }
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.deleteList(id: id)
+                local.isSynced = true
+                try modelContext.save()
+                return
+            } catch {
+                print("[CachedToDoRepo] Remote deleteList failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "toDoList",
+            entityId: id,
+            accountId: local.accountId,
+            changeType: .delete
+        )
+
+        try modelContext.save()
     }
 
     // MARK: - Item Read Operations
@@ -178,6 +272,20 @@ final class CachedToDoRepository {
 
     /// Create a new item
     func createItem(listId: UUID, text: String, sortOrder: Int = 0) async throws -> ToDoItem {
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let remote = try await remoteRepository.createItem(listId: listId, text: text, sortOrder: sortOrder)
+                let local = LocalToDoItem(from: remote)
+                modelContext.insert(local)
+                try? modelContext.save()
+                return remote
+            } catch {
+                print("[CachedToDoRepo] Remote createItem failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: create locally and queue for sync
         let local = LocalToDoItem(
             id: UUID(),
             listId: listId,
@@ -187,11 +295,7 @@ final class CachedToDoRepository {
         )
         modelContext.insert(local)
 
-        // Get accountId from list
-        let listDescriptor = FetchDescriptor<LocalToDoList>(
-            predicate: #Predicate { $0.id == listId }
-        )
-        let accountId = try modelContext.fetch(listDescriptor).first?.accountId ?? UUID()
+        let accountId = try getAccountIdForList(listId)
 
         syncEngine.queueChange(
             entityType: "toDoItem",
@@ -211,31 +315,39 @@ final class CachedToDoRepository {
             predicate: #Predicate { $0.id == itemId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.text = item.text
-            local.isCompleted = item.isCompleted
-            local.sortOrder = item.sortOrder
-            local.markAsModified()
-
-            // Get accountId from list
-            let itemListId = item.listId
-            let listDescriptor = FetchDescriptor<LocalToDoList>(
-                predicate: #Predicate { $0.id == itemListId }
-            )
-            let accountId = try modelContext.fetch(listDescriptor).first?.accountId ?? UUID()
-
-            syncEngine.queueChange(
-                entityType: "toDoItem",
-                entityId: item.id,
-                accountId: accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.text = item.text
+        local.isCompleted = item.isCompleted
+        local.sortOrder = item.sortOrder
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.updateItem(item)
+                local.isSynced = true
+                try modelContext.save()
+                return local.toRemote()
+            } catch {
+                print("[CachedToDoRepo] Remote updateItem failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        let accountId = try getAccountIdForList(item.listId)
+
+        syncEngine.queueChange(
+            entityType: "toDoItem",
+            entityId: item.id,
+            accountId: accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Toggle item completion
@@ -245,25 +357,37 @@ final class CachedToDoRepository {
             predicate: #Predicate { $0.id == itemId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.isCompleted.toggle()
-            local.markAsModified()
-
-            // Get accountId from list using helper method
-            let accountId = try getAccountIdForList(local.listId)
-
-            syncEngine.queueChange(
-                entityType: "toDoItem",
-                entityId: id,
-                accountId: accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.isCompleted.toggle()
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.updateItem(local.toRemote())
+                local.isSynced = true
+                try modelContext.save()
+                return local.toRemote()
+            } catch {
+                print("[CachedToDoRepo] Remote toggleItemCompletion failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        let accountId = try getAccountIdForList(local.listId)
+
+        syncEngine.queueChange(
+            entityType: "toDoItem",
+            entityId: id,
+            accountId: accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Delete an item
@@ -273,22 +397,66 @@ final class CachedToDoRepository {
             predicate: #Predicate { $0.id == itemId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.locallyDeleted = true
-            local.markAsModified()
+        guard let local = try modelContext.fetch(descriptor).first else { return }
 
-            // Get accountId from list using helper method
-            let accountId = try getAccountIdForList(local.listId)
+        local.locallyDeleted = true
+        local.markAsModified()
 
-            syncEngine.queueChange(
-                entityType: "toDoItem",
-                entityId: id,
-                accountId: accountId,
-                changeType: .delete
-            )
-
-            try modelContext.save()
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.deleteItem(id: id)
+                local.isSynced = true
+                try modelContext.save()
+                return
+            } catch {
+                print("[CachedToDoRepo] Remote deleteItem failed: \(error). Saving locally.")
+            }
         }
+
+        // Offline or remote failed: queue for sync
+        let accountId = try getAccountIdForList(local.listId)
+
+        syncEngine.queueChange(
+            entityType: "toDoItem",
+            entityId: id,
+            accountId: accountId,
+            changeType: .delete
+        )
+
+        try modelContext.save()
+    }
+
+    // MARK: - Calendar Queries
+
+    /// Get lists that have a due date set (for calendar display)
+    /// Prefers remote data when online to ensure freshness, falls back to local cache offline
+    func getListsWithDueDates(accountId: UUID) async throws -> [ToDoList] {
+        // Prefer remote data when online (ensures due date changes are reflected immediately)
+        if networkMonitor.isConnected {
+            let remoteLists = try await remoteRepository.getListsWithDueDates(accountId: accountId)
+            // Update local cache with remote data
+            for remote in remoteLists {
+                let remoteId = remote.id
+                let existingDescriptor = FetchDescriptor<LocalToDoList>(
+                    predicate: #Predicate { $0.id == remoteId }
+                )
+                if let existing = try modelContext.fetch(existingDescriptor).first {
+                    existing.update(from: remote)
+                } else {
+                    modelContext.insert(LocalToDoList(from: remote))
+                }
+            }
+            try? modelContext.save()
+            return remoteLists
+        }
+
+        // Fall back to local cache when offline
+        let descriptor = FetchDescriptor<LocalToDoList>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted && $0.dueDate != nil }
+        )
+        let localLists = try modelContext.fetch(descriptor)
+        return localLists.map { $0.toRemote() }
     }
 
     // MARK: - Private Helpers

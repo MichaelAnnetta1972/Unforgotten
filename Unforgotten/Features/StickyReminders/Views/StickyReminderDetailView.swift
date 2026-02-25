@@ -43,7 +43,7 @@ struct StickyReminderDetailView: View {
 
                         // Bottom spacing
                         Spacer()
-                            .frame(height: 40)
+                            .frame(height: 80)
                     }
                     .padding(.horizontal, AppDimensions.screenPadding)
                     .padding(.top, AppDimensions.cardSpacing)

@@ -297,9 +297,9 @@ struct DatePickerSheet: View {
 
     @State private var tempDate = Date()
 
-    /// Custom height for date picker - taller on iPad to fit the full calendar
+    /// Custom height for date picker
     private var datePickerHeight: PresentationDetent {
-        horizontalSizeClass == .regular ? .fraction(0.7) : .height(480)
+        horizontalSizeClass == .regular ? .fraction(0.5) : .height(350)
     }
 
     var body: some View {
@@ -311,13 +311,14 @@ struct DatePickerSheet: View {
                     in: ...Date(),
                     displayedComponents: .date
                 )
-                .datePickerStyle(.graphical)
+                .datePickerStyle(.wheel)
                 .tint(appAccentColor)
+                .labelsHidden()
                 .padding()
 
                 Spacer()
             }
-            .background(Color.appBackground)
+            //.background(Color.appBackground)
             .navigationTitle("Select \(title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

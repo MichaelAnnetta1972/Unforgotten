@@ -12,6 +12,11 @@ enum AccentColorOption: Int, CaseIterable, Identifiable {
     case teal
     case green
     case mint
+    case white
+    case grey
+    case sage
+    case dusk
+    case indigo
 
     var id: Int { rawValue }
 
@@ -27,6 +32,12 @@ enum AccentColorOption: Int, CaseIterable, Identifiable {
         case .teal: return "Teal"
         case .green: return "Green"
         case .mint: return "Mint"
+        case .white: return "White"
+        case .grey: return "Grey"
+        case .sage: return "Sage"
+        case .dusk: return "Dusk"
+        case .indigo: return "Indigo"
+
         }
     }
 
@@ -42,6 +53,12 @@ enum AccentColorOption: Int, CaseIterable, Identifiable {
         case .teal: return Color(hex: "40C8E0")
         case .green: return Color(hex: "6a863e")
         case .mint: return Color(hex: "63E6BE")
+        case .white: return Color(hex: "FFFFFF")
+        case .grey: return Color(hex: "a7a7a7")
+        case .sage: return Color(hex: "98aca4")
+        case .dusk: return Color(hex: "7791a4")
+        case .indigo: return Color(hex: "565577")
+
         }
     }
 
@@ -57,6 +74,11 @@ enum AccentColorOption: Int, CaseIterable, Identifiable {
         case .teal: return "40C8E0"
         case .green: return "518d69"
         case .mint: return "63E6BE"
+        case .white: return "FFFFFF"
+        case .grey: return "a7a7a7"
+        case .sage: return "98aca4"
+        case .dusk: return "7791a4"
+        case .indigo: return "565577"
         }
     }
 

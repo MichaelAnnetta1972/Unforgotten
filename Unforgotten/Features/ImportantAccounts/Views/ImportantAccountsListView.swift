@@ -114,17 +114,19 @@ struct ImportantAccountsListView: View {
             }
         }
         .task {
-            await viewModel.loadAccounts(profileId: profile.id, appState: appState)
+            await viewModel.loadAccounts(profileId: profile.id, appState: appState, forceRefresh: true, isSyncedProfile: profile.isSyncedProfile)
         }
         .refreshable {
-            await viewModel.loadAccounts(profileId: profile.id, appState: appState)
+            await viewModel.loadAccounts(profileId: profile.id, appState: appState, forceRefresh: true, isSyncedProfile: profile.isSyncedProfile)
         }
         .onReceive(NotificationCenter.default.publisher(for: .importantAccountsDidChange)) { notification in
-            // Reload when important accounts change (e.g., added via iPad overlay)
-            if let profileId = notification.userInfo?["profileId"] as? UUID, profileId == profile.id {
-                Task {
-                    await viewModel.loadAccounts(profileId: profile.id, appState: appState)
-                }
+            // Reload when important accounts change (e.g., added via iPad overlay or remote sync)
+            // Accept notifications with matching profileId OR no profileId (from refreshDataFromRemote)
+            if let profileId = notification.userInfo?["profileId"] as? UUID {
+                guard profileId == profile.id else { return }
+            }
+            Task {
+                await viewModel.loadAccounts(profileId: profile.id, appState: appState, forceRefresh: true, isSyncedProfile: profile.isSyncedProfile)
             }
         }
         .alert("Error", isPresented: .init(
@@ -212,7 +214,7 @@ struct ImportantAccountsListView: View {
                 ImportantAccountsHeaderView(
                     profile: profile,
                     onBack: { dismiss() },
-                    onAdd: {
+                    onAdd: profile.isSyncedProfile ? nil : {
                         // Use full-screen overlay action if available
                         if let addAction = iPadAddImportantAccountAction {
                             addAction(profile)
@@ -353,11 +355,34 @@ struct ImportantAccountDetailPanel: View {
                     accountName: account.accountName,
                     category: account.category,
                     onClose: onClose,
-                    onEdit: onEditTapped
+                    onEdit: profile.isSyncedProfile ? nil : onEditTapped
                 )
 
                 // Detail Cards
                 VStack(spacing: AppDimensions.cardSpacing) {
+                    // Account Photo
+                    if let imageUrl = account.imageUrl, !imageUrl.isEmpty {
+                        AsyncImage(url: URL(string: imageUrl)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 200)
+                                    .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                            case .failure:
+                                EmptyView()
+                            case .empty:
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 200)
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
+                    }
+
                     // Website
                     if let website = account.websiteURL, !website.isEmpty {
                         DetailRowCard(
@@ -453,26 +478,28 @@ struct ImportantAccountDetailPanel: View {
                         .cornerRadius(AppDimensions.cardCornerRadius)
                     }
 
-                    // Delete Button
-                    Button(action: { showDeleteConfirmation = true }) {
-                        HStack {
-                            if isDeleting {
-                                ProgressView()
-                                    .tint(.red)
-                            } else {
-                                Image(systemName: "trash")
+                    // Delete Button (hidden for synced profiles - read-only view)
+                    if !profile.isSyncedProfile {
+                        Button(action: { showDeleteConfirmation = true }) {
+                            HStack {
+                                if isDeleting {
+                                    ProgressView()
+                                        .tint(.red)
+                                } else {
+                                    Image(systemName: "trash")
+                                }
+                                Text("Delete Account")
                             }
-                            Text("Delete Account")
+                            .font(.appBody)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(AppDimensions.cardCornerRadius)
                         }
-                        .font(.appBody)
-                        .foregroundColor(.red)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .disabled(isDeleting)
+                        .padding(.top, 20)
                     }
-                    .disabled(isDeleting)
-                    .padding(.top, 20)
 
                     // Bottom spacing
                     Spacer()
@@ -516,7 +543,7 @@ struct AccountDetailPanelHeader: View {
     let accountName: String
     let category: AccountCategory?
     let onClose: () -> Void
-    let onEdit: () -> Void
+    let onEdit: (() -> Void)?
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(HeaderStyleManager.self) private var headerStyleManager
 
@@ -555,6 +582,7 @@ struct AccountDetailPanelHeader: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .allowsHitTesting(false)
 
             // Content
             VStack {
@@ -590,19 +618,21 @@ struct AccountDetailPanelHeader: View {
 
                     Spacer()
 
-                    // Edit button at bottom right
-                    Button(action: onEdit) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Edit")
-                                .font(.system(size: 14, weight: .semibold))
+                    // Edit button at bottom right (hidden for synced profiles)
+                    if let onEdit = onEdit {
+                        Button(action: onEdit) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Edit")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.2))
+                            .clipShape(Capsule())
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.2))
-                        .clipShape(Capsule())
                     }
                 }
                 .padding(.horizontal, AppDimensions.screenPadding)
@@ -714,11 +744,11 @@ struct ImportantAccountCard: View {
             // Category Icon
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill((account.category?.color ?? Color.textSecondary).opacity(isSelected ? 0.3 : 0.2))
+                    .fill((appAccentColor ?? Color.textSecondary).opacity(isSelected ? 0.3 : 0.2))
                     .frame(width: 44, height: 44)
 
                 Image(systemName: account.category?.icon ?? "globe")
-                    .foregroundColor(account.category?.color ?? Color.textSecondary)
+                    .foregroundColor(appAccentColor ?? Color.textSecondary)
                     .font(.system(size: 20))
             }
 
@@ -762,11 +792,18 @@ class ImportantAccountsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    func loadAccounts(profileId: UUID, appState: AppState) async {
+    func loadAccounts(profileId: UUID, appState: AppState, forceRefresh: Bool = false, isSyncedProfile: Bool = false) async {
         isLoading = true
 
         do {
-            accounts = try await appState.importantAccountRepository.getAccounts(profileId: profileId)
+            if isSyncedProfile {
+                // For synced profiles, fetch from the source profile via RPC
+                accounts = try await appState.importantAccountRepository.getSharedAccounts(syncedProfileId: profileId)
+            } else if forceRefresh {
+                accounts = try await appState.importantAccountRepository.refreshAccounts(profileId: profileId)
+            } else {
+                accounts = try await appState.importantAccountRepository.getAccounts(profileId: profileId)
+            }
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription

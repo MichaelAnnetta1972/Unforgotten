@@ -6,6 +6,7 @@ struct CalendarMemberFilterView: View {
     @Binding var selectedMemberFilters: Set<UUID>
     @Binding var isPresented: Bool
     let membersWithEvents: [AccountMemberWithUser]
+    var memberNameResolver: ((AccountMemberWithUser) -> String)?
 
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -73,7 +74,8 @@ struct CalendarMemberFilterView: View {
                                 MemberFilterRow(
                                     member: member,
                                     isSelected: selectedMemberFilters.contains(member.userId),
-                                    accentColor: appAccentColor
+                                    accentColor: appAccentColor,
+                                    resolvedName: memberNameResolver?(member)
                                 ) {
                                     toggleMemberFilter(member.userId)
                                 }
@@ -183,21 +185,23 @@ enum MemberFilterRowStyle {
 
 // MARK: - Member Filter Row
 struct MemberFilterRow: View {
+
     let member: AccountMemberWithUser
     let isSelected: Bool
     let accentColor: Color
+    var resolvedName: String?
     var style: MemberFilterRowStyle = .filled
     let onTap: () -> Void
-
+    @Environment(\.appAccentColor) private var appAccentColor
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 // Member avatar with initials
-                MemberAvatarView(member: member, size: 32)
+                MemberAvatarView(member: member, size: 32, resolvedName: resolvedName)
 
                 // Name and email
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(member.displayName)
+                    Text(resolvedName ?? member.displayName)
                         .font(.appBody)
                         .foregroundColor(.textPrimary)
                         .lineLimit(1)
@@ -213,7 +217,7 @@ struct MemberFilterRow: View {
                 // Checkbox
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 24))
-                    .foregroundColor(isSelected ? accentColor : .textSecondary)
+                    .foregroundColor(isSelected ? appAccentColor : .textSecondary)
             }
             .padding(AppDimensions.cardPadding)
             .background(style == .filled ? Color.cardBackgroundSoft.opacity(0.4) : Color.clear)
@@ -231,10 +235,12 @@ struct MemberFilterRow: View {
 private struct MemberAvatarView: View {
     let member: AccountMemberWithUser
     let size: CGFloat
+    var resolvedName: String?
     @Environment(\.appAccentColor) private var appAccentColor
 
     private var initials: String {
-        let words = member.displayName.split(separator: " ")
+        let name = resolvedName ?? member.displayName
+        let words = name.split(separator: " ")
         let result = words.prefix(2).compactMap { $0.first }.map { String($0).uppercased() }
         return result.isEmpty ? "?" : result.joined()
     }

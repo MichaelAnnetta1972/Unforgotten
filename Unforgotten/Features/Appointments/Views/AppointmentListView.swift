@@ -1,5 +1,74 @@
 import SwiftUI
 
+// MARK: - Reminder Unit
+enum ReminderUnit: String, CaseIterable, Identifiable {
+    case minutes, hours, days, months
+
+    var id: String { rawValue }
+
+    var singularLabel: String {
+        switch self {
+        case .minutes: return "minute"
+        case .hours: return "hour"
+        case .days: return "day"
+        case .months: return "month"
+        }
+    }
+
+    var pluralLabel: String {
+        switch self {
+        case .minutes: return "minutes"
+        case .hours: return "hours"
+        case .days: return "days"
+        case .months: return "months"
+        }
+    }
+
+    var minuteMultiplier: Int {
+        switch self {
+        case .minutes: return 1
+        case .hours: return 60
+        case .days: return 1440
+        case .months: return 43200 // 30 days
+        }
+    }
+
+    static func fromMinutes(_ totalMinutes: Int) -> (number: Int, unit: ReminderUnit) {
+        if totalMinutes <= 0 { return (1, .hours) }
+        if totalMinutes % 43200 == 0 { return (totalMinutes / 43200, .months) }
+        if totalMinutes % 1440 == 0 { return (totalMinutes / 1440, .days) }
+        if totalMinutes % 60 == 0 { return (totalMinutes / 60, .hours) }
+        return (totalMinutes, .minutes)
+    }
+}
+
+// MARK: - Repeat Unit
+enum RepeatUnit: String, CaseIterable, Identifiable {
+    case day, week, fortnight, month, year
+
+    var id: String { rawValue }
+
+    var singularLabel: String {
+        switch self {
+        case .day: return "day"
+        case .week: return "week"
+        case .fortnight: return "fortnight"
+        case .month: return "month"
+        case .year: return "year"
+        }
+    }
+
+    var pluralLabel: String {
+        switch self {
+        case .day: return "days"
+        case .week: return "weeks"
+        case .fortnight: return "fortnights"
+        case .month: return "months"
+        case .year: return "years"
+        }
+    }
+}
+
 // MARK: - Appointment List View
 struct AppointmentListView: View {
     @EnvironmentObject var appState: AppState
@@ -8,15 +77,17 @@ struct AppointmentListView: View {
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadHomeAction) private var iPadHomeAction
     @Environment(\.iPadAddAppointmentAction) private var iPadAddAppointmentAction
-    @Environment(\.iPadAppointmentFilterAction) private var iPadAppointmentFilterAction
     @Environment(\.iPadAppointmentFilterBinding) private var iPadAppointmentFilterBinding
     @StateObject private var viewModel = AppointmentListViewModel()
     @State private var showAddAppointment = false
     @State private var showUpgradePrompt = false
     @State private var appointmentToDelete: Appointment?
     @State private var showDeleteConfirmation = false
+    @State private var sharedAppointmentToRemove: Appointment?
+    @State private var showRemoveSharedConfirmation = false
     @State private var selectedTypeFilter: AppointmentType? = nil
-    @State private var showingTypeFilter = false
+    @State private var searchText = ""
+    @State private var listContentHeight: CGFloat = 0
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Check if we're in iPad mode (regular size class)
@@ -36,10 +107,24 @@ struct AppointmentListView: View {
     }
 
     private var filteredAppointments: [Appointment] {
-        guard let typeFilter = activeTypeFilter else {
-            return viewModel.appointments
+        var result = viewModel.appointments
+        if let typeFilter = activeTypeFilter {
+            result = result.filter { $0.type == typeFilter }
         }
-        return viewModel.appointments.filter { $0.type == typeFilter }
+        if !searchText.isEmpty {
+            result = result.filter {
+                $0.title.localizedCaseInsensitiveContains(searchText) ||
+                ($0.location?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                $0.type.displayName.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        return result
+    }
+
+    /// Types that are actually used in the current appointments list
+    private var availableTypes: [AppointmentType] {
+        let usedTypes = Set(viewModel.appointments.map { $0.type })
+        return AppointmentType.allCases.filter { usedTypes.contains($0) }
     }
 
     /// Whether the current user can add/edit appointments
@@ -78,25 +163,54 @@ struct AppointmentListView: View {
 
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
-                        // Section header with filter icon
+                        // Search bar with filter icon
                         HStack(spacing: 12) {
-                            Text("Upcoming Appointments and Events")
-                                .font(.appCardTitle)
-                                .foregroundColor(.white)
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(.textSecondary)
 
-                            Spacer()
+                                TextField("Search appointments", text: $searchText)
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
 
-                            Button(action: {
-                                // On iPad, use the environment action to trigger the root-level overlay
-                                if let iPadFilterAction = iPadAppointmentFilterAction {
-                                    iPadFilterAction()
-                                } else {
-                                    // On iPhone, use local state
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        showingTypeFilter = true
+                                if !searchText.isEmpty {
+                                    Button {
+                                        searchText = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.textSecondary)
                                     }
                                 }
-                            }) {
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+
+                            Menu {
+                                Button {
+                                    selectedTypeFilter = nil
+                                    iPadAppointmentFilterBinding?.wrappedValue = nil
+                                } label: {
+                                    if activeTypeFilter == nil {
+                                        Label("All", systemImage: "checkmark")
+                                    } else {
+                                        Text("All")
+                                    }
+                                }
+
+                                ForEach(availableTypes, id: \.self) { type in
+                                    Button {
+                                        selectedTypeFilter = type
+                                        iPadAppointmentFilterBinding?.wrappedValue = type
+                                    } label: {
+                                        if activeTypeFilter == type {
+                                            Label(type.displayName, systemImage: "checkmark")
+                                        } else {
+                                            Label(type.displayName, systemImage: type.icon)
+                                        }
+                                    }
+                                }
+                            } label: {
                                 Image(systemName: activeTypeFilter != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                                     .font(.system(size: 20))
                                     .foregroundColor(activeTypeFilter != nil ? appAccentColor : .textSecondary)
@@ -104,22 +218,64 @@ struct AppointmentListView: View {
                                     .background(Color.cardBackground)
                                     .cornerRadius(AppDimensions.cardCornerRadius)
                             }
+                            .tint(appAccentColor)
                         }
 
                         // Appointments list
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
-                            ForEach(filteredAppointments) { appointment in
-                                AppointmentListRow(
-                                    appointment: appointment,
-                                    isCompleted: appointment.isCompleted,
-                                    onToggleCompleted: {
-                                        viewModel.toggleAppointmentCompleted(appointmentId: appointment.id, appState: appState)
-                                    },
-                                    onDelete: {
-                                        appointmentToDelete = appointment
-                                        showDeleteConfirmation = true
+                        if !filteredAppointments.isEmpty {
+                            List {
+                                ForEach(filteredAppointments) { appointment in
+                                    ZStack {
+                                        NavigationLink(destination: AppointmentDetailView(appointment: appointment)) {
+                                            EmptyView()
+                                        }
+                                        .opacity(0)
+
+                                        AppointmentListRow(
+                                            appointment: appointment,
+                                            isCompleted: appointment.isCompleted,
+                                            isShared: appointment.accountId != appState.currentAccount?.id,
+                                            onToggleCompleted: {
+                                                viewModel.toggleAppointmentCompleted(appointmentId: appointment.id, appState: appState)
+                                            }
+                                        )
                                     }
-                                )
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        if canEdit && appointment.accountId == appState.currentAccount?.id {
+                                            Button(role: .destructive) {
+                                                appointmentToDelete = appointment
+                                                showDeleteConfirmation = true
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        } else if appointment.accountId != appState.currentAccount?.id {
+                                            // Shared appointment - allow removing from user's view
+                                            Button(role: .destructive) {
+                                                sharedAppointmentToRemove = appointment
+                                                showRemoveSharedConfirmation = true
+                                            } label: {
+                                                Label("Remove", systemImage: "eye.slash")
+                                            }
+                                        }
+                                    }
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
+                                }
+                            }
+                            .listStyle(.plain)
+                            .scrollDisabled(true)
+                            .scrollContentBackground(.hidden)
+                            .frame(height: listContentHeight)
+                            .onChange(of: filteredAppointments.count) { _, count in
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                listContentHeight = CGFloat(count) * (rowHeight + spacing)
+                            }
+                            .onAppear {
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                listContentHeight = CGFloat(filteredAppointments.count) * (rowHeight + spacing)
                             }
                         }
 
@@ -136,7 +292,7 @@ struct AppointmentListView: View {
                                     .font(.system(size: 60))
                                     .foregroundColor(.textSecondary)
 
-                                Text(activeTypeFilter != nil ? "No \(activeTypeFilter!.displayName.lowercased()) appointments" : "No Appointments")
+                                Text(activeTypeFilter.map { "No \($0.displayName.lowercased()) appointments" } ?? "No Appointments")
                                     .font(.appTitle)
                                     .foregroundColor(.textPrimary)
 
@@ -208,30 +364,6 @@ struct AppointmentListView: View {
         }
         .ignoresSafeArea(edges: .top)
         .navigationBarHidden(true)
-            // Type filter overlay when modal is shown - only on iPhone, iPad handles at root level
-            if showingTypeFilter && iPadAppointmentFilterAction == nil {
-                ZStack {
-                    Color.cardBackground.opacity(0.8)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeFilter = false
-                            }
-                        }
-
-                    AppointmentTypeFilterOverlay(
-                        selectedType: $selectedTypeFilter,
-                        isShowing: showingTypeFilter,
-                        onDismiss: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeFilter = false
-                            }
-                        }
-                    )
-                }
-                .zIndex(10)
-                .transition(.opacity)
-            }
         }
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
@@ -295,6 +427,23 @@ struct AppointmentListView: View {
                 Text("Are you sure you want to delete \(appointment.title)? This action cannot be undone.")
             }
         }
+        .alert("Remove Shared Appointment", isPresented: $showRemoveSharedConfirmation) {
+            Button("Cancel", role: .cancel) {
+                sharedAppointmentToRemove = nil
+            }
+            Button("Remove", role: .destructive) {
+                if let appointment = sharedAppointmentToRemove {
+                    Task {
+                        await viewModel.removeSharedAppointment(id: appointment.id, appState: appState)
+                        sharedAppointmentToRemove = nil
+                    }
+                }
+            }
+        } message: {
+            if let appointment = sharedAppointmentToRemove {
+                Text("Remove \"\(appointment.title)\" from your appointments? The original owner will still have this appointment.")
+            }
+        }
     }
 }
 
@@ -353,8 +502,8 @@ struct AppointmentHeaderView: View {
 struct AppointmentListRow: View {
     let appointment: Appointment
     let isCompleted: Bool
+    var isShared: Bool = false
     let onToggleCompleted: () -> Void
-    let onDelete: () -> Void
 
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -383,64 +532,55 @@ struct AppointmentListRow: View {
 
     var body: some View {
         HStack {
-            // Navigation to detail - takes up most of the card
-            NavigationLink(destination: AppointmentDetailView(appointment: appointment)) {
-                HStack {
-                    // Type icon with background
-                    Image(systemName: appointment.type.icon)
-                        .font(.system(size: horizontalSizeClass == .regular ? 22 : 18))
-                        .foregroundColor(appAccentColor)
-                        .frame(width: iconSize, height: iconSize)
-                        .background(appAccentColor.opacity(0.15))
-                        .cornerRadius(8)
+            // Type icon with background
+            Image(systemName: appointment.type.icon)
+                .font(.system(size: horizontalSizeClass == .regular ? 22 : 18))
+                .foregroundColor(appAccentColor)
+                .frame(width: iconSize, height: iconSize)
+                .background(appAccentColor.opacity(0.15))
+                .cornerRadius(8)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(appointment.title)
-                            .font(.appCardTitle)
-                            .foregroundColor(.textPrimary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(appointment.title)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
 
-                        HStack(spacing: 8) {
-                            Text(dateFormatter.string(from: appointment.date))
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            if let time = appointment.time {
-                                Text("at \(timeFormatter.string(from: time))")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                            }
-                        }
+                    if isShared {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.textMuted)
                     }
-
-                    Spacer()
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
 
-            // Toggleable check icon
-            Button {
-                onToggleCompleted()
-            } label: {
-                Image(systemName: isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
-                    .font(.system(size: horizontalSizeClass == .regular ? 28 : 24))
-                    .foregroundColor(isCompleted ? appAccentColor : .textSecondary.opacity(0.4))
-                    .frame(width: buttonSize, height: buttonSize)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
+                HStack(spacing: 8) {
+                    Text(dateFormatter.string(from: appointment.date))
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
 
-            // Delete button
-            Button {
-                onDelete()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: horizontalSizeClass == .regular ? 18 : 16))
-                    .foregroundColor(.medicalRed)
-                    .frame(width: buttonSize, height: buttonSize)
-                    .contentShape(Rectangle())
+                    if let time = appointment.time {
+                        Text("at \(timeFormatter.string(from: time))")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
             }
-            .buttonStyle(PlainButtonStyle())
+
+            Spacer()
+
+            // Toggleable check icon (disabled for shared appointments)
+            if !isShared {
+                Button {
+                    onToggleCompleted()
+                } label: {
+                    Image(systemName: isCompleted ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: horizontalSizeClass == .regular ? 28 : 24))
+                        .foregroundColor(isCompleted ? appAccentColor : .textSecondary.opacity(0.4))
+                        .frame(width: buttonSize, height: buttonSize)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
@@ -599,7 +739,20 @@ class AppointmentListViewModel: ObservableObject {
         isLoading = true
 
         do {
-            appointments = try await appState.appointmentRepository.getUpcomingAppointments(accountId: account.id, days: 365)
+            // Load own appointments
+            var allAppointments = try await appState.appointmentRepository.getUpcomingAppointments(accountId: account.id, days: 365)
+
+            // Also load shared appointments from other accounts (via RPC to bypass RLS)
+            let ownIds = Set(allAppointments.map { $0.id })
+            if let shared = try? await appState.appointmentRepository.getSharedAppointments() {
+                let newShared = shared.filter { !ownIds.contains($0.id) }
+                if !newShared.isEmpty {
+                    allAppointments.append(contentsOf: newShared)
+                    allAppointments.sort { $0.date < $1.date }
+                }
+            }
+
+            appointments = allAppointments
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription
@@ -619,6 +772,18 @@ class AppointmentListViewModel: ObservableObject {
             self.error = "Failed to delete appointment: \(error.localizedDescription)"
         }
     }
+
+    /// Remove a shared appointment from the current user's view by unsubscribing from the share
+    func removeSharedAppointment(id: UUID, appState: AppState) async {
+        do {
+            try await appState.familyCalendarRepository.removeSelfFromShare(
+                eventType: .appointment, eventId: id
+            )
+            appointments.removeAll { $0.id == id }
+        } catch {
+            self.error = "Failed to remove shared appointment: \(error.localizedDescription)"
+        }
+    }
 }
 
 // MARK: - Appointment Detail View
@@ -633,6 +798,16 @@ struct AppointmentDetailView: View {
     @State private var showEditAppointment = false
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
+    @State private var showFullscreenPhoto = false
+    @State private var sharedByName: String?
+    @State private var isSharedByMe = false
+    @State private var showRemoveSharedConfirmation = false
+
+    /// Whether this appointment belongs to another account (shared via family calendar)
+    private var isSharedFromOtherAccount: Bool {
+        guard let currentAccountId = appState.currentAccount?.id else { return false }
+        return appointment.accountId != currentAccountId
+    }
 
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -655,8 +830,8 @@ struct AppointmentDetailView: View {
                     title: appointment.title,
                     showBackButton: true,
                     backAction: { dismiss() },
-                    showEditButton: true,
-                    editAction: {
+                    showEditButton: !isSharedFromOtherAccount,
+                    editAction: isSharedFromOtherAccount ? nil : {
                         // Use full-screen overlay action if available
                         if let editAction = iPadEditAppointmentAction {
                             editAction(appointment)
@@ -669,6 +844,11 @@ struct AppointmentDetailView: View {
 
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
+                        // Shared event banner
+                        if isSharedFromOtherAccount {
+                            sharedEventBanner
+                        }
+
                         // Details
                         VStack(spacing: AppDimensions.cardSpacing) {
                             // Type badge
@@ -680,6 +860,20 @@ struct AppointmentDetailView: View {
                                     .font(.appBodyMedium)
                                     .foregroundColor(appAccentColor)
                                 Spacer()
+
+                                if isSharedByMe || isSharedFromOtherAccount {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "person.2.fill")
+                                            .font(.system(size: 10))
+                                        Text("Shared")
+                                            .font(.appCaption)
+                                    }
+                                    .foregroundColor(appAccentColor)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(appAccentColor.opacity(0.25))
+                                    .cornerRadius(12)
+                                }
                             }
                             .padding(AppDimensions.cardPadding)
                             .background(appAccentColor.opacity(0.15))
@@ -721,22 +915,91 @@ struct AppointmentDetailView: View {
                                 DetailItemCard(label: "Notes", value: notes)
                             }
 
-                            // Delete button
-                            Button {
-                                showDeleteConfirmation = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "trash")
-                                    Text("Delete Appointment")
-                                }
-                                .font(.appBodyMedium)
-                                .foregroundColor(.medicalRed)
-                                .frame(maxWidth: .infinity)
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.medicalRed.opacity(0.1))
-                                .cornerRadius(AppDimensions.cardCornerRadius)
+                            if let interval = appointment.repeatInterval,
+                               let unitStr = appointment.repeatUnit,
+                               let unit = RepeatUnit(rawValue: unitStr) {
+                                DetailItemCard(
+                                    label: "Repeats",
+                                    value: interval == 1
+                                        ? "Every \(unit.singularLabel)"
+                                        : "Every \(interval) \(unit.pluralLabel)"
+                                )
                             }
-                            .disabled(isDeleting)
+
+                            // Photo
+                            if let urlString = appointment.imageUrl, let url = URL(string: urlString) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Photo")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textSecondary)
+
+                                    Button {
+                                        showFullscreenPhoto = true
+                                    } label: {
+                                        AsyncImage(url: url) { phase in
+                                            switch phase {
+                                            case .success(let image):
+                                                image
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fill)
+                                                    .frame(maxWidth: .infinity)
+                                                    .frame(height: 200)
+                                                    .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                                            case .empty:
+                                                ProgressView()
+                                                    .frame(maxWidth: .infinity)
+                                                    .frame(height: 200)
+                                            default:
+                                                EmptyView()
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(AppDimensions.cardPadding)
+                                .background(Color.cardBackground)
+                                .cornerRadius(AppDimensions.cardCornerRadius)
+                                .fullScreenCover(isPresented: $showFullscreenPhoto) {
+                                    RemoteFullscreenImageView(imageUrl: urlString, title: appointment.title)
+                                }
+                            }
+
+                            // Delete button for own appointments
+                            if !isSharedFromOtherAccount {
+                                Button {
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "trash")
+                                        Text("Delete Appointment")
+                                    }
+                                    .font(.appBodyMedium)
+                                    .foregroundColor(.medicalRed)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(AppDimensions.cardPadding)
+                                    .background(Color.medicalRed.opacity(0.1))
+                                    .cornerRadius(AppDimensions.cardCornerRadius)
+                                }
+                                .disabled(isDeleting)
+                            }
+
+                            // Remove button for shared appointments
+                            if isSharedFromOtherAccount {
+                                Button {
+                                    showRemoveSharedConfirmation = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "eye.slash")
+                                        Text("Remove from My Appointments")
+                                    }
+                                    .font(.appBodyMedium)
+                                    .foregroundColor(.medicalRed)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(AppDimensions.cardPadding)
+                                    .background(Color.medicalRed.opacity(0.1))
+                                    .cornerRadius(AppDimensions.cardCornerRadius)
+                                }
+                                .disabled(isDeleting)
+                            }
                         }
                         .padding(.horizontal, AppDimensions.screenPadding)
 
@@ -758,6 +1021,17 @@ struct AppointmentDetailView: View {
                 appointment = updatedAppointment
             }
         }
+        .task {
+            if isSharedFromOtherAccount {
+                await loadSharedByName()
+            } else {
+                if let _ = try? await appState.familyCalendarRepository.getShareForEvent(
+                    eventType: .appointment, eventId: appointment.id
+                ) {
+                    isSharedByMe = true
+                }
+            }
+        }
         .alert("Delete Appointment", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -768,16 +1042,98 @@ struct AppointmentDetailView: View {
         } message: {
             Text("Are you sure you want to delete \"\(appointment.title)\"? This action cannot be undone.")
         }
+        .alert("Remove Shared Appointment", isPresented: $showRemoveSharedConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                Task {
+                    await removeSharedAppointment()
+                }
+            }
+        } message: {
+            Text("Remove \"\(appointment.title)\" from your appointments? The original owner will still have this appointment.")
+        }
+    }
+
+    // MARK: - Shared Event Banner
+    private var sharedEventBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 14))
+                .foregroundColor(appAccentColor)
+
+            Text("Shared by \(sharedByName ?? "a family member")")
+                .font(.appBodyMedium)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            Text("View Only")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(12)
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(appAccentColor.opacity(0.1))
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .padding(.horizontal, AppDimensions.screenPadding)
+    }
+
+    private func loadSharedByName() async {
+        guard let accountId = appState.currentAccount?.id else { return }
+        do {
+            let share = try await appState.familyCalendarRepository.getShareForEvent(
+                eventType: .appointment, eventId: appointment.id
+            )
+            guard let sharerUserId = share?.sharedByUserId else { return }
+
+            let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+            if let sharerProfile = profiles.first(where: { $0.sourceUserId == sharerUserId }) {
+                sharedByName = sharerProfile.displayName
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load shared-by name: \(error)")
+            #endif
+        }
     }
 
     private func deleteAppointment() async {
         isDeleting = true
         do {
+            // Delete photo from Supabase Storage if it exists
+            if appointment.imageUrl != nil {
+                let storagePath = "appointments/\(appointment.id.uuidString)/photo.jpg"
+                try? await ImageUploadService.shared.deleteImage(bucket: SupabaseConfig.appointmentPhotosBucket, path: storagePath)
+            }
             try await appState.appointmentRepository.deleteAppointment(id: appointment.id)
             await NotificationService.shared.cancelAppointmentReminder(appointmentId: appointment.id)
             dismiss()
         } catch {
             // Error handling - could show an alert here
+            isDeleting = false
+        }
+    }
+
+    private func removeSharedAppointment() async {
+        isDeleting = true
+        do {
+            try await appState.familyCalendarRepository.removeSelfFromShare(
+                eventType: .appointment, eventId: appointment.id
+            )
+            // Post notification so the appointment list refreshes
+            NotificationCenter.default.post(
+                name: .appointmentsDidChange,
+                object: nil,
+                userInfo: [
+                    NotificationUserInfoKey.appointmentId: appointment.id,
+                    NotificationUserInfoKey.action: AppointmentChangeAction.deleted
+                ]
+            )
+            dismiss()
+        } catch {
             isDeleting = false
         }
     }
@@ -805,11 +1161,18 @@ struct AddAppointmentView: View {
     @State private var time = Date()
     @State private var location = ""
     @State private var notes = ""
-    @State private var reminderMinutes = 60
-    
+    @State private var reminderAtEvent = false
+    @State private var reminderNumber = 1
+    @State private var reminderUnit: ReminderUnit = .hours
+    @State private var repeatEnabled = false
+    @State private var repeatNumber = 1
+    @State private var selectedRepeatUnit: RepeatUnit = .week
+
     @State private var selectedType: AppointmentType = .general
+    @State private var selectedImage: UIImage?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @FocusState private var focusedField: Bool
 
     // Family sharing state
     @State private var shareToFamily = false
@@ -837,14 +1200,10 @@ struct AddAppointmentView: View {
         }
     }
 
-    private let reminderOptions = [
-        (0, "At time of event"),
-        (15, "15 minutes before"),
-        (30, "30 minutes before"),
-        (60, "1 hour before"),
-        (120, "2 hours before"),
-        (1440, "1 day before")
-    ]
+    private var reminderMinutes: Int {
+        if reminderAtEvent { return 0 }
+        return reminderNumber * reminderUnit.minuteMultiplier
+    }
 
     private func dismissView() {
         if let onDismiss = onDismiss {
@@ -899,7 +1258,27 @@ struct AddAppointmentView: View {
             ScrollView {
                 VStack(spacing: 20) {
 
+                    // Photo picker
+                    HStack {
+                        Spacer()
+                        ImageSourcePicker(
+                            selectedImage: $selectedImage,
+                            onImageSelected: { _ in }
+                        )
+                        Spacer()
+                    }
+
                     AppTextField(placeholder: "Title *", text: $title)
+                        .focused($focusedField)
+
+                    // Family Calendar Sharing
+                    familySharingSection
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
 
                     // Type selection
                     VStack(alignment: .leading, spacing: 8) {
@@ -912,12 +1291,11 @@ struct AddAppointmentView: View {
 
                     // Date picker
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Date")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-
-                            Spacer()
+                        VStack(spacing: 0) {
+                            Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                                .font(.appBodyMedium)
+                                .foregroundColor(.accentYellow)
+                                .padding(.top, 12)
 
                             DatePicker(
                                 "",
@@ -925,11 +1303,13 @@ struct AddAppointmentView: View {
                                 in: Date()...maximumDate,
                                 displayedComponents: .date
                             )
-                            .datePickerStyle(.compact)
+                            .datePickerStyle(.wheel)
                             .labelsHidden()
                             .tint(appAccentColor)
+                            .frame(maxWidth: .infinity)
+                            .clipped()
                         }
-                        .padding()
+                        .padding(.horizontal)
                         .background(Color.cardBackgroundSoft)
                         .cornerRadius(AppDimensions.cardCornerRadius)
 
@@ -967,38 +1347,103 @@ struct AddAppointmentView: View {
                     AppTextField(placeholder: "Notes (optional)", text: $notes)
 
                     // Reminder picker
-                    HStack {
-                        Text("Reminder")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
+                    VStack(spacing: 12) {
+                        Toggle(isOn: $reminderAtEvent) {
+                            Text("Remind at time of event")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                        }
+                        .tint(appAccentColor)
 
-                        Spacer()
+                        if !reminderAtEvent {
+                            HStack(spacing: 12) {
+                                Text("Remind me")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
 
-                        Picker("Reminder", selection: $reminderMinutes) {
-                            ForEach(reminderOptions, id: \.0) { option in
-                                Text(option.1).tag(option.0)
+                                Picker("Number", selection: $reminderNumber) {
+                                    ForEach(1...60, id: \.self) { num in
+                                        Text("\(num)").tag(num)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+
+                                Picker("Unit", selection: $reminderUnit) {
+                                    ForEach(ReminderUnit.allCases) { unit in
+                                        Text(reminderNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+
+                                Text("before")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
                             }
                         }
-                        .pickerStyle(.menu)
-                        .tint(appAccentColor)
                     }
                     .padding()
                     .background(Color.cardBackgroundSoft)
                     .cornerRadius(AppDimensions.cardCornerRadius)
 
-                    // Family Calendar Sharing
-                    familySharingSection
+                    // Repeat appointment
+                    VStack(spacing: 12) {
+                        Toggle(isOn: $repeatEnabled) {
+                            Text("Repeat appointment")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                        }
+                        .tint(appAccentColor)
 
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.appCaption)
-                            .foregroundColor(.medicalRed)
+                        if repeatEnabled {
+                            HStack(spacing: 12) {
+                                Text("Every")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Picker("Number", selection: $repeatNumber) {
+                                    ForEach(1...60, id: \.self) { num in
+                                        Text("\(num)").tag(num)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+
+                                Picker("Unit", selection: $selectedRepeatUnit) {
+                                    ForEach(RepeatUnit.allCases) { unit in
+                                        Text(repeatNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+                                .fixedSize(horizontal: true, vertical: false)
+
+                            }
+                        }
                     }
+                    .padding()
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+
+
                 }
                 .padding(AppDimensions.screenPadding)
             }
         }
         .background(Color.appBackgroundLight)
+        .onChange(of: selectedType) { _, _ in
+            focusedField = false
+        }
+        .onChange(of: date) { _, _ in
+            focusedField = false
+        }
+        .onChange(of: time) { _, _ in
+            focusedField = false
+        }
+        .onChange(of: hasTime) { _, _ in
+            focusedField = false
+        }
         .sheet(isPresented: $showFamilySharingSheet) {
             FamilySharingSheet(
                 isEnabled: $shareToFamily,
@@ -1118,11 +1563,26 @@ struct AddAppointmentView: View {
             time: hasTime ? time : nil,
             location: location.isBlank ? nil : location,
             notes: notes.isBlank ? nil : notes,
-            reminderOffsetMinutes: reminderMinutes
+            reminderOffsetMinutes: reminderMinutes,
+            repeatInterval: repeatEnabled ? repeatNumber : nil,
+            repeatUnit: repeatEnabled ? selectedRepeatUnit.rawValue : nil
         )
 
         do {
-            let appointment = try await appState.appointmentRepository.createAppointment(insert)
+            // When sharing is enabled, create on Supabase first so the event_id exists for the share
+            var appointment: Appointment
+            if shareToFamily && !selectedMemberIds.isEmpty {
+                appointment = try await appState.appointmentRepository.createAppointmentRemoteFirst(insert)
+            } else {
+                appointment = try await appState.appointmentRepository.createAppointment(insert)
+            }
+
+            // Upload photo to Supabase Storage after creation (so we have the real ID)
+            if let image = selectedImage {
+                let photoURL = try await ImageUploadService.shared.uploadAppointmentPhoto(image: image, appointmentId: appointment.id)
+                appointment.imageUrl = photoURL
+                appointment = try await appState.appointmentRepository.updateAppointment(appointment)
+            }
 
             // Schedule notification reminder
             await NotificationService.shared.scheduleAppointmentReminder(
@@ -1144,7 +1604,6 @@ struct AddAppointmentView: View {
                         memberUserIds: Array(selectedMemberIds)
                     )
                 } catch {
-                    // Log error but don't fail the whole operation
                     #if DEBUG
                     print("Failed to create family share: \(error)")
                     #endif
@@ -1177,11 +1636,19 @@ struct EditAppointmentView: View {
     @State private var time: Date
     @State private var location: String
     @State private var notes: String
-    @State private var reminderMinutes: Int
+    @State private var reminderAtEvent: Bool
+    @State private var reminderNumber: Int
+    @State private var reminderUnit: ReminderUnit
+    @State private var repeatEnabled: Bool
+    @State private var repeatNumber: Int
+    @State private var selectedRepeatUnit: RepeatUnit
     @State private var selectedType: AppointmentType
+    @State private var selectedImage: UIImage?
+    @State private var removePhoto = false
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @FocusState private var focusedField: Bool
 
     // Family sharing state
     @State private var shareToFamily = false
@@ -1207,14 +1674,10 @@ struct EditAppointmentView: View {
         appState.hasFamilyAccess
     }
 
-    private let reminderOptions = [
-        (0, "At time of event"),
-        (15, "15 minutes before"),
-        (30, "30 minutes before"),
-        (60, "1 hour before"),
-        (120, "2 hours before"),
-        (1440, "1 day before")
-    ]
+    private var reminderMinutes: Int {
+        if reminderAtEvent { return 0 }
+        return reminderNumber * reminderUnit.minuteMultiplier
+    }
 
     init(appointment: Appointment, onDismiss: (() -> Void)? = nil, onSave: @escaping (Appointment) -> Void) {
         self.appointment = appointment
@@ -1226,8 +1689,18 @@ struct EditAppointmentView: View {
         self._time = State(initialValue: appointment.time ?? Date())
         self._location = State(initialValue: appointment.location ?? "")
         self._notes = State(initialValue: appointment.notes ?? "")
-        self._reminderMinutes = State(initialValue: appointment.reminderOffsetMinutes ?? 60)
         self._selectedType = State(initialValue: appointment.type)
+
+        let minutes = appointment.reminderOffsetMinutes ?? 60
+        let parsed = ReminderUnit.fromMinutes(minutes)
+        self._reminderAtEvent = State(initialValue: minutes == 0)
+        self._reminderNumber = State(initialValue: parsed.number)
+        self._reminderUnit = State(initialValue: parsed.unit)
+
+        let hasRepeat = appointment.repeatInterval != nil && appointment.repeatUnit != nil
+        self._repeatEnabled = State(initialValue: hasRepeat)
+        self._repeatNumber = State(initialValue: appointment.repeatInterval ?? 1)
+        self._selectedRepeatUnit = State(initialValue: RepeatUnit(rawValue: appointment.repeatUnit ?? "week") ?? .week)
     }
 
     private func dismissView() {
@@ -1282,8 +1755,18 @@ struct EditAppointmentView: View {
 
             ScrollView {
                 VStack(spacing: 20) {
-                    AppTextField(placeholder: "Title *", text: $title)
 
+
+                    AppTextField(placeholder: "Title *", text: $title)
+                        .focused($focusedField)
+                // Family Calendar Sharing
+                editFamilySharingSection
+
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.appCaption)
+                        .foregroundColor(.medicalRed)
+                }
                 // Type selection
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Type")
@@ -1295,12 +1778,11 @@ struct EditAppointmentView: View {
 
                 // Date picker
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Date")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
+                    VStack(spacing: 0) {
+                        Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                            .font(.appBodyMedium)
+                            .foregroundColor(.accentYellow)
+                            .padding(.top, 12)
 
                         DatePicker(
                             "",
@@ -1308,11 +1790,13 @@ struct EditAppointmentView: View {
                             in: Date()...maximumDate,
                             displayedComponents: .date
                         )
-                        .datePickerStyle(.compact)
+                        .datePickerStyle(.wheel)
                         .labelsHidden()
                         .tint(appAccentColor)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
                     }
-                    .padding()
+                    .padding(.horizontal)
                     .background(Color.cardBackgroundSoft)
                     .cornerRadius(AppDimensions.cardCornerRadius)
 
@@ -1352,38 +1836,122 @@ struct EditAppointmentView: View {
                 AppTextField(placeholder: "Notes", text: $notes)
 
                 // Reminder picker
-                HStack {
-                    Text("Reminder")
-                        .font(.appBody)
-                        .foregroundColor(.textPrimary)
+                VStack(spacing: 12) {
+                    Toggle(isOn: $reminderAtEvent) {
+                        Text("At time of event")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                    }
+                    .tint(appAccentColor)
+                    .padding(.horizontal)
 
-                    Spacer()
+                    if !reminderAtEvent {
+                        HStack(spacing: 0) {
+                            Text("Remind")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                                .fixedSize()
 
-                    Picker("Reminder", selection: $reminderMinutes) {
-                        ForEach(reminderOptions, id: \.0) { option in
-                            Text(option.1).tag(option.0)
+                            Picker("Number", selection: $reminderNumber) {
+                                ForEach(1...60, id: \.self) { num in
+                                    Text("\(num)").tag(num)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+
+                            Picker("Unit", selection: $reminderUnit) {
+                                ForEach(ReminderUnit.allCases) { unit in
+                                    Text(reminderNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+                            .fixedSize()
+
+                            Text("before")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                                .fixedSize()
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.leading, 16)
+                        .padding(.trailing, 4)
+                    }
+                }
+                .padding(.vertical)
+                .background(Color.cardBackgroundSoft)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+
+                // Repeat appointment
+                VStack(spacing: 12) {
+                    Toggle(isOn: $repeatEnabled) {
+                        Text("Repeat appointment")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                    }
+                    .tint(appAccentColor)
+
+                    if repeatEnabled {
+                        HStack(spacing: 12) {
+                            Text("Every")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Picker("Number", selection: $repeatNumber) {
+                                ForEach(1...60, id: \.self) { num in
+                                    Text("\(num)").tag(num)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+
+                            Picker("Unit", selection: $selectedRepeatUnit) {
+                                ForEach(RepeatUnit.allCases) { unit in
+                                    Text(repeatNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
                         }
                     }
-                    .pickerStyle(.menu)
-                    .tint(appAccentColor)
                 }
                 .padding()
                 .background(Color.cardBackgroundSoft)
                 .cornerRadius(AppDimensions.cardCornerRadius)
 
-                    // Family Calendar Sharing
-                    editFamilySharingSection
 
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.appCaption)
-                            .foregroundColor(.medicalRed)
-                    }
+
+                // Photo picker
+                HStack {
+                    Spacer()
+                    ImageSourcePicker(
+                        selectedImage: $selectedImage,
+                        currentImageUrl: appointment.imageUrl,
+                        onImageSelected: { _ in removePhoto = false },
+                        onRemove: { removePhoto = true }
+                    )
+                    Spacer()
+                }
+
                 }
                 .padding(AppDimensions.screenPadding)
             }
         }
         .background(Color.appBackgroundLight)
+        .onChange(of: selectedType) { _, _ in
+            focusedField = false
+        }
+        .onChange(of: date) { _, _ in
+            focusedField = false
+        }
+        .onChange(of: time) { _, _ in
+            focusedField = false
+        }
+        .onChange(of: hasTime) { _, _ in
+            focusedField = false
+        }
         .sheet(isPresented: $showFamilySharingSheet) {
             FamilySharingSheet(
                 isEnabled: $shareToFamily,
@@ -1499,7 +2067,28 @@ struct EditAppointmentView: View {
         updatedAppointment.location = location.isBlank ? nil : location
         updatedAppointment.notes = notes.isBlank ? nil : notes
         updatedAppointment.reminderOffsetMinutes = reminderMinutes
+        updatedAppointment.repeatInterval = repeatEnabled ? repeatNumber : nil
+        updatedAppointment.repeatUnit = repeatEnabled ? selectedRepeatUnit.rawValue : nil
         updatedAppointment.type = selectedType
+
+        // Handle photo changes - upload to Supabase Storage
+        if let image = selectedImage {
+            do {
+                let photoURL = try await ImageUploadService.shared.uploadAppointmentPhoto(image: image, appointmentId: appointment.id)
+                updatedAppointment.imageUrl = photoURL
+            } catch {
+                #if DEBUG
+                print("Failed to upload appointment photo: \(error)")
+                #endif
+            }
+        } else if removePhoto {
+            // User explicitly removed the photo
+            if appointment.imageUrl != nil {
+                let storagePath = "appointments/\(appointment.id.uuidString)/photo.jpg"
+                try? await ImageUploadService.shared.deleteImage(bucket: SupabaseConfig.appointmentPhotosBucket, path: storagePath)
+            }
+            updatedAppointment.imageUrl = nil
+        }
 
         do {
             let saved = try await appState.appointmentRepository.updateAppointment(updatedAppointment)
@@ -2212,133 +2801,6 @@ class AppointmentCalendarViewModel: ObservableObject {
     }
 }
 
-// MARK: - Appointment Type Filter Overlay
-struct AppointmentTypeFilterOverlay: View {
-    @Binding var selectedType: AppointmentType?
-    let isShowing: Bool
-    let onDismiss: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var offsetX: CGFloat = 350
-    @State private var opacity: Double = 0
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 80, maximum: 120), spacing: 8)
-    ]
-
-    /// Panel width - slightly wider on iPad
-    private var panelWidth: CGFloat {
-        horizontalSizeClass == .regular ? 360 : 320
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack {
-                Spacer()
-
-                VStack(spacing: 16) {
-                    HStack {
-                        Text("Filter by Type")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-                        Spacer()
-
-                        // Close button
-                        Button {
-                            onDismiss()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.textSecondary)
-                        }
-                    }
-                    .padding(.top, AppDimensions.cardPadding)
-                    .padding(.horizontal, AppDimensions.cardPadding)
-
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            // All option - full width
-                            Button {
-                                selectedType = nil
-                                onDismiss()
-                            } label: {
-                                HStack {
-                                    Image(systemName: "calendar")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(selectedType == nil ? appAccentColor : .textSecondary)
-                                        .frame(width: 24)
-
-                                    Text("All")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-                                    Spacer()
-                                    if selectedType == nil {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft.opacity(0.4))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-
-                            // Type options in grid
-                            LazyVGrid(columns: columns, spacing: 8) {
-                                ForEach(AppointmentType.allCases, id: \.self) { type in
-                                    Button {
-                                        selectedType = type
-                                        onDismiss()
-                                    } label: {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: type.icon)
-                                                .font(.system(size: 20))
-                                                .foregroundColor(selectedType == type ? appAccentColor : .textSecondary)
-
-                                            Text(type.displayName)
-                                                .font(.caption)
-                                                .foregroundColor(.textPrimary)
-                                                .lineLimit(2)
-                                                .multilineTextAlignment(.center)
-                                                .minimumScaleFactor(0.8)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                        .padding(.horizontal, 8)
-                                        .background(selectedType == type ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft.opacity(0.4))
-                                        .cornerRadius(8)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(selectedType == type ? appAccentColor : Color.clear, lineWidth: 2)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                    }
-                    .frame(maxHeight: 400)
-                }
-                .frame(width: panelWidth)
-                .background(Color.cardBackgroundLight)
-                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
-                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
-                .offset(x: offsetX)
-                .opacity(opacity)
-                .padding(.vertical, 40)
-                .padding(.trailing, 20)
-            }
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                offsetX = 0
-                opacity = 1.0
-            }
-        }
-    }
-}
 
 // MARK: - Appointment Type Filter
 struct AppointmentTypeFilter: View {

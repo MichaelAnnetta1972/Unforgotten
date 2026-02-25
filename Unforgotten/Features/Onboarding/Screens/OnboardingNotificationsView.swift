@@ -214,6 +214,8 @@ struct OnboardingNotificationsView: View {
 
             await MainActor.run {
                 onboardingData.notificationsEnabled = granted
+                // Persist the in-app notification preference based on user's choice
+                NotificationService.shared.allowNotifications = granted
                 isRequesting = false
                 onContinue()
             }

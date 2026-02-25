@@ -48,7 +48,7 @@ extension LocalNote {
     static func sampleNotes(in context: ModelContext) -> [LocalNote] {
         let notes: [LocalNote] = [
             {
-                let note = LocalNote(title: "Gift Ideas for Mom", theme: .festive)
+                let note = LocalNote(title: "Gift Ideas for Mom")
                 note.isPinned = true
                 note.setPlainTextContent("""
                 Thinking about getting her a nice scarf this year.
@@ -62,7 +62,7 @@ extension LocalNote {
                 return note
             }(),
             {
-                let note = LocalNote(title: "Grocery List", theme: .shopping)
+                let note = LocalNote(title: "Grocery List")
                 note.setPlainTextContent("""
                 ☐ Milk
                 ☐ Eggs
@@ -74,7 +74,7 @@ extension LocalNote {
                 return note
             }(),
             {
-                let note = LocalNote(title: "Beach Trip Planning", theme: .holidays)
+                let note = LocalNote(title: "Beach Trip Planning")
                 note.setPlainTextContent("""
                 Trip to Myrtle Beach - July 15-22
 
@@ -87,7 +87,7 @@ extension LocalNote {
                 return note
             }(),
             {
-                let note = LocalNote(title: "Project Tasks", theme: .work)
+                let note = LocalNote(title: "Project Tasks")
                 note.setPlainTextContent("""
                 Q1 Goals:
 
@@ -99,7 +99,7 @@ extension LocalNote {
                 return note
             }(),
             {
-                let note = LocalNote(title: "Family Recipes", theme: .family)
+                let note = LocalNote(title: "Family Recipes")
                 note.setPlainTextContent("""
                 Grandma's Apple Pie
 
@@ -112,7 +112,7 @@ extension LocalNote {
                 return note
             }(),
             {
-                let note = LocalNote(title: "Meeting Notes", theme: .standard)
+                let note = LocalNote(title: "Meeting Notes")
                 note.setPlainTextContent("""
                 Team meeting - Dec 10
 

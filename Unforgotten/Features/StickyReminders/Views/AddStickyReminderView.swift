@@ -22,7 +22,6 @@ struct AddStickyReminderView: View {
     // UI state
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var showQuickOptions = false
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable {
@@ -132,14 +131,23 @@ struct AddStickyReminderView: View {
                         .cornerRadius(AppDimensions.buttonCornerRadius)
 
                         if !startImmediately {
-                            DatePicker(
-                                "Start Time",
-                                selection: $triggerTime,
-                                in: Date()...,
-                                displayedComponents: [.date, .hourAndMinute]
-                            )
-                            .datePickerStyle(.graphical)
-                            .tint(appAccentColor)
+                            VStack {
+                                Text("Start Time")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Spacer()
+
+                                DatePicker(
+                                    "",
+                                    selection: $triggerTime,
+                                    in: Date()...,
+                                    displayedComponents: [.date, .hourAndMinute]
+                                )
+                                .datePickerStyle(.wheel)
+                                .tint(appAccentColor)
+
+                            }
                             .padding()
                             .background(Color.cardBackgroundSoft)
                             .cornerRadius(AppDimensions.buttonCornerRadius)
@@ -225,8 +233,19 @@ struct AddStickyReminderView: View {
                                 Spacer()
 
                                 // Quick options button
-                                Button {
-                                    showQuickOptions = true
+                                Menu {
+                                    ForEach(StickyReminderInterval.presets, id: \.displayName) { preset in
+                                        Button {
+                                            intervalValue = preset.value
+                                            intervalUnit = preset.unit
+                                        } label: {
+                                            if repeatInterval == preset {
+                                                Label(preset.displayName, systemImage: "checkmark")
+                                            } else {
+                                                Label(preset.displayName, systemImage: preset.unit.icon)
+                                            }
+                                        }
+                                    }
                                 } label: {
                                     Image(systemName: "clock.arrow.circlepath")
                                         .font(.system(size: 20))
@@ -235,7 +254,6 @@ struct AddStickyReminderView: View {
                                         .background(Color.cardBackground)
                                         .cornerRadius(8)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding()
@@ -298,18 +316,6 @@ struct AddStickyReminderView: View {
                     // Focus title field for new reminders
                     focusedField = .title
                 }
-            }
-            .fitContentSidePanel(isPresented: $showQuickOptions) {
-                QuickOptionsSheet(
-                    selectedInterval: repeatInterval,
-                    appAccentColor: appAccentColor,
-                    isPresented: $showQuickOptions,
-                    onSelect: { preset in
-                        intervalValue = preset.value
-                        intervalUnit = preset.unit
-                        showQuickOptions = false
-                    }
-                )
             }
         }
         .padding(.top, 8)
@@ -409,118 +415,6 @@ struct AddStickyReminderView: View {
     }
 }
 
-// MARK: - Quick Options Sheet
-private struct QuickOptionsSheet: View {
-    let selectedInterval: StickyReminderInterval
-    let appAccentColor: Color
-    @Binding var isPresented: Bool
-    let onSelect: (StickyReminderInterval) -> Void
-
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    private var isiPad: Bool {
-        horizontalSizeClass == .regular
-    }
-
-    var body: some View {
-        if isiPad {
-            iPadContent
-        } else {
-            iPhoneContent
-        }
-    }
-
-    private var iPadContent: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        isPresented = false
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.textPrimary)
-                        .frame(width: 40, height: 40)
-                        .background(Color.cardBackgroundSoft)
-                        .clipShape(Circle())
-                }
-
-                Spacer()
-
-                Text("Quick Options")
-                    .font(.appTitle2)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Color.clear
-                    .frame(width: 40, height: 40)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
-
-            // Content
-            optionsContent
-        }
-    }
-
-    private var iPhoneContent: some View {
-        NavigationStack {
-            ScrollView {
-                optionsContent
-            }
-            .background(Color.appBackgroundLight)
-            .navigationTitle("Quick Options")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
-    }
-
-    private var optionsContent: some View {
-        VStack(spacing: 12) {
-            ForEach(StickyReminderInterval.presets, id: \.displayName) { preset in
-                Button {
-                    if isiPad {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            onSelect(preset)
-                        }
-                    } else {
-                        onSelect(preset)
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: preset.unit.icon)
-                            .font(.system(size: 18))
-                            .foregroundColor(appAccentColor)
-                            .frame(width: 32)
-
-                        Text(preset.displayName)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
-
-                        if selectedInterval == preset {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(appAccentColor)
-                                .font(.system(size: 22))
-                        }
-                    }
-                    .padding()
-                    .background(selectedInterval == preset ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft.opacity(0.4))
-                    .cornerRadius(AppDimensions.cardCornerRadius)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, AppDimensions.screenPadding)
-        .padding(.top, 16)
-        .padding(.bottom, AppDimensions.screenPadding)
-    }
-}
 
 // MARK: - Preview
 #Preview {

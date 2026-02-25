@@ -13,9 +13,9 @@ struct ToDoListsView: View {
     @State private var searchText = ""
     @State private var selectedType: String? = nil  // nil means "All"
     @State private var showingAddList = false
-    @State private var showingTypeFilter = false
     @State private var showUpgradePrompt = false
     @State private var newlyCreatedList: ToDoList?
+    @State private var listContentHeight: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadHomeAction) private var iPadHomeAction
@@ -94,7 +94,29 @@ struct ToDoListsView: View {
                         .background(Color.cardBackground)
                         .cornerRadius(AppDimensions.cardCornerRadius)
 
-                        Button(action: { showingTypeFilter = true }) {
+                        Menu {
+                            Button {
+                                selectedType = nil
+                            } label: {
+                                if selectedType == nil {
+                                    Label("All", systemImage: "checkmark")
+                                } else {
+                                    Text("All")
+                                }
+                            }
+
+                            ForEach(viewModel.availableFilterTypes, id: \.self) { typeName in
+                                Button {
+                                    selectedType = typeName
+                                } label: {
+                                    if selectedType == typeName {
+                                        Label(typeName, systemImage: "checkmark")
+                                    } else {
+                                        Text(typeName)
+                                    }
+                                }
+                            }
+                        } label: {
                             Image(systemName: selectedType != nil ? "tag.fill" : "tag")
                                 .font(.system(size: 20))
                                 .foregroundColor(selectedType != nil ? appAccentColor : .textSecondary)
@@ -102,17 +124,22 @@ struct ToDoListsView: View {
                                 .background(Color.cardBackground)
                                 .cornerRadius(AppDimensions.cardCornerRadius)
                         }
+                        .tint(appAccentColor)
                     }
                     .padding(.horizontal, AppDimensions.screenPadding)
 
                     // Lists
                     if !filteredLists.isEmpty {
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
+                        List {
                             ForEach(filteredLists) { list in
-                                NavigationLink(destination: ToDoListDetailView(list: list)) {
+                                ZStack {
+                                    NavigationLink(destination: ToDoListDetailView(list: list)) {
+                                        EmptyView()
+                                    }
+                                    .opacity(0)
+
                                     ToDoListCard(list: list)
                                 }
-                                .buttonStyle(.plain)
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button(role: .destructive) {
                                         viewModel.deleteList(list)
@@ -120,9 +147,25 @@ struct ToDoListsView: View {
                                         Label("Delete", systemImage: "trash")
                                     }
                                 }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
                             }
                         }
-                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .listStyle(.plain)
+                        .scrollDisabled(true)
+                        .scrollContentBackground(.hidden)
+                        .frame(height: listContentHeight)
+                        .onChange(of: filteredLists.count) { _, count in
+                            let rowHeight: CGFloat = 80
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(count) * (rowHeight + spacing)
+                        }
+                        .onAppear {
+                            let rowHeight: CGFloat = 80
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(filteredLists.count) * (rowHeight + spacing)
+                        }
                     }
 
                     // Empty state
@@ -146,31 +189,6 @@ struct ToDoListsView: View {
             }
             .ignoresSafeArea(edges: .top)
 
-            // Type filter overlay when modal is shown
-            if showingTypeFilter {
-                ZStack {
-                    Color.cardBackground.opacity(0.8)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeFilter = false
-                            }
-                        }
-
-                    TypeFilterSheetOverlay(
-                        types: viewModel.availableFilterTypes,
-                        selectedType: $selectedType,
-                        isShowing: showingTypeFilter,
-                        onDismiss: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeFilter = false
-                            }
-                        }
-                    )
-                }
-                .zIndex(10)
-                .transition(.opacity)
-            }
         }
         .navigationBarHidden(true)
         .sidePanel(isPresented: $showingAddList) {
@@ -194,6 +212,15 @@ struct ToDoListsView: View {
                 }
             }
         }
+        .refreshable {
+            await viewModel.loadData(appState: appState)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .todosDidChange)) { _ in
+            Task { await viewModel.loadData(appState: appState) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
+            Task { await viewModel.loadData(appState: appState) }
+        }
         .background(
             NavigationLink(
                 destination: newlyCreatedList.map { ToDoListDetailView(list: $0, isNewList: true) },
@@ -214,9 +241,9 @@ struct ToDoListsView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.textSecondary)
 
-            if selectedType != nil {
+            if let selectedType {
                 // Filtered empty state (no lists match filter)
-                Text("No \(selectedType!) lists")
+                Text("No \(selectedType) lists")
                     .font(.appTitle)
                     .foregroundColor(.textPrimary)
 
@@ -294,112 +321,3 @@ struct ToDoListsView: View {
     }
 }
 
-// MARK: - Type Filter Sheet Overlay
-private struct TypeFilterSheetOverlay: View {
-    let types: [String]
-    @Binding var selectedType: String?
-    let isShowing: Bool
-    let onDismiss: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var offsetX: CGFloat = 320
-    @State private var opacity: Double = 0
-
-    /// Panel width - slightly wider on iPad
-    private var panelWidth: CGFloat {
-        horizontalSizeClass == .regular ? 300 : 250
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack {
-                Spacer()
-
-                VStack(spacing: 16) {
-                    HStack {
-                        Text("Filter by Type")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-                        Spacer()
-
-                        // Close button
-                        Button {
-                            onDismiss()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.textSecondary)
-                        }
-                    }
-                    .padding(.top, AppDimensions.cardPadding)
-                    .padding(.horizontal, AppDimensions.cardPadding)
-
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            // All option
-                            Button {
-                                selectedType = nil
-                                onDismiss()
-                            } label: {
-                                HStack {
-                                    Text("All")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-                                    Spacer()
-                                    if selectedType == nil {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft)
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-
-                            // Type options (derived from existing lists)
-                            ForEach(types, id: \.self) { typeName in
-                                Button {
-                                    selectedType = typeName
-                                    onDismiss()
-                                } label: {
-                                    HStack {
-                                        Text(typeName)
-                                            .font(.appBody)
-                                            .foregroundColor(.textPrimary)
-                                        Spacer()
-                                        if selectedType == typeName {
-                                            Image(systemName: "checkmark")
-                                                .foregroundColor(appAccentColor)
-                                        }
-                                    }
-                                    .padding(AppDimensions.cardPadding)
-                                    .background(Color.cardBackgroundSoft.opacity(0.4))
-                                    .cornerRadius(8)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                    }
-                    .frame(maxHeight: 400)
-                }
-                .frame(width: panelWidth)
-                .background(Color.cardBackgroundLight)
-                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
-                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
-                .offset(x: offsetX)
-                .opacity(opacity)
-                .padding(.vertical, 40)
-                .padding(.trailing, 20)
-            }
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                offsetX = 0
-                opacity = 1.0
-            }
-        }
-    }
-}

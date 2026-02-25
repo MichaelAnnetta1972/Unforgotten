@@ -16,12 +16,14 @@ enum PageIdentifier: String, Codable, CaseIterable, Identifiable {
     case todoLists
     case settings
     case stickyReminders
+    case mealPlanner
     // Detail pages
     case profileDetail
     case appointmentDetail
     case contactDetail
     case medicationDetail
     case todoDetail
+    case notesDetail
 
     var id: String { rawValue }
 
@@ -40,11 +42,13 @@ enum PageIdentifier: String, Codable, CaseIterable, Identifiable {
         case .todoLists: return "To Do Lists"
         case .settings: return "Settings"
         case .stickyReminders: return "Sticky Reminders"
+        case .mealPlanner: return "Meal Planner"
         case .profileDetail: return "Profile Detail"
         case .appointmentDetail: return "Appointment Detail"
         case .contactDetail: return "Contact Detail"
         case .medicationDetail: return "Medication Detail"
         case .todoDetail: return "To Do List"
+        case .notesDetail: return "Note"
         }
     }
 
@@ -63,11 +67,13 @@ enum PageIdentifier: String, Codable, CaseIterable, Identifiable {
         case .todoLists: return "header-todo"
         case .settings: return "header-settings"
         case .stickyReminders: return "header-reminders"
+        case .mealPlanner: return "header-home"
         case .profileDetail: return "header-profile-detail"
         case .appointmentDetail: return "header-appointment-detail"
         case .contactDetail: return "header-contacts-detail"
         case .medicationDetail: return "header-medication-detail"
         case .todoDetail: return "header-todo"
+        case .notesDetail: return "header-notes"
         }
     }
 }

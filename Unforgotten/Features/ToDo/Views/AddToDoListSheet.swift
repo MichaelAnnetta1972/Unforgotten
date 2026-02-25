@@ -18,6 +18,8 @@ struct AddToDoListSheet: View {
 
     @State private var title = ""
     @State private var selectedType: String? = nil
+    @State private var dueDate: Date? = nil
+    @State private var showingDueDatePicker = false
     @State private var showingTypeSelector = false
     @State private var showingAddType = false
     @State private var newTypeName = ""
@@ -122,6 +124,68 @@ struct AddToDoListSheet: View {
                             .foregroundColor(.medicalRed)
                             .multilineTextAlignment(.center)
                     }
+
+                    // Due Date (optional)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Due Date")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        HStack {
+                            if let date = dueDate {
+                                Text(date, style: .date)
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Spacer()
+
+                                Button {
+                                    dueDate = nil
+                                    showingDueDatePicker = false
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.textSecondary)
+                                }
+                            } else {
+                                Text("No due date")
+                                    .font(.appBody)
+                                    .foregroundColor(.textSecondary)
+
+                                Spacer()
+                            }
+
+                            Button {
+                                showingDueDatePicker.toggle()
+                            } label: {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(dueDate != nil ? appAccentColor : .textSecondary)
+                            }
+                        }
+                        .padding(AppDimensions.cardPadding)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+
+                        if showingDueDatePicker {
+                            VStack(spacing: 0) {
+                                Text((dueDate ?? Date()).formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                                    .font(.appBodyMedium)
+                                    .foregroundColor(.accentYellow)
+                                    .padding(.top, 12)
+
+                                DatePicker("", selection: Binding(
+                                    get: { dueDate ?? Date() },
+                                    set: { dueDate = $0 }
+                                ), displayedComponents: .date)
+                                .datePickerStyle(.wheel)
+                                .colorScheme(.dark)
+                                .tint(appAccentColor)
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                    }
                 }
                 .padding(AppDimensions.screenPadding)
 
@@ -180,7 +244,7 @@ struct AddToDoListSheet: View {
         }
 
         Task {
-            let newList = await viewModel.createListAsync(title: title, type: selectedType)
+            let newList = await viewModel.createListAsync(title: title, type: selectedType, dueDate: dueDate)
             dismissView()
             if let list = newList {
                 onCreate(list)

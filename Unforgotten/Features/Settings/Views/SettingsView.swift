@@ -14,9 +14,7 @@ struct SettingsView: View {
     @Environment(FeatureVisibilityManager.self) private var featureVisibility
 
     // iPad environment actions
-    @Environment(\.iPadShowInviteMemberAction) private var iPadShowInviteMemberAction
     @Environment(\.iPadShowManageMembersAction) private var iPadShowManageMembersAction
-    @Environment(\.iPadShowJoinAccountAction) private var iPadShowJoinAccountAction
     @Environment(\.iPadShowMoodHistoryAction) private var iPadShowMoodHistoryAction
     @Environment(\.iPadShowAppearanceSettingsAction) private var iPadShowAppearanceSettingsAction
     @Environment(\.iPadShowFeatureVisibilityAction) private var iPadShowFeatureVisibilityAction
@@ -25,9 +23,7 @@ struct SettingsView: View {
     @Environment(\.iPadShowAdminPanelAction) private var iPadShowAdminPanelAction
     @Environment(\.iPadShowUpgradeAction) private var iPadShowUpgradeAction
 
-    @State private var showInviteMember = false
     @State private var showManageMembers = false
-    @State private var showJoinAccount = false
     @State private var showMoodHistory = false
     @State private var showSignOutConfirm = false
     @State private var showAppearanceSettings = false
@@ -35,12 +31,13 @@ struct SettingsView: View {
     @State private var showSwitchAccount = false
     @State private var showEditAccountName = false
     @State private var showAdminPanel = false
-    @State private var showUpgradeForInvite = false
-    @State private var showUpgradeForJoin = false
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
     @State private var userEmail: String = ""
     @State private var isCheckmarkPressed = false
+    @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
+    @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
+
 
     /// Computed effective accent color (respects hasCustomAccentColor flag)
     private var effectiveAccentColor: Color {
@@ -61,15 +58,7 @@ struct SettingsView: View {
         appState.hasPremiumAccess
     }
 
-    /// Check if user can invite members (premium feature)
-    private var canInviteMembers: Bool {
-        PremiumLimitsManager.shared.canInviteMembers(appState: appState)
-    }
 
-    /// Check if user can join other accounts (premium feature)
-    private var canJoinOtherAccounts: Bool {
-        PremiumLimitsManager.shared.canJoinOtherAccounts(appState: appState)
-    }
 
     var body: some View {
         ZStack {
@@ -99,7 +88,9 @@ struct SettingsView: View {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             isCheckmarkPressed = true
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(150))
+                            guard !Task.isCancelled else { return }
                             navigateToHomeTab?()
                         }
                     } label: {
@@ -157,6 +148,37 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Notifications section
+                    SettingsSection(title: "NOTIFICATIONS") {
+                        SettingsToggleRow(
+                            icon: "bell.fill",
+                            title: "Allow Notifications",
+                            isOn: $allowNotifications
+                        )
+                        .onChange(of: allowNotifications) { _, newValue in
+                            NotificationService.shared.allowNotifications = newValue
+                            if newValue {
+                                // Re-enable: request permission and reschedule
+                                Task {
+                                    _ = await NotificationService.shared.requestPermission()
+                                    await NotificationService.shared.scheduleMorningBriefingTrigger()
+                                }
+                            }
+                        }
+
+                        if allowNotifications {
+                            SettingsToggleRow(
+                                icon: "eye.slash.fill",
+                                title: "Hide Previews",
+                                isOn: $hideNotificationPreviews
+                            )
+                            .onChange(of: hideNotificationPreviews) { _, newValue in
+                                NotificationService.shared.hideNotificationPreviews = newValue
+                            }
+
+                        }
+                    }
+
                     // Current Account section
                     SettingsSection(title: "CURRENT ACCOUNT") {
                         if let account = appState.currentAccount {
@@ -199,29 +221,8 @@ struct SettingsView: View {
                             }
                         }
 
-                        // Only show invite/manage if user can manage members
+                        // Only show manage members if user can manage members
                         if appState.currentUserRole?.canManageMembers == true {
-                            SettingsButtonRow(
-                                icon: canInviteMembers ? "person.badge.plus" : "person.2.circle.fill",
-                                title: "Invite Family Member",
-                                value: canInviteMembers ? nil : "Family Plus",
-                                action: {
-                                    if canInviteMembers {
-                                        if let action = iPadShowInviteMemberAction {
-                                            action()
-                                        } else {
-                                            showInviteMember = true
-                                        }
-                                    } else {
-                                        if let action = iPadShowUpgradeAction {
-                                            action()
-                                        } else {
-                                            showUpgradeForInvite = true
-                                        }
-                                    }
-                                }
-                            )
-
                             SettingsButtonRow(
                                 icon: "person.2",
                                 title: "Manage Members",
@@ -234,27 +235,6 @@ struct SettingsView: View {
                                 }
                             )
                         }
-
-                        SettingsButtonRow(
-                            icon: canJoinOtherAccounts ? "envelope.badge" : "person.2.circle.fill",
-                            title: "Join Another Account",
-                            value: canJoinOtherAccounts ? nil : "Family Plus",
-                            action: {
-                                if canJoinOtherAccounts {
-                                    if let action = iPadShowJoinAccountAction {
-                                        action()
-                                    } else {
-                                        showJoinAccount = true
-                                    }
-                                } else {
-                                    if let action = iPadShowUpgradeAction {
-                                        action()
-                                    } else {
-                                        showUpgradeForJoin = true
-                                    }
-                                }
-                            }
-                        )
 
                         // Switch Account (only show if multiple accounts)
                         if appState.allAccounts.count > 1 {
@@ -346,14 +326,8 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .sidePanel(isPresented: $showInviteMember) {
-            InviteMemberView()
-        }
         .sidePanel(isPresented: $showManageMembers) {
             ManageMembersView()
-        }
-        .sidePanel(isPresented: $showJoinAccount) {
-            JoinAccountView()
         }
         .sidePanel(isPresented: $showMoodHistory) {
             MoodHistoryView()
@@ -376,12 +350,6 @@ struct SettingsView: View {
         }
         .sidePanel(isPresented: $showAdminPanel) {
             AdminPanelView()
-        }
-        .sidePanel(isPresented: $showUpgradeForInvite) {
-            UpgradeView()
-        }
-        .sidePanel(isPresented: $showUpgradeForJoin) {
-            UpgradeView()
         }
         .sidePanel(isPresented: $showPrivacyPolicy) {
             PrivacyPolicyView()
@@ -501,6 +469,34 @@ struct SettingsButtonRow: View {
     }
 }
 
+// MARK: - Settings Toggle Row
+struct SettingsToggleRow: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+    let icon: String
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundColor(appAccentColor)
+                .frame(width: 30)
+
+            Text(title)
+                .font(.appBody)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            Toggle("", isOn: $isOn)
+                .tint(appAccentColor)
+                .labelsHidden()
+        }
+        .padding()
+        .background(Color.cardBackground)
+    }
+}
+
 // MARK: - Account Switch Row
 struct AccountSwitchRow: View {
     @Environment(\.appAccentColor) private var appAccentColor
@@ -556,204 +552,6 @@ struct AccountSwitchRow: View {
             }
             .padding()
             .background(isSelected ? appAccentColor.opacity(0.1) : Color.cardBackground)
-        }
-    }
-}
-
-// MARK: - Invite Member View
-struct InviteMemberView: View {
-    @EnvironmentObject var appState: AppState
-    @Environment(\.dismiss) var dismiss
-    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
-    @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(UserPreferences.self) private var userPreferences
-    @Environment(UserHeaderOverrides.self) private var headerOverrides
-    @Environment(HeaderStyleManager.self) private var headerStyleManager
-    @State private var email: String
-    @State private var selectedRole: MemberRole = .helper
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var showSuccess = false
-    @State private var inviteCode: String = ""
-    @State private var showShareSheet = false
-    @State private var isCheckmarkPressed = false
-    private let availableRoles: [MemberRole] = [.admin, .helper, .viewer]
-
-    init(prefilledEmail: String? = nil) {
-        _email = State(initialValue: prefilledEmail ?? "")
-    }
-
-
-    /// Computed effective accent color (respects hasCustomAccentColor flag)
-    private var effectiveAccentColor: Color {
-        if userPreferences.hasCustomAccentColor {
-            return userPreferences.accentColor
-        } else {
-            return headerStyleManager.defaultAccentColor
-        }
-    }
-
-    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
-    private func dismissView() {
-        if let sidePanelDismiss {
-            sidePanelDismiss()
-        } else {
-            dismiss()
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Custom header with Cancel button
-            HStack {
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.badge.plus")
-                            .font(.system(size: 18))
-                            .foregroundColor(effectiveAccentColor)
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(effectiveAccentColor.opacity(0.15))
-                            )
-
-                        Text("Invite a member")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
-                    }
-
-                Spacer()
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isCheckmarkPressed = true
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        dismissView()
-                    }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.appBody.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(15)
-                        .background(
-                            Circle()
-                                .fill(.white.opacity(0.15))
-                        )
-                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
-            .background(Color.appBackground)
-
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Explanation
-                    VStack(alignment: .leading, spacing: 8) {
-
-                        Text("Invite someone to share access to this account. By doing this you can have a family member or carer help maintain your account or join a Family Calendar.")
-                            .font(.appBody)
-                            .foregroundColor(.textSecondary)
-                    }
-                    .padding(.top, 12)
-
-                    // Email input
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Email Address")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        AppTextField(placeholder: "Enter email", text: $email, keyboardType: .emailAddress)
-                    }
-
-                    // Role picker
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Role")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        ForEach(availableRoles, id: \.self) { role in
-                            RoleOption(
-                                role: role,
-                                isSelected: selectedRole == role,
-                                action: { selectedRole = role }
-                            )
-                        }
-                    }
-
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.appCaption)
-                            .foregroundColor(.medicalRed)
-                    }
-
-                    PrimaryButton(title: "Send Invitation", isLoading: isLoading) {
-                        Task { await sendInvite() }
-                    }
-                    .disabled(email.isBlank || !email.isValidEmail)
-
-                    Spacer()
-                        .frame(height: 80)
-                }
-                .padding(AppDimensions.screenPadding)
-            }
-        }
-        .background(Color.appBackground)
-        .alert("Invitation Created", isPresented: $showSuccess) {
-            Button("Copy Code") {
-                UIPasteboard.general.string = inviteCode
-                dismissView()
-            }
-            Button("Share") {
-                showShareSheet = true
-            }
-            Button("Done", role: .cancel) {
-                dismissView()
-            }
-        } message: {
-            Text("Share this code with \(email):\n\n\(inviteCode)\n\nThe code expires in 7 days.")
-        }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [shareMessage])
-                .onDisappear {
-                    dismissView()
-                }
-        }
-    }
-
-    private var shareMessage: String {
-        guard let accountName = appState.currentAccount?.displayName else {
-            return "Join me on Unforgotten! Use code: \(inviteCode)"
-        }
-        return "You've been invited to join \"\(accountName)\" on Unforgotten!\n\nUse this code to join: \(inviteCode)\n\nDownload the app and enter this code in Settings > Join Another Account."
-    }
-
-    private func sendInvite() async {
-        guard let account = appState.currentAccount,
-              let userId = await SupabaseManager.shared.currentUserId else {
-            errorMessage = "Unable to send invitation. Please try again."
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let invitation = try await appState.invitationRepository.createInvitation(
-                accountId: account.id,
-                email: email,
-                role: selectedRole,
-                invitedBy: userId
-            )
-
-            // Store the invite code for sharing
-            inviteCode = invitation.inviteCode
-            isLoading = false
-            showSuccess = true
-        } catch {
-            isLoading = false
-            errorMessage = "Failed to create invitation: \(error.localizedDescription)"
         }
     }
 }
@@ -965,17 +763,6 @@ class MoodHistoryViewModel: ObservableObject {
         
         isLoading = false
     }
-}
-
-// MARK: - Share Sheet
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Manage Members View
@@ -1320,7 +1107,7 @@ class ManageMembersViewModel: ObservableObject {
                             $0.status == .accepted &&
                             $0.acceptedBy == nil &&
                             $0.acceptedAt != nil &&
-                            abs($0.acceptedAt!.timeIntervalSince(member.createdAt)) < 60
+                            abs(($0.acceptedAt ?? Date.distantPast).timeIntervalSince(member.createdAt)) < 60
                         }) {
                             email = acceptedInvitation.email
                         }
@@ -1458,244 +1245,6 @@ struct SwitchAccountView: View {
     }
 }
 
-// MARK: - Join Account View
-struct JoinAccountView: View {
-    @EnvironmentObject var appState: AppState
-    @Environment(\.dismiss) var dismiss
-    @Environment(\.sidePanelDismiss) private var sidePanelDismiss
-    @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(UserPreferences.self) private var userPreferences
-    @Environment(UserHeaderOverrides.self) private var headerOverrides
-    @Environment(HeaderStyleManager.self) private var headerStyleManager
-    @State private var inviteCode = ""
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var showSuccess = false
-    @State private var joinedAccountName: String = ""
-
-
-    /// Computed effective accent color (respects hasCustomAccentColor flag)
-    private var effectiveAccentColor: Color {
-        if userPreferences.hasCustomAccentColor {
-            return userPreferences.accentColor
-        } else {
-            return headerStyleManager.defaultAccentColor
-        }
-    }
-
-    @State private var isCheckmarkPressed = false    /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
-    private func dismissView() {
-        if let sidePanelDismiss {
-            sidePanelDismiss()
-        } else {
-            dismiss()
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Custom header with Cancel button
-            HStack {
-                    HStack(spacing: 12) {
-                        Image(systemName: "envelope.badge")
-                            .font(.system(size: 18))
-                            .foregroundColor(effectiveAccentColor)
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(effectiveAccentColor.opacity(0.15))
-                            )
-
-                        Text("Join an Account")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
-                    }
-
-                Spacer()
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isCheckmarkPressed = true
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        dismissView()
-                    }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.appBody.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(15)
-                        .background(
-                            Circle()
-                                .fill(.white.opacity(0.15))
-                        )
-                        .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
-            .background(Color.appBackground)
-
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(alignment: .leading, spacing: 8) {
-
-                        Text("Enter the invitation code you received to join a family account.")
-                            .font(.appBody)
-                            .foregroundColor(.textSecondary)
-                    }
-                    .padding(.top, 24)
-
-                    // Code input
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Invitation Code")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        TextField("", text: $inviteCode)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 24, weight: .bold, design: .monospaced))
-                            .multilineTextAlignment(.center)
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                            .padding()
-                            .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.cardCornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                                    .stroke(appAccentColor.opacity(0.3), lineWidth: 1)
-                            )
-                            .onChange(of: inviteCode) { _, newValue in
-                                // Limit to 6 characters and uppercase
-                                inviteCode = String(newValue.uppercased().prefix(6))
-                            }
-                    }
-
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.appCaption)
-                            .foregroundColor(.medicalRed)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    PrimaryButton(title: "Join Account", isLoading: isLoading) {
-                        Task { await joinAccount() }
-                    }
-                    .disabled(inviteCode.count != 6)
-                }
-                .padding(AppDimensions.screenPadding)
-            }
-        }
-        .background(Color.appBackground)
-        .alert("Account Joined!", isPresented: $showSuccess) {
-            Button("OK") {
-                dismissView()
-            }
-        } message: {
-            Text("You have successfully joined \"\(joinedAccountName)\". You can now access this account from the home screen.")
-        }
-    }
-
-    private func joinAccount() async {
-        guard let userId = await SupabaseManager.shared.currentUserId else {
-            errorMessage = "You must be signed in to join an account."
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            // Look up the invitation
-            guard let invitation = try await appState.invitationRepository.getInvitationByCode(inviteCode) else {
-                errorMessage = "Invalid invitation code. Please check and try again."
-                isLoading = false
-                return
-            }
-
-            // Check if invitation is still valid
-            guard invitation.isActive else {
-                if invitation.status == .expired || !invitation.isActive {
-                    errorMessage = "This invitation has expired."
-                } else if invitation.status == .revoked {
-                    errorMessage = "This invitation has been revoked."
-                } else if invitation.status == .accepted {
-                    errorMessage = "This invitation has already been used."
-                } else {
-                    errorMessage = "This invitation is no longer valid."
-                }
-                isLoading = false
-                return
-            }
-
-            // Get the acceptor's account ID and primary profile ID for profile sync
-            let acceptorAccountId = appState.currentAccount?.id
-            var acceptorProfileId: UUID? = nil
-            if let account = appState.currentAccount {
-                if let primaryProfile = try? await appState.profileRepository.getPrimaryProfile(accountId: account.id) {
-                    if primaryProfile.linkedUserId == userId {
-                        acceptorProfileId = primaryProfile.id
-                    }
-                }
-            }
-
-            #if DEBUG
-            print("🔗 Settings Join: Accepting invitation with sync...")
-            print("🔗 Settings Join: Invitation ID: \(invitation.id)")
-            print("🔗 Settings Join: User ID: \(userId)")
-            print("🔗 Settings Join: Acceptor Account ID: \(acceptorAccountId?.uuidString ?? "nil")")
-            print("🔗 Settings Join: Acceptor Profile ID: \(acceptorProfileId?.uuidString ?? "nil")")
-            #endif
-
-            // Accept invitation with profile sync
-            do {
-                let syncResult = try await appState.invitationRepository.acceptInvitationWithSync(
-                    invitation: invitation,
-                    userId: userId,
-                    acceptorProfileId: acceptorProfileId,
-                    acceptorAccountId: acceptorAccountId
-                )
-
-                #if DEBUG
-                print("🔗 Settings Join: Sync completed!")
-                print("🔗 Settings Join: syncId = \(syncResult.syncId?.uuidString ?? "nil")")
-                print("🔗 Settings Join: acceptorSyncedProfileId = \(syncResult.acceptorSyncedProfileId?.uuidString ?? "nil")")
-                #endif
-
-                // Post notification about the new sync
-                if let syncId = syncResult.syncId {
-                    NotificationCenter.default.post(
-                        name: .profileSyncDidChange,
-                        object: nil,
-                        userInfo: ["syncId": syncId, "action": "created"]
-                    )
-                }
-            } catch {
-                // Fall back to regular invitation acceptance if sync RPC isn't available
-                #if DEBUG
-                print("🔗 Settings Join: Sync RPC failed: \(error)")
-                print("🔗 Settings Join: Falling back to regular acceptance...")
-                #endif
-                try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
-            }
-
-            // Now fetch the account name (user has RLS permission after being added as member)
-            let account = try await appState.accountRepository.getAccount(id: invitation.accountId)
-            joinedAccountName = account.displayName
-
-            // Reload account data
-            await appState.loadAccountData()
-
-            isLoading = false
-            showSuccess = true
-        } catch {
-            isLoading = false
-            errorMessage = "Failed to join account: \(error.localizedDescription)"
-        }
-    }
-}
 
 // MARK: - Edit Account Name View
 struct EditAccountNameView: View {

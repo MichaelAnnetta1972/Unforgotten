@@ -9,6 +9,7 @@ struct BirthdaysView: View {
     @Environment(\.appAccentColor) private var appAccentColor
     @StateObject private var viewModel = BirthdaysViewModel()
     @State private var showSettings = false
+    @State private var showAddProfile = false
 
     var body: some View {
         ZStack {
@@ -23,7 +24,9 @@ struct BirthdaysView: View {
                         showBackButton: iPadHomeAction == nil,
                         backAction: { dismiss() },
                         showHomeButton: iPadHomeAction != nil,
-                        homeAction: iPadHomeAction
+                        homeAction: iPadHomeAction,
+                        showAddButton: true,
+                        addAction: { showAddProfile = true }
                     )
 
                     // Content
@@ -77,6 +80,13 @@ struct BirthdaysView: View {
         .sidePanel(isPresented: $showSettings) {
             SettingsPanelView(onDismiss: { showSettings = false })
         }
+        .sidePanel(isPresented: $showAddProfile) {
+            AddProfileView { newProfile in
+                Task {
+                    await viewModel.loadData(appState: appState)
+                }
+            }
+        }
         .task {
             await viewModel.loadData(appState: appState)
         }
@@ -129,12 +139,12 @@ struct BirthdayCard: View {
     var body: some View {
         HStack(alignment: .center) {
             // Left side - Birthday icon
-            Image(systemName: "gift.fill")
-                .font(.system(size: 20))
-                .foregroundColor(.accentColor)
-                .frame(width: 40, height: 40)
-                .background(Color.accentColor.opacity(0.15))
-                .cornerRadius(8)
+            // Image(systemName: "gift.fill")
+            //     .font(.system(size: 20))
+            //     .foregroundColor(.accentColor)
+            //     .frame(width: 40, height: 40)
+            //     .background(Color.accentColor.opacity(0.15))
+            //     .cornerRadius(8)
 
             // Middle - Name with days badge, and date below
             VStack(alignment: .leading, spacing: 4) {
@@ -164,14 +174,14 @@ struct BirthdayCard: View {
 
                 // Type label and date below
                 HStack(spacing: 8) {
-                    Text("Birthday")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                    // Text("Birthday")
+                    //     .font(.appCaption)
+                    //     .foregroundColor(.textSecondary)
 
                     if let bday = birthday.profile.birthday {
                         Text(bday.formattedBirthdayWithOrdinal())
                             .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                            .foregroundColor(appAccentColor)
                     }
                 }
             }
@@ -183,11 +193,11 @@ struct BirthdayCard: View {
                 VStack(spacing: 1) {
                     Text(birthday.profile.isDeceased ? "Would be" : "Turns")
                         .font(.appCaption)
-                        .foregroundColor(appAccentColor)
+                        .foregroundColor(.white)
 
                     Text("\(age)")
                         .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(appAccentColor)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 8)

@@ -615,6 +615,7 @@ private struct MedicationUpdate: Encodable {
 }
 
 struct MedicationScheduleInsert: Encodable {
+    let id: UUID?
     let accountId: UUID
     let medicationId: UUID
     let scheduleType: ScheduleType
@@ -625,6 +626,7 @@ struct MedicationScheduleInsert: Encodable {
     let doseDescription: String?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case accountId = "account_id"
         case medicationId = "medication_id"
         case scheduleType = "schedule_type"
@@ -636,6 +638,7 @@ struct MedicationScheduleInsert: Encodable {
     }
 
     init(
+        id: UUID? = nil,
         accountId: UUID,
         medicationId: UUID,
         scheduleType: ScheduleType = .scheduled,
@@ -645,6 +648,7 @@ struct MedicationScheduleInsert: Encodable {
         scheduleEntries: [ScheduleEntry]? = nil,
         doseDescription: String? = nil
     ) {
+        self.id = id
         self.accountId = accountId
         self.medicationId = medicationId
         self.scheduleType = scheduleType

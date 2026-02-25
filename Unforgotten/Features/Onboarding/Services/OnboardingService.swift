@@ -176,6 +176,22 @@ final class OnboardingService {
                 }
                 #endif
 
+                // Check for duplicate profiles in the inviter's account
+                var existingProfileId: UUID? = nil
+                if let profileId = acceptorProfileId, let acceptorProfile = try? await appState.profileRepository.getProfile(id: profileId) {
+                    let matches = try await appState.profileRepository.findMatchingProfiles(
+                        accountId: invitation.accountId,
+                        name: acceptorProfile.fullName,
+                        email: acceptorProfile.email
+                    )
+                    if let match = matches.first {
+                        existingProfileId = match.id
+                        #if DEBUG
+                        print("🔗 Profile Sync: Found existing matching profile: \(match.fullName) (\(match.id))")
+                        #endif
+                    }
+                }
+
                 // Use the sync-enabled acceptance method
                 do {
                     #if DEBUG
@@ -186,7 +202,8 @@ final class OnboardingService {
                         invitation: invitation,
                         userId: userId,
                         acceptorProfileId: acceptorProfileId,
-                        acceptorAccountId: acceptorAccountId
+                        acceptorAccountId: acceptorAccountId,
+                        existingProfileId: existingProfileId
                     )
 
                     #if DEBUG

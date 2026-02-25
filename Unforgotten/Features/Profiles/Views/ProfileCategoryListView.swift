@@ -95,6 +95,7 @@ struct ProfileCategoryListView: View {
     let profile: Profile
     let category: ProfileCategoryType
     let details: [ProfileDetail]
+    let isOwnProfile: Bool
 
     @State private var showAddDetail = false
     @State private var showSettings = false
@@ -103,16 +104,20 @@ struct ProfileCategoryListView: View {
     @State private var showEditClothing = false
     @State private var showEditGift = false
     @State private var syncedDetailIds: Set<UUID> = []
+    @State private var hasActiveSyncConnections = false
+    @State private var isCategoryShared = true
+    @State private var isSharingLoading = false
 
     /// Whether to use side panel presentation (iPad full-screen)
     private var useSidePanel: Bool {
         horizontalSizeClass == .regular
     }
 
-    init(profile: Profile, category: ProfileCategoryType, details: [ProfileDetail]) {
+    init(profile: Profile, category: ProfileCategoryType, details: [ProfileDetail], isOwnProfile: Bool = false) {
         self.profile = profile
         self.category = category
         self.details = details
+        self.isOwnProfile = isOwnProfile
         self._currentDetails = State(initialValue: details)
     }
 
@@ -170,11 +175,18 @@ struct ProfileCategoryListView: View {
 
                     // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
-                        // Section header card
-                        //SectionHeaderCard(
-                        //    title: category.title,
-                        //    icon: category.icon
-                        //)
+                        // Share toggle (own profile with active connections only)
+                        // if isOwnProfile && hasActiveSyncConnections,
+                        //    let sharingKey = SharingCategoryKey.from(categoryType: category) {
+                        //     ShareCategoryToggle(
+                        //         category: sharingKey,
+                        //         isShared: $isCategoryShared,
+                        //         isLoading: isSharingLoading,
+                        //         onToggle: { newValue in
+                        //             toggleSharingPreference(newValue: newValue)
+                        //         }
+                        //     )
+                        // }
 
                         // Details list
                         VStack(spacing: AppDimensions.cardSpacing) {
@@ -349,6 +361,62 @@ struct ProfileCategoryListView: View {
         .task {
             // Always refresh from network on appear to ensure data is current
             await reloadDetails(forceRefresh: true)
+
+            // Load sharing preferences if viewing own profile
+            if isOwnProfile {
+                await loadSharingPreferences()
+            }
+        }
+    }
+
+    private func loadSharingPreferences() async {
+        guard let sharingKey = SharingCategoryKey.from(categoryType: category) else { return }
+
+        do {
+            isCategoryShared = try await appState.profileSharingPreferencesRepository.isShared(
+                profileId: profile.id,
+                category: sharingKey
+            )
+
+            // Check if user has active sync connections
+            if let userId = await SupabaseManager.shared.currentUserId {
+                let syncs = try await appState.profileSyncRepository.getSyncsForUser(userId: userId)
+                hasActiveSyncConnections = !syncs.isEmpty
+            }
+        } catch {
+            #if DEBUG
+            print("Error loading sharing preferences: \(error)")
+            #endif
+        }
+    }
+
+    private func toggleSharingPreference(newValue: Bool) {
+        guard let sharingKey = SharingCategoryKey.from(categoryType: category) else { return }
+
+        // Optimistic update
+        isCategoryShared = newValue
+        isSharingLoading = true
+
+        Task {
+            do {
+                try await appState.profileSharingPreferencesRepository.updatePreference(
+                    profileId: profile.id,
+                    category: sharingKey,
+                    isShared: newValue
+                )
+                NotificationCenter.default.post(
+                    name: .profileSharingPreferencesDidChange,
+                    object: nil,
+                    userInfo: ["profileId": profile.id, "category": sharingKey.rawValue]
+                )
+            } catch {
+                // Revert on failure
+                isCategoryShared = !newValue
+                #if DEBUG
+                print("Error updating sharing preference: \(error)")
+                #endif
+            }
+            isSharingLoading = false
         }
     }
 
@@ -1650,6 +1718,24 @@ struct AddProfileView: View {
                             relationship: $relationship,
                             showPicker: $showRelationshipPicker
                         )
+                        // Birthday picker
+                        Button {
+                            showDatePicker = true
+                        } label: {
+                            HStack {
+                                Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday (optional)")
+                                    .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
+
+                                Spacer()
+
+                                Image(systemName: "calendar")
+                                    .foregroundColor(.textSecondary)
+                            }
+                            .padding()
+                            .frame(height: AppDimensions.textFieldHeight)
+                            .background(Color.cardBackgroundSoft)
+                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                        }
 
                         // Connected To picker for family tree
                         if !allProfiles.isEmpty {
@@ -1680,24 +1766,7 @@ struct AddProfileView: View {
                         AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
                         AppTextField(placeholder: "Address", text: $address)
 
-                        // Birthday picker
-                        Button {
-                            showDatePicker = true
-                        } label: {
-                            HStack {
-                                Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday (optional)")
-                                    .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
 
-                                Spacer()
-
-                                Image(systemName: "calendar")
-                                    .foregroundColor(.textSecondary)
-                            }
-                            .padding()
-                            .frame(height: AppDimensions.textFieldHeight)
-                            .background(Color.cardBackgroundSoft)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                        }
 
                         // MARK: - Memorial Status Section
                         VStack(alignment: .leading, spacing: 12) {
@@ -1869,6 +1938,7 @@ struct EditProfileView: View {
     @State private var isDeceased: Bool
     @State private var dateOfDeath: Date?
     @State private var selectedImage: UIImage?
+    @State private var removePhoto = false
     @State private var showDatePicker = false
     @State private var showDeathDatePicker = false
     @State private var showRelationshipPicker = false
@@ -1878,13 +1948,28 @@ struct EditProfileView: View {
     @State private var customFields: [ProfileDetail] = []
     @State private var allProfiles: [Profile] = []
 
+    /// Whether a synced field is locked (has a value from the source user)
+    private func isFieldLocked(_ fieldName: String) -> Bool {
+        guard profile.isSyncedProfile else { return false }
+        guard profile.isFieldSynced(fieldName) else { return false }
+        // Lock the field only if the source user has it populated
+        switch fieldName {
+        case "phone": return !(profile.phone ?? "").isEmpty
+        case "email": return !(profile.email ?? "").isEmpty
+        case "address": return !(profile.address ?? "").isEmpty
+        case "birthday": return profile.birthday != nil
+        case "photo_url": return profile.photoUrl != nil
+        default: return false
+        }
+    }
+
     init(profile: Profile, onDismiss: (() -> Void)? = nil, onSave: @escaping (Profile) -> Void) {
         self.profile = profile
         self.onDismiss = onDismiss
         self.onSave = onSave
         self._fullName = State(initialValue: profile.fullName)
         self._preferredName = State(initialValue: profile.preferredName ?? "")
-        self._relationship = State(initialValue: profile.relationship ?? "")
+        self._relationship = State(initialValue: profile.type == .primary ? "Me" : (profile.relationship ?? ""))
         self._connectedToProfileId = State(initialValue: profile.connectedToProfileId)
         self._includeInFamilyTree = State(initialValue: profile.includeInFamilyTree)
         self._phone = State(initialValue: profile.phone ?? "")
@@ -1947,27 +2032,46 @@ struct EditProfileView: View {
             .padding(.vertical, 16)
             .background(Color.appBackgroundLight)
 
-            ZStack {
-                Color.appBackgroundLight
-
-                    ScrollView {
-                        VStack(spacing: 20) {
+            ScrollView {
+                VStack(spacing: 20) {
                             // Profile Photo
-                            PhotoPickerButton(
-                                selectedImage: $selectedImage,
-                                currentPhotoURL: profile.photoUrl,
-                                size: 120
-                            )
+                            VStack(spacing: 8) {
+                                PhotoPickerButton(
+                                    selectedImage: $selectedImage,
+                                    currentPhotoURL: removePhoto ? nil : profile.photoUrl,
+                                    size: 120
+                                )
+                                .disabled(isFieldLocked("photo_url"))
+                                .opacity(isFieldLocked("photo_url") ? 0.7 : 1.0)
+                                .onChange(of: selectedImage) { _, newImage in
+                                    if newImage != nil {
+                                        removePhoto = false
+                                    }
+                                }
+
+                                // Remove photo button - show when there's a photo to remove
+                                if !isFieldLocked("photo_url") && (selectedImage != nil || (profile.photoUrl != nil && !removePhoto)) {
+                                    Button(role: .destructive) {
+                                        selectedImage = nil
+                                        removePhoto = true
+                                    } label: {
+                                        Text("Remove Photo")
+                                            .font(.appCaption)
+                                    }
+                                }
+                            }
                             .padding(.bottom, 8)
 
                             AppTextField(placeholder: "Full Name *", text: $fullName)
                             AppTextField(placeholder: "Preferred Name", text: $preferredName)
 
-                            // Relationship field with quick-add button
-                            RelationshipFieldWithPicker(
-                                relationship: $relationship,
-                                showPicker: $showRelationshipPicker
-                            )
+                            // Relationship field with quick-add button (hidden for own profile)
+                            if profile.type != .primary {
+                                RelationshipFieldWithPicker(
+                                    relationship: $relationship,
+                                    showPicker: $showRelationshipPicker
+                                )
+                            }
                             Button {
                                 showDatePicker = true
                             } label: {
@@ -1977,14 +2081,21 @@ struct EditProfileView: View {
 
                                     Spacer()
 
-                                    Image(systemName: "calendar")
-                                        .foregroundColor(.textSecondary)
+                                    if isFieldLocked("birthday") {
+                                        Image(systemName: "lock.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.textSecondary)
+                                    } else {
+                                        Image(systemName: "calendar")
+                                            .foregroundColor(.textSecondary)
+                                    }
                                 }
                                 .padding()
                                 .frame(height: AppDimensions.textFieldHeight)
                                 .background(Color.cardBackgroundSoft)
                                 .cornerRadius(AppDimensions.buttonCornerRadius)
                             }
+                            .disabled(isFieldLocked("birthday"))
                             // Connected To picker for family tree
                             if !allProfiles.isEmpty {
                                 ConnectedToPickerField(
@@ -2010,9 +2121,17 @@ struct EditProfileView: View {
                             .background(Color.cardBackgroundSoft)
                             .cornerRadius(AppDimensions.buttonCornerRadius)
 
-                            AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
-                            AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
-                            AppTextField(placeholder: "Address", text: $address)
+                            LockedFieldWrapper(isLocked: isFieldLocked("phone")) {
+                                AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
+                            }
+
+                            LockedFieldWrapper(isLocked: isFieldLocked("email")) {
+                                AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+                            }
+
+                            LockedFieldWrapper(isLocked: isFieldLocked("address")) {
+                                AppTextField(placeholder: "Address", text: $address)
+                            }
 
 
 
@@ -2125,7 +2244,6 @@ struct EditProfileView: View {
                         .padding(AppDimensions.screenPadding)
                     }
             }
-        }
         .sheet(isPresented: $showDatePicker) {
             DatePickerSheet(selectedDate: $birthday, isPresented: $showDatePicker)
         }
@@ -2177,7 +2295,7 @@ struct EditProfileView: View {
             errorMessage = "Failed to delete field: \(error.localizedDescription)"
         }
     }
-    
+
     private func updateProfile() async {
         guard !fullName.isBlank else {
             errorMessage = "Please enter a name"
@@ -2190,13 +2308,14 @@ struct EditProfileView: View {
         var updatedProfile = profile
         updatedProfile.fullName = fullName
         updatedProfile.preferredName = preferredName.isBlank ? nil : preferredName
-        updatedProfile.relationship = relationship.isBlank ? nil : relationship
+        updatedProfile.relationship = profile.type == .primary ? "Me" : (relationship.isBlank ? nil : relationship)
         updatedProfile.connectedToProfileId = connectedToProfileId
         updatedProfile.includeInFamilyTree = includeInFamilyTree
-        updatedProfile.phone = phone.isBlank ? nil : phone
-        updatedProfile.email = email.isBlank ? nil : email
-        updatedProfile.address = address.isBlank ? nil : address
-        updatedProfile.birthday = birthday
+        // Only update fields that aren't locked by sync
+        if !isFieldLocked("phone") { updatedProfile.phone = phone.isBlank ? nil : phone }
+        if !isFieldLocked("email") { updatedProfile.email = email.isBlank ? nil : email }
+        if !isFieldLocked("address") { updatedProfile.address = address.isBlank ? nil : address }
+        if !isFieldLocked("birthday") { updatedProfile.birthday = birthday }
         updatedProfile.isDeceased = isDeceased
         updatedProfile.dateOfDeath = isDeceased ? dateOfDeath : nil
 
@@ -2215,6 +2334,16 @@ struct EditProfileView: View {
                     print("Photo upload failed: \(error.localizedDescription)")
                     #endif
                 }
+            } else if removePhoto {
+                // Delete photo from storage if one exists
+                if profile.photoUrl != nil {
+                    let storagePath = "profiles/\(profile.id.uuidString)/photo.jpg"
+                    try? await ImageUploadService.shared.deleteImage(
+                        bucket: SupabaseConfig.profilePhotosBucket,
+                        path: storagePath
+                    )
+                }
+                updatedProfile.photoUrl = nil
             }
 
             let saved = try await appState.profileRepository.updateProfile(updatedProfile)
@@ -3424,7 +3553,7 @@ struct ConnectedToPickerField: View {
                         Text("Connected to: \(name)")
                             .foregroundColor(.textPrimary)
                     } else {
-                        Text("Connect to family member (optional)")
+                        Text("Connect to parent member")
                             .foregroundColor(.textSecondary)
                     }
 

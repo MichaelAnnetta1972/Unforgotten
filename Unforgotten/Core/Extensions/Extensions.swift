@@ -59,7 +59,16 @@ extension Date {
         formatter.dateFormat = "MMMM, yyyy"
         return "\(day)\(suffix) \(formatter.string(from: self))"
     }
-    
+
+    /// Format as "17th December" with ordinal day (no year)
+    func formattedDayMonth() -> String {
+        let day = Calendar.current.component(.day, from: self)
+        let suffix = daySuffix(for: day)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM"
+        return "\(day)\(suffix) \(formatter.string(from: self))"
+    }
+
     /// Calculate age from birthday
     func age() -> Int {
         Calendar.current.dateComponents([.year], from: self, to: Date()).year ?? 0
@@ -298,6 +307,24 @@ extension Notification.Name {
     /// Posted when a profile sync connection has changed (created or severed)
     /// userInfo keys: "syncId" (UUID), "action" (String: "created" or "severed")
     static let profileSyncDidChange = Notification.Name("profileSyncDidChange")
+
+    /// Posted when profile sharing preferences have changed
+    static let profileSharingPreferencesDidChange = Notification.Name("profileSharingPreferencesDidChange")
+
+    /// Posted at midnight when the morning briefing should refresh for the new day
+    static let morningBriefingShouldRefresh = Notification.Name("morningBriefingShouldRefresh")
+
+    /// Posted when meal planner data (recipes or planned meals) has changed
+    static let mealsDidChange = Notification.Name("mealsDidChange")
+
+    /// Posted when to-do lists or items have changed
+    static let todosDidChange = Notification.Name("todosDidChange")
+
+    /// Posted when notes data has changed
+    static let notesDidChange = Notification.Name("notesDidChange")
+
+    /// Posted when mood entries have changed
+    static let moodEntriesDidChange = Notification.Name("moodEntriesDidChange")
 }
 
 // MARK: - Appointment Change Action
@@ -313,6 +340,13 @@ enum NotificationUserInfoKey {
     static let appointmentId = "appointmentId"
     static let appointment = "appointment"
     static let action = "action"
+}
+
+// MARK: - Generic Data Change Action
+enum DataChangeAction: String {
+    case created
+    case updated
+    case deleted
 }
 
 // MARK: - Bottom Nav Bar Visibility Environment Key
@@ -499,19 +533,6 @@ extension EnvironmentValues {
     }
 }
 
-// MARK: - iPad To Do List Filter Action Environment Key
-private struct iPadToDoListFilterActionKey: EnvironmentKey {
-    static let defaultValue: (() -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    /// Action to trigger the To Do List Filter overlay on iPad
-    var iPadToDoListFilterAction: (() -> Void)? {
-        get { self[iPadToDoListFilterActionKey.self] }
-        set { self[iPadToDoListFilterActionKey.self] = newValue }
-    }
-}
-
 // MARK: - iPad To Do List Filter Binding Environment Key
 private struct iPadToDoListFilterBindingKey: EnvironmentKey {
     static let defaultValue: Binding<String?>? = nil
@@ -525,19 +546,6 @@ extension EnvironmentValues {
     }
 }
 
-// MARK: - iPad Calendar Filter Action Environment Key
-private struct iPadCalendarFilterActionKey: EnvironmentKey {
-    static let defaultValue: (() -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    /// Action to trigger the Calendar Filter overlay on iPad
-    var iPadCalendarFilterAction: (() -> Void)? {
-        get { self[iPadCalendarFilterActionKey.self] }
-        set { self[iPadCalendarFilterActionKey.self] = newValue }
-    }
-}
-
 // MARK: - iPad Calendar Filter Binding Environment Key
 private struct iPadCalendarFilterBindingKey: EnvironmentKey {
     static let defaultValue: Binding<Set<CalendarEventFilter>>? = nil
@@ -548,6 +556,32 @@ extension EnvironmentValues {
     var iPadCalendarFilterBinding: Binding<Set<CalendarEventFilter>>? {
         get { self[iPadCalendarFilterBindingKey.self] }
         set { self[iPadCalendarFilterBindingKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Countdown Type Filter Binding Environment Key
+private struct iPadCalendarCountdownTypeFilterBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<Set<CountdownType>>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to the selected countdown type sub-filters on iPad
+    var iPadCalendarCountdownTypeFilterBinding: Binding<Set<CountdownType>>? {
+        get { self[iPadCalendarCountdownTypeFilterBindingKey.self] }
+        set { self[iPadCalendarCountdownTypeFilterBindingKey.self] = newValue }
+    }
+}
+
+// MARK: - iPad Calendar Custom Type Name Filter Binding Environment Key
+private struct iPadCalendarCustomTypeNameFilterBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<Set<String>>? = nil
+}
+
+extension EnvironmentValues {
+    /// Binding to the selected custom countdown type name sub-filters on iPad
+    var iPadCalendarCustomTypeNameFilterBinding: Binding<Set<String>>? {
+        get { self[iPadCalendarCustomTypeNameFilterBindingKey.self] }
+        set { self[iPadCalendarCustomTypeNameFilterBindingKey.self] = newValue }
     }
 }
 
@@ -574,33 +608,6 @@ extension EnvironmentValues {
     var iPadCalendarMembersWithEventsBinding: Binding<[AccountMemberWithUser]>? {
         get { self[iPadCalendarMembersWithEventsBindingKey.self] }
         set { self[iPadCalendarMembersWithEventsBindingKey.self] = newValue }
-    }
-}
-
-// MARK: - iPad Calendar Member Filter Action Environment Key
-private struct iPadCalendarMemberFilterActionKey: EnvironmentKey {
-    static let defaultValue: (() -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    /// Action to trigger the Calendar Member Filter overlay on iPad
-    var iPadCalendarMemberFilterAction: (() -> Void)? {
-        get { self[iPadCalendarMemberFilterActionKey.self] }
-        set { self[iPadCalendarMemberFilterActionKey.self] = newValue }
-    }
-}
-
-// MARK: - iPad ToDo Detail Type Selector Action Environment Key
-private struct iPadToDoDetailTypeSelectorActionKey: EnvironmentKey {
-    static let defaultValue: ((ToDoListDetailViewModel, Binding<String?>, @escaping () -> Void) -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    /// Action to trigger the Type Selector overlay on iPad for ToDo Detail view
-    /// Parameters: viewModel (for live types access), selected type binding, add new type action
-    var iPadToDoDetailTypeSelectorAction: ((ToDoListDetailViewModel, Binding<String?>, @escaping () -> Void) -> Void)? {
-        get { self[iPadToDoDetailTypeSelectorActionKey.self] }
-        set { self[iPadToDoDetailTypeSelectorActionKey.self] = newValue }
     }
 }
 
@@ -887,10 +894,6 @@ private struct iPadShowManageMembersActionKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
 }
 
-private struct iPadShowJoinAccountActionKey: EnvironmentKey {
-    static let defaultValue: (() -> Void)? = nil
-}
-
 private struct iPadShowMoodHistoryActionKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
 }
@@ -928,11 +931,6 @@ extension EnvironmentValues {
     var iPadShowManageMembersAction: (() -> Void)? {
         get { self[iPadShowManageMembersActionKey.self] }
         set { self[iPadShowManageMembersActionKey.self] = newValue }
-    }
-
-    var iPadShowJoinAccountAction: (() -> Void)? {
-        get { self[iPadShowJoinAccountActionKey.self] }
-        set { self[iPadShowJoinAccountActionKey.self] = newValue }
     }
 
     var iPadShowMoodHistoryAction: (() -> Void)? {

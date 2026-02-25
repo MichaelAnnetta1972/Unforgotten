@@ -10,6 +10,7 @@ final class LocalToDoList {
     var accountId: UUID
     var title: String
     var listType: String?
+    var dueDate: Date?
     var createdAt: Date
     var updatedAt: Date
 
@@ -23,6 +24,7 @@ final class LocalToDoList {
         accountId: UUID,
         title: String,
         listType: String? = nil,
+        dueDate: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isSynced: Bool = false,
@@ -32,6 +34,7 @@ final class LocalToDoList {
         self.accountId = accountId
         self.title = title
         self.listType = listType
+        self.dueDate = dueDate
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isSynced = isSynced
@@ -45,6 +48,7 @@ final class LocalToDoList {
             accountId: remote.accountId,
             title: remote.title,
             listType: remote.listType,
+            dueDate: remote.dueDate,
             createdAt: remote.createdAt,
             updatedAt: remote.updatedAt,
             isSynced: true,
@@ -59,6 +63,7 @@ final class LocalToDoList {
             accountId: accountId,
             title: title,
             listType: listType,
+            dueDate: dueDate,
             createdAt: createdAt,
             updatedAt: updatedAt,
             items: items
@@ -70,6 +75,7 @@ final class LocalToDoList {
         self.accountId = remote.accountId
         self.title = remote.title
         self.listType = remote.listType
+        self.dueDate = remote.dueDate
         self.createdAt = remote.createdAt
         self.updatedAt = remote.updatedAt
         self.isSynced = true

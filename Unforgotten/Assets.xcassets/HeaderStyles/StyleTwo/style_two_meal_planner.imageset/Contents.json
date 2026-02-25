@@ -1,0 +1,21 @@
+{
+  "images" : [
+    {
+      "filename" : "cozy-seating-area-around-fire-pit-is-adorned-with-fluffy-blankets-perfect-snuggling-up.jpg",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

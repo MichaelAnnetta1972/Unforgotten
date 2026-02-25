@@ -23,7 +23,7 @@ struct UsefulContactsListView: View {
     @State private var activeOptionsMenuItemId: UUID?
     @State private var cardFrames: [UUID: CGRect] = [:]
     @State private var searchText = ""
-    @State private var showingCategoryFilter = false
+    @State private var listContentHeight: CGFloat = 0
 
     /// Check if user can add more useful contacts
     private var canAddContact: Bool {
@@ -46,6 +46,12 @@ struct UsefulContactsListView: View {
     private var activeIndex: Int? {
         guard let activeId = activeOptionsMenuItemId else { return nil }
         return viewModel.contacts.firstIndex(where: { $0.id == activeId })
+    }
+
+    /// Categories that are actually in use by existing contacts
+    var availableCategories: [ContactCategory] {
+        let usedCategories = Set(viewModel.contacts.map { $0.category })
+        return ContactCategory.allCases.filter { usedCategories.contains($0) }
     }
 
     var filteredContacts: [UsefulContact] {
@@ -122,11 +128,29 @@ struct UsefulContactsListView: View {
                         .background(Color.cardBackground)
                         .cornerRadius(AppDimensions.cardCornerRadius)
 
-                        Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingCategoryFilter = true
+                        Menu {
+                            Button {
+                                selectedCategory = nil
+                            } label: {
+                                if selectedCategory == nil {
+                                    Label("All", systemImage: "checkmark")
+                                } else {
+                                    Text("All")
+                                }
                             }
-                        }) {
+
+                            ForEach(availableCategories, id: \.self) { category in
+                                Button {
+                                    selectedCategory = category
+                                } label: {
+                                    if selectedCategory == category {
+                                        Label(category.displayName, systemImage: "checkmark")
+                                    } else {
+                                        Label(category.displayName, systemImage: category.icon)
+                                    }
+                                }
+                            }
+                        } label: {
                             Image(systemName: selectedCategory != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                                 .font(.system(size: 20))
                                 .foregroundColor(selectedCategory != nil ? appAccentColor : .textSecondary)
@@ -134,42 +158,73 @@ struct UsefulContactsListView: View {
                                 .background(Color.cardBackground)
                                 .cornerRadius(AppDimensions.cardCornerRadius)
                         }
+                        .tint(appAccentColor)
                     }
 
                     // Contacts list
-                    LazyVStack(spacing: AppDimensions.cardSpacing) {
-                        ForEach(Array(filteredContacts.enumerated()), id: \.element.id) { index, contact in
-                            let globalIndex = viewModel.contacts.firstIndex(where: { $0.id == contact.id }) ?? index
-                            UsefulContactRow(
-                                contact: contact,
-                                onOptionsMenu: {
-                                    activeOptionsMenuItemId = contact.id
-                                },
-                                onDelete: {
-                                    contactToDelete = contact
-                                    showDeleteConfirmation = true
-                                },
-                                onMoveUp: globalIndex > 0 && selectedCategory == nil ? {
-                                    viewModel.moveContact(from: IndexSet(integer: globalIndex), to: globalIndex - 1)
-                                    Task {
-                                        await viewModel.saveSortOrder(appState: appState)
+                    if !filteredContacts.isEmpty {
+                        List {
+                            ForEach(Array(filteredContacts.enumerated()), id: \.element.id) { index, contact in
+                                let globalIndex = viewModel.contacts.firstIndex(where: { $0.id == contact.id }) ?? index
+                                ZStack {
+                                    NavigationLink(destination: UsefulContactDetailView(contact: contact)) {
+                                        EmptyView()
                                     }
-                                } : nil,
-                                onMoveDown: globalIndex < viewModel.contacts.count - 1 && selectedCategory == nil ? {
-                                    viewModel.moveContact(from: IndexSet(integer: globalIndex), to: globalIndex + 2)
-                                    Task {
-                                        await viewModel.saveSortOrder(appState: appState)
-                                    }
-                                } : nil
-                            )
-                            .background(
-                                GeometryReader { geo in
-                                    Color.clear.preference(
-                                        key: ContactCardFramePreferenceKey.self,
-                                        value: [contact.id: geo.frame(in: .global)]
+                                    .opacity(0)
+
+                                    UsefulContactRow(
+                                        contact: contact,
+                                        onOptionsMenu: {
+                                            activeOptionsMenuItemId = contact.id
+                                        },
+                                        onMoveUp: globalIndex > 0 && selectedCategory == nil ? {
+                                            viewModel.moveContact(from: IndexSet(integer: globalIndex), to: globalIndex - 1)
+                                            Task {
+                                                await viewModel.saveSortOrder(appState: appState)
+                                            }
+                                        } : nil,
+                                        onMoveDown: globalIndex < viewModel.contacts.count - 1 && selectedCategory == nil ? {
+                                            viewModel.moveContact(from: IndexSet(integer: globalIndex), to: globalIndex + 2)
+                                            Task {
+                                                await viewModel.saveSortOrder(appState: appState)
+                                            }
+                                        } : nil
+                                    )
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear.preference(
+                                                key: ContactCardFramePreferenceKey.self,
+                                                value: [contact.id: geo.frame(in: .global)]
+                                            )
+                                        }
                                     )
                                 }
-                            )
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        contactToDelete = contact
+                                        showDeleteConfirmation = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
+                            }
+                        }
+                        .listStyle(.plain)
+                        .scrollDisabled(true)
+                        .scrollContentBackground(.hidden)
+                        .frame(height: listContentHeight)
+                        .onChange(of: filteredContacts.count) { _, count in
+                            let rowHeight: CGFloat = 76
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(count) * (rowHeight + spacing)
+                        }
+                        .onAppear {
+                            let rowHeight: CGFloat = 76
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(filteredContacts.count) * (rowHeight + spacing)
                         }
                     }
 
@@ -239,30 +294,6 @@ struct UsefulContactsListView: View {
             contactOverlay(contact: contact, frame: frame)
         }
 
-        // Category filter overlay
-        if showingCategoryFilter {
-            ZStack {
-                Color.cardBackground.opacity(0.8)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showingCategoryFilter = false
-                        }
-                    }
-
-                ContactCategoryFilterOverlay(
-                    selectedCategory: $selectedCategory,
-                    isShowing: showingCategoryFilter,
-                    onDismiss: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showingCategoryFilter = false
-                        }
-                    }
-                )
-            }
-            .zIndex(10)
-            .transition(.opacity)
-        }
         }
         .navigationBarHidden(true)
         .sheet(isPresented: $showUpgradePrompt) {
@@ -440,64 +471,50 @@ struct CategoryFilterButton: View {
 
 // MARK: - Useful Contact Row
 struct UsefulContactRow: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let contact: UsefulContact
     let onOptionsMenu: () -> Void
-    let onDelete: () -> Void
     let onMoveUp: (() -> Void)?
     let onMoveDown: (() -> Void)?
 
     var body: some View {
-        NavigationLink(destination: UsefulContactDetailView(contact: contact)) {
-            HStack {
-                // Icon
-                Image(systemName: contact.category.icon)
-                    .font(.title3)
-                    .foregroundColor(.accentYellow)
-                    .frame(width: 40)
+        HStack {
+            // Icon
+            Image(systemName: contact.category.icon)
+                .font(.title3)
+                .foregroundColor(appAccentColor)
+                .frame(width: 40)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(contact.name)
-                        .font(.appCardTitle)
-                        .foregroundColor(.textPrimary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(contact.name)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
 
-                    Text(contact.category.displayName)
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-                }
+                Text(contact.category.displayName)
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+            }
 
-                Spacer()
+            Spacer()
 
-                // Quick call button
-                if let phone = contact.phone {
-                    Button {
-                        callPhone(phone)
-                    } label: {
-                        Image(systemName: "phone.fill")
-                            .foregroundColor(.badgeGreen)
-                            .padding(10)
-                            .background(Color.badgeGreen.opacity(0.2))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-
-                // Delete button
+            // Quick call button
+            if let phone = contact.phone {
                 Button {
-                    onDelete()
+                    callPhone(phone)
                 } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 16))
-                        .foregroundColor(.red)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    Image(systemName: "phone.fill")
+                        .foregroundColor(.badgeGreen)
+                        .padding(10)
+                        .background(Color.badgeGreen.opacity(0.2))
+                        .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())
             }
-            .padding(AppDimensions.cardPadding)
-            .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.cardCornerRadius)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 
     private func callPhone(_ number: String) {
@@ -773,133 +790,6 @@ struct ContactOptionsMenu: View {
     }
 }
 
-// MARK: - Contact Category Filter Overlay
-private struct ContactCategoryFilterOverlay: View {
-    @Binding var selectedCategory: ContactCategory?
-    let isShowing: Bool
-    let onDismiss: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var offsetX: CGFloat = 320
-    @State private var opacity: Double = 0
-
-    /// Panel width - slightly wider on iPad
-    private var panelWidth: CGFloat {
-        horizontalSizeClass == .regular ? 320 : 280
-    }
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 80, maximum: 120), spacing: 8)
-    ]
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack {
-                Spacer()
-
-                VStack(spacing: 16) {
-                    HStack {
-                        Text("Filter by Category")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-                        Spacer()
-
-                        // Close button
-                        Button {
-                            onDismiss()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.textSecondary)
-                        }
-                    }
-                    .padding(.top, AppDimensions.cardPadding)
-                    .padding(.horizontal, AppDimensions.cardPadding)
-
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            // All option - full width
-                            Button {
-                                selectedCategory = nil
-                                onDismiss()
-                            } label: {
-                                HStack {
-                                    Image(systemName: "phone.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(selectedCategory == nil ? appAccentColor : .textSecondary)
-                                        .frame(width: 24)
-
-                                    Text("All")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-                                    Spacer()
-                                    if selectedCategory == nil {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft.opacity(0.4))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-
-                            // Category options in grid
-                            LazyVGrid(columns: columns, spacing: 8) {
-                                ForEach(ContactCategory.allCases, id: \.self) { category in
-                                    Button {
-                                        selectedCategory = category
-                                        onDismiss()
-                                    } label: {
-                                        VStack(spacing: 6) {
-                                            Image(systemName: category.icon)
-                                                .font(.system(size: 20))
-                                                .foregroundColor(selectedCategory == category ? appAccentColor : .textSecondary)
-
-                                            Text(category.displayName)
-                                                .font(.caption)
-                                                .foregroundColor(.textPrimary)
-                                                .lineLimit(2)
-                                                .multilineTextAlignment(.center)
-                                                .minimumScaleFactor(0.8)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                        .padding(.horizontal, 8)
-                                        .background(selectedCategory == category ? appAccentColor.opacity(0.15) : Color.cardBackgroundSoft.opacity(0.4))
-                                        .cornerRadius(8)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(selectedCategory == category ? appAccentColor : Color.clear, lineWidth: 2)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                    }
-                    .frame(maxHeight: 400)
-                }
-                .frame(width: panelWidth)
-                .background(Color.cardBackgroundLight)
-                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
-                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
-                .offset(x: offsetX)
-                .opacity(opacity)
-                .padding(.vertical, 40)
-                .padding(.trailing, 20)
-            }
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                offsetX = 0
-                opacity = 1.0
-            }
-        }
-    }
-}
 
 // MARK: - Preview
 #Preview {

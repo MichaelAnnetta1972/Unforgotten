@@ -1,9 +1,16 @@
 import SwiftUI
 
+// MARK: - Activation Feature Model
+private struct ActivationFeature: Identifiable {
+    let id: Int
+    let displayName: String
+    let icon: String
+}
+
 // MARK: - Onboarding Activation View
-/// Screen 8: Final activation screen with animated checklist
-/// Shows features being "activated" one by one before completing onboarding
-/// Cards appear in staggered formation as they are checked
+/// Screen 8: Final activation screen with drum-roller spinner animation
+/// Features scroll into focus one at a time, get "activated" with a circular
+/// progress ring and checkmark, then the roller advances to the next feature
 struct OnboardingActivationView: View {
     @Bindable var onboardingData: OnboardingData
     let accentColor: Color
@@ -11,173 +18,274 @@ struct OnboardingActivationView: View {
     var errorMessage: String? = nil
     let onComplete: () -> Void
 
+    // Animation state
     @State private var hasAppeared = false
-    @State private var visibleFeatures: Set<Int> = []
+    @State private var currentIndex: Int = 0
+    @State private var drumOffset: CGFloat = 0
     @State private var activatedFeatures: Set<Int> = []
+    @State private var checkProgress: CGFloat = 0
+    @State private var checkmarkScale: CGFloat = 0
     @State private var allFeaturesActivated = false
+    @State private var hapticTrigger: Int = 0
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
-    /// Features to activate - includes required features plus user-selected features
-    private var features: [String] {
-        var featureNames: [String] = []
+    // MARK: - Layout Constants
 
-        // Always include required features first
+    private var focusedCardHeight: CGFloat { isRegularWidth ? 100 : 84 }
+    private var unfocusedCardHeight: CGFloat { isRegularWidth ? 64 : 52 }
+    private var itemSpacing: CGFloat { isRegularWidth ? 14 : 10 }
+    private var itemStride: CGFloat { unfocusedCardHeight + itemSpacing }
+    private var viewportHeight: CGFloat {
+        focusedCardHeight + 4 * unfocusedCardHeight + 4 * itemSpacing
+    }
+    private var maxContentWidth: CGFloat { isRegularWidth ? 500 : .infinity }
+
+    // MARK: - Features List
+
+    private var features: [ActivationFeature] {
+        var items: [ActivationFeature] = []
+        var index = 0
+
         for feature in Feature.requiredFeatures {
-            featureNames.append(feature.displayName)
+            items.append(ActivationFeature(id: index, displayName: feature.displayName, icon: feature.icon))
+            index += 1
         }
 
-        // Add user-selected features (sorted for consistent order)
         let selectedFeatures = onboardingData.selectedFeatures
             .sorted { $0.rawValue < $1.rawValue }
 
         for feature in selectedFeatures {
-            featureNames.append(feature.displayName)
+            items.append(ActivationFeature(id: index, displayName: feature.displayName, icon: feature.icon))
+            index += 1
         }
 
-        return featureNames
+        return items
     }
 
+    // MARK: - Body
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Spacer()
-                    .frame(height: isRegularWidth ? 80 : 60)
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: isRegularWidth ? 80 : 60)
 
-                // Header
-                Text("Activating your workspace")
-                    .font(.appLargeTitle)
-                    .foregroundColor(.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .opacity(hasAppeared ? 1 : 0)
-                    .offset(y: hasAppeared ? 0 : 20)
-                    .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                        value: hasAppeared
-                    )
+            // Header
+            Text("Activating your workspace")
+                .font(.appLargeTitle)
+                .foregroundColor(.textPrimary)
+                .multilineTextAlignment(.center)
+                .opacity(hasAppeared ? 1 : 0)
+                .offset(y: hasAppeared ? 0 : 20)
+                .animation(
+                    reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
+                    value: hasAppeared
+                )
 
-                Spacer()
-                    .frame(height: isRegularWidth ? 48 : 40)
+            Spacer()
+                .frame(height: isRegularWidth ? 48 : 40)
 
-                // Feature checklist - cards appear one at a time as they're checked
-                VStack(spacing: isRegularWidth ? 12 : 8) {
-                    ForEach(Array(features.enumerated()), id: \.offset) { index, feature in
-                        ActivationFeatureRow(
-                            title: feature,
-                            isActivated: activatedFeatures.contains(index),
-                            accentColor: accentColor
-                        )
-                        .opacity(visibleFeatures.contains(index) ? 1 : 0)
-                        .offset(y: visibleFeatures.contains(index) ? 0 : 20)
-                        .animation(
-                            reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8),
-                            value: visibleFeatures.contains(index)
-                        )
-                    }
-                }
-                .frame(maxWidth: isRegularWidth ? 500 : .infinity)
+            // Drum roller
+            drumRollerView
+                .frame(height: viewportHeight)
+                .frame(maxWidth: maxContentWidth)
                 .padding(.horizontal, AppDimensions.screenPadding)
 
-                Spacer()
-                    .frame(height: isRegularWidth ? 48 : 40)
+            Spacer()
+                .frame(height: isRegularWidth ? 48 : 40)
 
-                // Completion message and button
-                VStack(spacing: isRegularWidth ? 32 : 24) {
-                    if allFeaturesActivated {
-                        Text("You're all set up")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
+            // Completion message and button
+            completionView
 
-                    // Error message
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.appCaption)
-                            .foregroundColor(.medicalRed)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, AppDimensions.screenPadding)
-                    }
-
-                    // Let's go button (only shown when all features activated)
-                    if allFeaturesActivated {
-                        Button(action: onComplete) {
-                            HStack {
-                                if isCompleting {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                } else {
-                                    Text("Let's go!")
-                                        .font(.appBodyMedium)
-                                }
-                            }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: AppDimensions.buttonHeight)
-                            .background(accentColor)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                        }
-                        .disabled(isCompleting)
-                        .frame(maxWidth: isRegularWidth ? 400 : .infinity)
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-                }
-                .padding(.bottom, isRegularWidth ? 64 : 48)
-                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: allFeaturesActivated)
-            }
+            Spacer()
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .sensoryFeedback(.selection, trigger: hapticTrigger)
         .onAppear {
             guard !hasAppeared else { return }
             hasAppeared = true
-            startActivationAnimation()
+            startActivationSequence()
         }
     }
 
-    // MARK: - Activation Animation
-    private func startActivationAnimation() {
+    // MARK: - Drum Roller View
+
+    @ViewBuilder
+    private var drumRollerView: some View {
+        GeometryReader { geo in
+            let centerY = geo.size.height / 2
+            let centerX = geo.size.width / 2
+
+            ZStack {
+                ForEach(features) { feature in
+                    let index = feature.id
+                    let rawY = CGFloat(index) * itemStride - drumOffset
+                    let normalizedDistance = rawY / itemStride
+                    let absNormalized = abs(normalizedDistance)
+
+                    // Scale: 1.0 at center, down to 0.65 at 2+ slots away
+                    let scale = max(0.65, 1.0 - absNormalized * 0.175)
+                    // Opacity: 1.0 at center, fading out beyond 2 slots
+                    let opacity = max(0.0, 1.0 - absNormalized * 0.4)
+                    let isFocused = absNormalized < 0.5
+
+                    DrumRollerFeatureCard(
+                        feature: feature,
+                        isFocused: isFocused,
+                        isActivated: activatedFeatures.contains(index),
+                        checkProgress: index == currentIndex ? checkProgress : (activatedFeatures.contains(index) ? 1.0 : 0.0),
+                        checkmarkScale: index == currentIndex ? checkmarkScale : (activatedFeatures.contains(index) ? 1.0 : 0.0),
+                        accentColor: accentColor,
+                        focusedHeight: focusedCardHeight,
+                        unfocusedHeight: unfocusedCardHeight,
+                        isRegularWidth: isRegularWidth
+                    )
+                    .frame(width: geo.size.width)
+                    .scaleEffect(scale)
+                    .opacity(opacity)
+                    .position(x: centerX, y: centerY + rawY)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(feature.displayName), \(activatedFeatures.contains(index) ? "activated" : "activating")")
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Gradient mask for smooth fade at top and bottom edges
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: .white, location: 0.18),
+                        .init(color: .white, location: 0.82),
+                        .init(color: .clear, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        }
+    }
+
+    // MARK: - Completion View
+
+    @ViewBuilder
+    private var completionView: some View {
+        VStack(spacing: isRegularWidth ? 32 : 24) {
+            if allFeaturesActivated {
+                Text("You're all set up")
+                    .font(.appTitle)
+                    .foregroundColor(.textPrimary)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(.appCaption)
+                    .foregroundColor(.medicalRed)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppDimensions.screenPadding)
+            }
+
+            if allFeaturesActivated {
+                Button(action: onComplete) {
+                    HStack {
+                        if isCompleting {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Text("Let's go!")
+                                .font(.appBodyMedium)
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppDimensions.buttonHeight)
+                    .background(accentColor)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                }
+                .disabled(isCompleting)
+                .frame(maxWidth: isRegularWidth ? 400 : .infinity)
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .padding(.bottom, isRegularWidth ? 64 : 48)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: allFeaturesActivated)
+    }
+
+    // MARK: - Activation Animation Sequence
+
+    private func startActivationSequence() {
         guard !reduceMotion else {
-            // If reduce motion is enabled, show and activate all at once
-            for index in features.indices {
-                visibleFeatures.insert(index)
-                activatedFeatures.insert(index)
+            for feature in features {
+                activatedFeatures.insert(feature.id)
+            }
+            checkProgress = 1.0
+            checkmarkScale = 1.0
+            if let lastFeature = features.last {
+                drumOffset = CGFloat(lastFeature.id) * itemStride
+                currentIndex = lastFeature.id
             }
             allFeaturesActivated = true
             return
         }
 
-        // Stagger the appearance and activation of each feature
-        for index in features.indices {
-            // First, make the card visible (fade in and up)
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.2 + 0.3) {
+        activateFeature(at: 0)
+    }
+
+    private func activateFeature(at index: Int) {
+        guard index < features.count else {
+            // All features activated - show completion
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                    visibleFeatures.insert(index)
+                    allFeaturesActivated = true
                 }
+                let notificationFeedback = UINotificationFeedbackGenerator()
+                notificationFeedback.notificationOccurred(.success)
+            }
+            return
+        }
 
-                // Then activate it (check it) shortly after it appears
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        activatedFeatures.insert(index)
-                    }
+        currentIndex = index
 
-                    // Haptic feedback for each activation
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                    impactFeedback.impactOccurred()
+        // Phase 1: Pause to let user see the focused feature
+        let pauseDuration: Double = index == 0 ? 0.8 : 0.6
 
-                    // Check if all features are activated
-                    if activatedFeatures.count == features.count {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                allFeaturesActivated = true
-                            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + pauseDuration) {
+            // Phase 2: Animate the circular progress ring
+            withAnimation(.easeInOut(duration: 0.5)) {
+                checkProgress = 1.0
+            }
 
-                            // Success haptic
-                            let notificationFeedback = UINotificationFeedbackGenerator()
-                            notificationFeedback.notificationOccurred(.success)
+            // Phase 3: After ring completes, pop in the checkmark
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                    checkmarkScale = 1.0
+                }
+                activatedFeatures.insert(index)
+                hapticTrigger += 1
+
+                // Phase 4: Settle, then scroll to next
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    // Reset check state for next item
+                    checkProgress = 0
+                    checkmarkScale = 0
+
+                    let nextIndex = index + 1
+                    if nextIndex < features.count {
+                        // Scroll up to bring next item to center
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            drumOffset = CGFloat(nextIndex) * itemStride
                         }
+
+                        // After scroll completes, activate next feature
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                            activateFeature(at: nextIndex)
+                        }
+                    } else {
+                        // Last feature done
+                        activateFeature(at: nextIndex)
                     }
                 }
             }
@@ -185,42 +293,92 @@ struct OnboardingActivationView: View {
     }
 }
 
-// MARK: - Activation Feature Row
-struct ActivationFeatureRow: View {
-    let title: String
+// MARK: - Drum Roller Feature Card
+private struct DrumRollerFeatureCard: View {
+    let feature: ActivationFeature
+    let isFocused: Bool
     let isActivated: Bool
+    let checkProgress: CGFloat
+    let checkmarkScale: CGFloat
     let accentColor: Color
+    let focusedHeight: CGFloat
+    let unfocusedHeight: CGFloat
+    let isRegularWidth: Bool
 
     var body: some View {
-        HStack {
-            Text(title)
-                .font(.appBodyMedium)
-                .foregroundColor(.textPrimary)
+        HStack(spacing: isFocused ? 16 : 12) {
+            // Icon (visible when focused)
+            if isFocused {
+                Image(systemName: feature.icon)
+                    .font(.system(size: isRegularWidth ? 28 : 24, weight: .medium))
+                    .foregroundColor(accentColor)
+                    .frame(width: isRegularWidth ? 44 : 36)
+                    .transition(.scale.combined(with: .opacity))
+            }
+
+            Text(feature.displayName)
+                .font(isFocused ? .appCardTitle : .appBody)
+                .foregroundColor(isFocused ? .textPrimary : .textSecondary)
+                .lineLimit(1)
 
             Spacer()
 
-            // Checkmark circle
-            ZStack {
-                Circle()
-                    .fill(isActivated ? accentColor : Color.clear)
-                    .frame(width: 28, height: 28)
-
-                if isActivated {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .overlay(
-                Circle()
-                    .stroke(isActivated ? accentColor : Color.textSecondary.opacity(0.3), lineWidth: 2)
+            CircularCheckmarkView(
+                progress: checkProgress,
+                checkmarkScale: checkmarkScale,
+                accentColor: accentColor,
+                size: isFocused ? (isRegularWidth ? 32 : 28) : (isRegularWidth ? 26 : 22)
             )
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.buttonCornerRadius)
+        .padding(.horizontal, isFocused ? 20 : 16)
+        .frame(height: isFocused ? focusedHeight : unfocusedHeight)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                .fill(isFocused ? Color.cardBackground : Color.cardBackground.opacity(0.6))
+        )
+        .animation(.easeInOut(duration: 0.3), value: isFocused)
+    }
+}
+
+// MARK: - Circular Checkmark View
+private struct CircularCheckmarkView: View {
+    let progress: CGFloat
+    let checkmarkScale: CGFloat
+    let accentColor: Color
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            // Background circle (empty state border)
+            Circle()
+                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 2)
+                .frame(width: size, height: size)
+
+            // Progress ring (draws clockwise)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .frame(width: size, height: size)
+                .rotationEffect(.degrees(-90))
+
+            // Filled circle (appears when progress completes)
+            if progress >= 1.0 {
+                Circle()
+                    .fill(accentColor)
+                    .frame(width: size - 4, height: size - 4)
+                    .transition(.scale.combined(with: .opacity))
+            }
+
+            // Checkmark (pops in after fill)
+            if checkmarkScale > 0 {
+                Image(systemName: "checkmark")
+                    .font(.system(size: size * 0.4, weight: .bold))
+                    .foregroundColor(.white)
+                    .scaleEffect(checkmarkScale)
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
 

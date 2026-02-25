@@ -21,6 +21,9 @@ protocol ProfileRepositoryProtocol {
     // Birthdays
     func getUpcomingBirthdays(accountId: UUID, days: Int) async throws -> [Profile]
     func getTodaysBirthdays(accountId: UUID) async throws -> [Profile]
+
+    // Profile matching (for duplicate detection)
+    func findMatchingProfiles(accountId: UUID, name: String?, email: String?) async throws -> [Profile]
 }
 
 // MARK: - Sort Order Update
@@ -280,6 +283,31 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             let month = calendar.component(.month, from: birthday)
             let day = calendar.component(.day, from: birthday)
             return month == todayMonth && day == todayDay
+        }
+    }
+
+    // MARK: - Find Matching Profiles (Duplicate Detection)
+    func findMatchingProfiles(accountId: UUID, name: String?, email: String?) async throws -> [Profile] {
+        let profiles: [Profile] = try await supabase
+            .from(TableName.profiles)
+            .select()
+            .eq("account_id", value: accountId)
+            .execute()
+            .value
+
+        return profiles.filter { profile in
+            // Match by email (case-insensitive)
+            if let email = email, !email.isEmpty,
+               let profileEmail = profile.email, !profileEmail.isEmpty,
+               profileEmail.lowercased() == email.lowercased() {
+                return true
+            }
+            // Match by name (case-insensitive)
+            if let name = name, !name.isEmpty,
+               profile.fullName.lowercased() == name.lowercased() {
+                return true
+            }
+            return false
         }
     }
 }

@@ -244,6 +244,28 @@ final class CachedMedicationRepository {
                 changeType: .delete
             )
 
+            // Also mark all associated logs as deleted
+            let scheduledStatus = MedicationLogStatus.scheduled.rawValue
+            let logDescriptor = FetchDescriptor<LocalMedicationLog>(
+                predicate: #Predicate {
+                    $0.medicationId == id &&
+                    $0.status == scheduledStatus &&
+                    !$0.locallyDeleted
+                }
+            )
+            let logs = try modelContext.fetch(logDescriptor)
+            for log in logs {
+                log.locallyDeleted = true
+                log.markAsModified()
+
+                syncEngine.queueChange(
+                    entityType: "medicationLog",
+                    entityId: log.id,
+                    accountId: log.accountId,
+                    changeType: .delete
+                )
+            }
+
             try modelContext.save()
         }
     }
@@ -386,9 +408,9 @@ final class CachedMedicationRepository {
         throw SupabaseError.notFound
     }
 
-    /// Generate daily logs for today (local-only for offline support)
+    /// Generate daily logs for a specific date (local-only for offline support)
     func generateDailyLogs(accountId: UUID, date: Date) async throws {
-        try await syncEngine.generateLocalMedicationLogs(accountId: accountId)
+        try await syncEngine.generateLocalMedicationLogs(accountId: accountId, for: date)
     }
 
     /// Get logs for an account in a date range

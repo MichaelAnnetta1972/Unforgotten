@@ -70,10 +70,8 @@ struct iPadToDoListsListView: View {
     @EnvironmentObject var appState: AppState
     @State private var searchText = ""
     @State private var selectedType: String? = nil
-    @State private var showingTypeFilter = false
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadHomeAction) private var iPadHomeAction
-    @Environment(\.iPadToDoListFilterAction) private var iPadToDoListFilterAction
     @Environment(\.iPadToDoListFilterBinding) private var iPadToDoListFilterBinding
 
     /// Returns the active type filter (iPad root-level binding or local state)
@@ -129,14 +127,31 @@ struct iPadToDoListsListView: View {
                             .background(Color.cardBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
 
-                            Button(action: {
-                                // Use iPad root-level filter action for full-screen overlay
-                                if let filterAction = iPadToDoListFilterAction {
-                                    filterAction()
-                                } else {
-                                    showingTypeFilter = true
+                            Menu {
+                                Button {
+                                    selectedType = nil
+                                    iPadToDoListFilterBinding?.wrappedValue = nil
+                                } label: {
+                                    if activeTypeFilter == nil {
+                                        Label("All", systemImage: "checkmark")
+                                    } else {
+                                        Text("All")
+                                    }
                                 }
-                            }) {
+
+                                ForEach(viewModel.availableFilterTypes, id: \.self) { typeName in
+                                    Button {
+                                        selectedType = typeName
+                                        iPadToDoListFilterBinding?.wrappedValue = typeName
+                                    } label: {
+                                        if activeTypeFilter == typeName {
+                                            Label(typeName, systemImage: "checkmark")
+                                        } else {
+                                            Text(typeName)
+                                        }
+                                    }
+                                }
+                            } label: {
                                 Image(systemName: activeTypeFilter != nil ? "tag.fill" : "tag")
                                     .font(.system(size: 20))
                                     .foregroundColor(activeTypeFilter != nil ? appAccentColor : .textSecondary)
@@ -183,30 +198,6 @@ struct iPadToDoListsListView: View {
             }
             .ignoresSafeArea(edges: .top)
 
-            // Type filter overlay when modal is shown (only when iPad action is not available)
-            if showingTypeFilter && iPadToDoListFilterAction == nil {
-                ZStack {
-                    Color.cardBackground.opacity(0.8)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeFilter = false
-                            }
-                        }
-
-                    iPadToDoListFilterOverlay(
-                        types: viewModel.availableFilterTypes,
-                        selectedType: $selectedType,
-                        onDismiss: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeFilter = false
-                            }
-                        }
-                    )
-                }
-                .zIndex(10)
-                .transition(.opacity)
-            }
         }
         .task {
             await viewModel.loadData(appState: appState)
@@ -220,9 +211,9 @@ struct iPadToDoListsListView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.textSecondary)
 
-            if activeTypeFilter != nil {
+            if let activeTypeFilter {
                 // Filtered empty state (no lists match filter)
-                Text("No \(activeTypeFilter!) lists")
+                Text("No \(activeTypeFilter) lists")
                     .font(.appTitle)
                     .foregroundColor(.textPrimary)
 
@@ -295,128 +286,22 @@ struct iPadToDoListsListView: View {
     }
 }
 
-// MARK: - iPad Type Filter Overlay
-struct iPadToDoListFilterOverlay: View {
-    let types: [String]
-    @Binding var selectedType: String?
-    let onDismiss: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
-    @State private var offsetX: CGFloat = 320
-    @State private var opacity: Double = 0
-
-    private let panelWidth: CGFloat = 300
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack {
-                Spacer()
-
-                VStack(spacing: 16) {
-                    HStack {
-                        Text("Filter by Type")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-                        Spacer()
-
-                        // Close button
-                        Button {
-                            onDismiss()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.textSecondary)
-                        }
-                    }
-                    .padding(.top, AppDimensions.cardPadding)
-                    .padding(.horizontal, AppDimensions.cardPadding)
-
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            // All option
-                            Button {
-                                selectedType = nil
-                                onDismiss()
-                            } label: {
-                                HStack {
-                                    Text("All")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-                                    Spacer()
-                                    if selectedType == nil {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft.opacity(0.4))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-
-                            // Type options (derived from existing lists)
-                            ForEach(types, id: \.self) { typeName in
-                                Button {
-                                    selectedType = typeName
-                                    onDismiss()
-                                } label: {
-                                    HStack {
-                                        Text(typeName)
-                                            .font(.appBody)
-                                            .foregroundColor(.textPrimary)
-                                        Spacer()
-                                        if selectedType == typeName {
-                                            Image(systemName: "checkmark")
-                                                .foregroundColor(appAccentColor)
-                                        }
-                                    }
-                                    .padding(AppDimensions.cardPadding)
-                                    .background(Color.cardBackgroundSoft.opacity(0.4))
-                                    .cornerRadius(8)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                    }
-                    .frame(maxHeight: geometry.size.height - 120) // Fit content with screen-based max
-                }
-                .frame(width: panelWidth)
-                .fixedSize(horizontal: false, vertical: true) // Fit content height
-                .background(Color.cardBackgroundLight)
-                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
-                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
-                .offset(x: offsetX)
-                .opacity(opacity)
-                .padding(.vertical, 40)
-                .padding(.trailing, 20)
-            }
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                offsetX = 0
-                opacity = 1.0
-            }
-        }
-    }
-}
-
 // MARK: - iPad To Do List Detail View
 /// Customized detail view for iPad split panel with close button
 struct iPadToDoListDetailView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel: ToDoListDetailViewModel
     @State private var showingAddType = false
-    @State private var showingTypeSelector = false
     @State private var newTypeName = ""
     @State private var newItemText = ""
     @State private var showKeyboardToolbar = false
     @State private var showDeleteConfirmation = false
+    @State private var typeToDelete: ToDoListType?
+    @State private var showDeleteTypeConfirmation = false
     @State private var focusedItemId: UUID?
     @FocusState private var newItemFocused: Bool
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(HeaderStyleManager.self) private var headerStyleManager
-    @Environment(\.iPadToDoDetailTypeSelectorAction) private var iPadToDoDetailTypeSelectorAction
 
     let list: ToDoList
     let onClose: () -> Void
@@ -461,16 +346,9 @@ struct iPadToDoListDetailView: View {
                                 Spacer()
 
                                 if let type = viewModel.selectedType {
-                                    Button(action: {
-                                        // Use root-level action for full-screen overlay
-                                        if let typeSelectorAction = iPadToDoDetailTypeSelectorAction {
-                                            typeSelectorAction(viewModel, $viewModel.selectedType, { showingAddType = true })
-                                        } else {
-                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                                showingTypeSelector = true
-                                            }
-                                        }
-                                    }) {
+                                    Menu {
+                                        typeMenuContent
+                                    } label: {
                                         Text(type)
                                             .font(.caption)
                                             .foregroundColor(.white)
@@ -490,16 +368,9 @@ struct iPadToDoListDetailView: View {
                                         viewModel.saveTitle()
                                     }
 
-                                Button(action: {
-                                    // Use root-level action for full-screen overlay
-                                    if let typeSelectorAction = iPadToDoDetailTypeSelectorAction {
-                                        typeSelectorAction(viewModel, $viewModel.selectedType, { showingAddType = true })
-                                    } else {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                            showingTypeSelector = true
-                                        }
-                                    }
-                                }) {
+                                Menu {
+                                    typeMenuContent
+                                } label: {
                                     Image(systemName: viewModel.selectedType != nil ? "tag.fill" : "tag")
                                         .font(.system(size: 20))
                                         .foregroundColor(viewModel.selectedType != nil ? appAccentColor : .textSecondary)
@@ -596,40 +467,6 @@ struct iPadToDoListDetailView: View {
             }
             .zIndex(2)
 
-            // Type selector overlay (only when root-level action is not available)
-            if showingTypeSelector && iPadToDoDetailTypeSelectorAction == nil {
-                ZStack {
-                    Color.appBackground.opacity(0.9)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeSelector = false
-                            }
-                        }
-
-                    iPadTypeSelectorOverlay(
-                        types: viewModel.availableTypes,
-                        selectedType: $viewModel.selectedType,
-                        onAddNewType: { showingAddType = true },
-                        onDeleteType: { type in
-                            Task {
-                                await viewModel.deleteType(type)
-                            }
-                        },
-                        onDismiss: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeSelector = false
-                            }
-                        }
-                    )
-                }
-                .zIndex(5)
-                .transition(.opacity)
-                .onDisappear {
-                    viewModel.saveType()
-                }
-            }
-
         }
         .alert("Add New Type", isPresented: $showingAddType) {
             TextField("Type name", text: $newTypeName)
@@ -647,8 +484,73 @@ struct iPadToDoListDetailView: View {
         } message: {
             Text("Are you sure you want to delete '\(viewModel.listTitle)'? This will also delete all items in the list.")
         }
+        .alert("Delete Type", isPresented: $showDeleteTypeConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let type = typeToDelete {
+                    Task {
+                        await viewModel.deleteType(type)
+                    }
+                }
+            }
+        } message: {
+            if let type = typeToDelete {
+                Text("Are you sure you want to delete the type '\(type.name)'? This will not delete any lists.")
+            }
+        }
         .task {
             await viewModel.loadData(appState: appState)
+        }
+        .onChange(of: viewModel.selectedType) { _, _ in
+            viewModel.saveType()
+        }
+    }
+
+    // MARK: - Type Menu Content
+
+    @ViewBuilder
+    private var typeMenuContent: some View {
+        Button {
+            viewModel.selectedType = nil
+        } label: {
+            if viewModel.selectedType == nil {
+                Label("None", systemImage: "checkmark")
+            } else {
+                Text("None")
+            }
+        }
+
+        ForEach(viewModel.availableTypes) { type in
+            Button {
+                viewModel.selectedType = type.name
+            } label: {
+                if viewModel.selectedType == type.name {
+                    Label(type.name, systemImage: "checkmark")
+                } else {
+                    Text(type.name)
+                }
+            }
+        }
+
+        Divider()
+
+        Button {
+            showingAddType = true
+        } label: {
+            Label("Add New Type", systemImage: "plus")
+        }
+
+        if !viewModel.availableTypes.isEmpty {
+            Menu("Delete Type") {
+                ForEach(viewModel.availableTypes) { type in
+                    Button(role: .destructive) {
+                        typeToDelete = type
+                        showDeleteTypeConfirmation = true
+                    } label: {
+                        Label(type.name, systemImage: "trash")
+                    }
+                }
+            }
         }
     }
 
@@ -668,266 +570,3 @@ struct iPadToDoListDetailView: View {
     }
 }
 
-// MARK: - iPad Type Selector Overlay
-struct iPadTypeSelectorOverlay: View {
-    let types: [ToDoListType]
-    @Binding var selectedType: String?
-    let onAddNewType: () -> Void
-    let onDeleteType: (ToDoListType) -> Void
-    let onDismiss: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
-    @State private var scale: CGFloat = 0.8
-    @State private var opacity: Double = 0
-    @State private var typeToDelete: ToDoListType?
-    @State private var showDeleteConfirmation = false
-
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text("Select Type")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-                Spacer()
-                Button {
-                    onAddNewType()
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(appAccentColor)
-                }
-            }
-            .padding(.top, AppDimensions.cardPadding)
-            .padding(.horizontal, AppDimensions.cardPadding)
-
-            ScrollView {
-                VStack(spacing: 8) {
-                    // None option
-                    Button {
-                        selectedType = nil
-                        onDismiss()
-                    } label: {
-                        HStack {
-                            Text("None")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                            Spacer()
-                            if selectedType == nil {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(appAccentColor)
-                            }
-                        }
-                        .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Type options with delete button
-                    ForEach(types) { type in
-                        HStack(spacing: 0) {
-                            Button {
-                                selectedType = type.name
-                                onDismiss()
-                            } label: {
-                                HStack {
-                                    Text(type.name)
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-                                    Spacer()
-                                    if selectedType == type.name {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                typeToDelete = type
-                                showDeleteConfirmation = true
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.red)
-                                    .frame(width: 44, height: 44)
-                            }
-                        }
-                        .padding(.leading, AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft.opacity(0.4))
-                        .cornerRadius(8)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
-            }
-            .frame(maxHeight: 300)
-        }
-        .frame(width: 280)
-        .background(Color.cardBackgroundLight)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-        .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
-        .scaleEffect(scale)
-        .opacity(opacity)
-        .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                scale = 1.0
-                opacity = 1.0
-            }
-        }
-        .alert("Delete Type", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                if let type = typeToDelete {
-                    onDeleteType(type)
-                }
-            }
-        } message: {
-            if let type = typeToDelete {
-                Text("Are you sure you want to delete the type '\(type.name)'? This will not delete any lists.")
-            }
-        }
-    }
-}
-
-// MARK: - iPad ToDo Detail Type Selector Overlay (Full-screen, slide-in from right)
-struct iPadToDoDetailTypeSelectorOverlay: View {
-    @ObservedObject var viewModel: ToDoListDetailViewModel
-    @Binding var selectedType: String?
-    let onAddNewType: () -> Void
-    let onDismiss: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
-    @State private var offsetX: CGFloat = 320
-    @State private var opacity: Double = 0
-    @State private var typeToDelete: ToDoListType?
-    @State private var showDeleteConfirmation = false
-
-    private let panelWidth: CGFloat = 320
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack {
-                Spacer()
-
-                VStack(spacing: 16) {
-                    HStack {
-                        Text("Select Type")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-                        Spacer()
-
-                        Button {
-                            onAddNewType()
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(appAccentColor)
-                        }
-
-                        // Close button
-                        Button {
-                            onDismiss()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.textSecondary)
-                        }
-                    }
-                    .padding(.top, AppDimensions.cardPadding)
-                    .padding(.horizontal, AppDimensions.cardPadding)
-
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            // None option
-                            Button {
-                                selectedType = nil
-                                onDismiss()
-                            } label: {
-                                HStack {
-                                    Text("None")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-                                    Spacer()
-                                    if selectedType == nil {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                                .padding(AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft.opacity(0.4))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-
-                            // Type options with delete button
-                            ForEach(viewModel.availableTypes) { type in
-                                HStack(spacing: 0) {
-                                    Button {
-                                        selectedType = type.name
-                                        onDismiss()
-                                    } label: {
-                                        HStack {
-                                            Text(type.name)
-                                                .font(.appBody)
-                                                .foregroundColor(.textPrimary)
-                                            Spacer()
-                                            if selectedType == type.name {
-                                                Image(systemName: "checkmark")
-                                                    .foregroundColor(appAccentColor)
-                                            }
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    Button {
-                                        typeToDelete = type
-                                        showDeleteConfirmation = true
-                                    } label: {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(.red)
-                                            .frame(width: 44, height: 44)
-                                    }
-                                }
-                                .padding(.leading, AppDimensions.cardPadding)
-                                .background(Color.cardBackgroundSoft.opacity(0.4))
-                                .cornerRadius(8)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                    }
-                    .frame(maxHeight: geometry.size.height - 120) // Fit content with screen-based max
-                }
-                .frame(width: panelWidth)
-                .fixedSize(horizontal: false, vertical: true) // Fit content height
-                .background(Color.cardBackgroundLight)
-                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
-                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
-                .offset(x: offsetX)
-                .opacity(opacity)
-                .padding(.vertical, 40)
-                .padding(.trailing, 20)
-            }
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                offsetX = 0
-                opacity = 1.0
-            }
-        }
-        .alert("Delete Type", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                if let type = typeToDelete {
-                    Task {
-                        await viewModel.deleteType(type)
-                    }
-                }
-            }
-        } message: {
-            if let type = typeToDelete {
-                Text("Are you sure you want to delete the type '\(type.name)'? This will not delete any lists.")
-            }
-        }
-    }
-}

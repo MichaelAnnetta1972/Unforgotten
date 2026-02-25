@@ -151,6 +151,16 @@ struct OnboardingFriendCodeView: View {
                     hasAppeared = true
                 }
             }
+
+            // Auto-fill from deep link if available
+            if let pendingCode = appState.pendingInviteCode, !pendingCode.isEmpty {
+                codeInput = pendingCode
+                appState.pendingInviteCode = nil
+                // Auto-validate after a short delay to let the UI settle
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    validateCode()
+                }
+            }
         }
     }
 

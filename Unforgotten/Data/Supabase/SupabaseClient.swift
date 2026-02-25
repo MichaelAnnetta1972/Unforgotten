@@ -10,6 +10,10 @@ enum SupabaseConfig {
     // Storage bucket names
     static let profilePhotosBucket = "profile-photos"
     static let medicationPhotosBucket = "medication-photos"
+    static let appointmentPhotosBucket = "appointment-photos"
+    static let countdownPhotosBucket = "countdown-photos"
+    static let recipePhotosBucket = "recipe-photos"
+    static let accountPhotosBucket = "account-photos"
 
     // Image upload limits
     static let maxImageSizeBytes = 5 * 1024 * 1024 // 5MB
@@ -173,6 +177,9 @@ enum TableName {
     static let familyCalendarShareMembers = "family_calendar_share_members"
     static let profileSyncs = "profile_syncs"
     static let profileDetailSyncs = "profile_detail_syncs"
+    static let profileSharingPreferences = "profile_sharing_preferences"
+    static let recipes = "recipes"
+    static let plannedMeals = "planned_meals"
 }
 
 // MARK: - Supabase Error

@@ -8,7 +8,6 @@ import Combine
 final class NotesViewModel: ObservableObject {
     // MARK: - Published Properties
 
-    @Published var selectedTheme: NoteTheme?
     @Published var searchText: String = ""
     @Published var isLoading = false
     @Published var error: String?
@@ -23,22 +22,9 @@ final class NotesViewModel: ObservableObject {
 
     // MARK: - Computed Properties
 
-    /// Filter predicate based on selected theme and search text
+    /// Filter predicate based on search text
     var filterPredicate: Predicate<LocalNote>? {
-        if let theme = selectedTheme {
-            let themeValue = theme.rawValue
-            if !searchText.isEmpty {
-                return #Predicate<LocalNote> { note in
-                    note.theme == themeValue &&
-                    (note.title.localizedStandardContains(searchText) ||
-                     note.contentPlainText.localizedStandardContains(searchText))
-                }
-            } else {
-                return #Predicate<LocalNote> { note in
-                    note.theme == themeValue
-                }
-            }
-        } else if !searchText.isEmpty {
+        if !searchText.isEmpty {
             return #Predicate<LocalNote> { note in
                 note.title.localizedStandardContains(searchText) ||
                 note.contentPlainText.localizedStandardContains(searchText)
@@ -51,7 +37,7 @@ final class NotesViewModel: ObservableObject {
 
     /// Create a new note
     func createNote(in context: ModelContext, accountId: UUID? = nil) -> LocalNote {
-        let note = LocalNote(title: "", theme: .standard, accountId: accountId)
+        let note = LocalNote(title: "", accountId: accountId)
         context.insert(note)
         return note
     }
@@ -83,7 +69,6 @@ final class NotesViewModel: ObservableObject {
     func duplicateNote(_ note: LocalNote, in context: ModelContext) -> LocalNote {
         let duplicate = LocalNote(
             title: note.title + " (Copy)",
-            theme: note.noteTheme,
             accountId: note.accountId
         )
         duplicate.content = note.content
@@ -114,21 +99,6 @@ final class NotesViewModel: ObservableObject {
             }
         } catch {
             self.error = "Failed to update note: \(error.localizedDescription)"
-        }
-    }
-
-    /// Update note theme
-    func updateTheme(_ theme: NoteTheme, for note: LocalNote, in context: ModelContext) {
-        note.noteTheme = theme
-        note.markAsModified()
-
-        do {
-            try context.save()
-            Task {
-                try? await syncService.sync(note)
-            }
-        } catch {
-            self.error = "Failed to update theme: \(error.localizedDescription)"
         }
     }
 

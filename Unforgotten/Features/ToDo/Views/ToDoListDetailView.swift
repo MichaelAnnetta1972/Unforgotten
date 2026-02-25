@@ -11,11 +11,13 @@ struct ToDoListDetailView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel: ToDoListDetailViewModel
     @State private var showingAddType = false
-    @State private var showingTypeSelector = false
+    @State private var showingDeleteTypeConfirmation = false
+    @State private var typeToDelete: ToDoListType?
     @State private var newTypeName = ""
     @State private var newItemText = ""
     @State private var showKeyboardToolbar = false
     @State private var showDeleteConfirmation = false
+    @State private var showingDueDatePicker = false
     @State private var focusedItemId: UUID?
     @FocusState private var newItemFocused: Bool
     @Environment(\.dismiss) private var dismiss
@@ -46,7 +48,7 @@ struct ToDoListDetailView: View {
                         HStack {
                             Spacer()
                             Button(action: { dismiss() }) {
-                                Image(systemName: "xmark")
+                                Image(systemName: "checkmark")
                                     .font(.system(size: 20, weight: .semibold))
                                     .foregroundColor(.textSecondary)
                                     .frame(width: 40, height: 40)
@@ -67,11 +69,9 @@ struct ToDoListDetailView: View {
                                 Spacer()
 
                                 if let type = viewModel.selectedType {
-                                    Button(action: {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                            showingTypeSelector = true
-                                        }
-                                    }) {
+                                    Menu {
+                                        typeMenuContent
+                                    } label: {
                                         Text(type)
                                             .font(.caption)
                                             .foregroundColor(.white)
@@ -80,6 +80,7 @@ struct ToDoListDetailView: View {
                                             .background(appAccentColor)
                                             .cornerRadius(6)
                                     }
+                                    .tint(appAccentColor)
                                 }
                             }
 
@@ -94,15 +95,14 @@ struct ToDoListDetailView: View {
                                     }
 
                                 HStack(spacing: 16) {
-                                    Button(action: {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                            showingTypeSelector = true
-                                        }
-                                    }) {
+                                    Menu {
+                                        typeMenuContent
+                                    } label: {
                                         Image(systemName: viewModel.selectedType != nil ? "tag.fill" : "tag")
                                             .font(.system(size: 20))
                                             .foregroundColor(viewModel.selectedType != nil ? appAccentColor : .textSecondary)
                                     }
+                                    .tint(appAccentColor)
 
                                     Button(action: { showDeleteConfirmation = true }) {
                                         Image(systemName: "trash")
@@ -114,6 +114,73 @@ struct ToDoListDetailView: View {
                             .padding(AppDimensions.cardPadding)
                             .background(Color.appBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
+                        // Due Date
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Due Date")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+
+                            HStack {
+                                if let date = viewModel.dueDate {
+                                    Text(date, style: .date)
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+
+                                    Spacer()
+
+                                    Button {
+                                        viewModel.dueDate = nil
+                                        viewModel.saveDueDate()
+                                        showingDueDatePicker = false
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.textSecondary)
+                                    }
+                                } else {
+                                    Text("No due date")
+                                        .font(.appBody)
+                                        .foregroundColor(.textSecondary)
+
+                                    Spacer()
+                                }
+
+                                Button {
+                                    showingDueDatePicker.toggle()
+                                } label: {
+                                    Image(systemName: "calendar")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(viewModel.dueDate != nil ? appAccentColor : .textSecondary)
+                                }
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.appBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+
+                            if showingDueDatePicker {
+                                VStack(spacing: 0) {
+                                    Text((viewModel.dueDate ?? Date()).formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                                        .font(.appBodyMedium)
+                                        .foregroundColor(.accentYellow)
+                                        .padding(.top, 12)
+
+                                    DatePicker("", selection: Binding(
+                                        get: { viewModel.dueDate ?? Date() },
+                                        set: { newDate in
+                                            viewModel.dueDate = newDate
+                                            viewModel.saveDueDate()
+                                        }
+                                    ), displayedComponents: .date)
+                                    .datePickerStyle(.wheel)
+                                    .colorScheme(.dark)
+                                    .tint(appAccentColor)
+                                }
+                                .padding(AppDimensions.cardPadding)
+                                .background(Color.appBackground)
+                                .cornerRadius(AppDimensions.cardCornerRadius)
+                            }
                         }
                         .padding(.horizontal, AppDimensions.screenPadding)
 
@@ -227,41 +294,6 @@ struct ToDoListDetailView: View {
             }
             .zIndex(2)
 
-            // Type selector overlay when modal is shown
-            if showingTypeSelector {
-                ZStack {
-                    Color.cardBackgroundLight.opacity(0.9)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeSelector = false
-                            }
-                        }
-
-                    TypeSelectorSheetOverlay(
-                        types: viewModel.availableTypes,
-                        selectedType: $viewModel.selectedType,
-                        onAddNewType: { showingAddType = true },
-                        onDeleteType: { type in
-                            Task {
-                                await viewModel.deleteType(type)
-                            }
-                        },
-                        onDismiss: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showingTypeSelector = false
-                            }
-                        },
-                        isShowing: showingTypeSelector
-                    )
-                }
-                .zIndex(5)
-                .transition(.opacity)
-                .onDisappear {
-                    viewModel.saveType()
-                }
-            }
-
         }
         .navigationBarHidden(true)
         .hideBottomNavBar()
@@ -273,6 +305,17 @@ struct ToDoListDetailView: View {
                 newTypeName = ""
             }
         }
+        .alert("Delete Type", isPresented: $showingDeleteTypeConfirmation) {
+            Button("Cancel", role: .cancel) { typeToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let type = typeToDelete {
+                    Task { await viewModel.deleteType(type) }
+                    typeToDelete = nil
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete '\(typeToDelete?.name ?? "")'?")
+        }
         .alert("Delete List", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -283,6 +326,12 @@ struct ToDoListDetailView: View {
         }
         .task {
             await viewModel.loadData(appState: appState)
+        }
+        .refreshable {
+            await viewModel.loadData(appState: appState)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .todosDidChange)) { _ in
+            Task { await viewModel.loadData(appState: appState) }
         }
         .onAppear {
             // Only auto-focus for newly created lists
@@ -307,6 +356,57 @@ struct ToDoListDetailView: View {
         Task {
             await viewModel.deleteList()
             dismiss()
+        }
+    }
+
+    // MARK: - Type Menu Content
+    @ViewBuilder
+    private var typeMenuContent: some View {
+        Button {
+            viewModel.selectedType = nil
+            viewModel.saveType()
+        } label: {
+            if viewModel.selectedType == nil {
+                Label("None", systemImage: "checkmark")
+            } else {
+                Text("None")
+            }
+        }
+
+        ForEach(viewModel.availableTypes) { type in
+            Button {
+                viewModel.selectedType = type.name
+                viewModel.saveType()
+            } label: {
+                if viewModel.selectedType == type.name {
+                    Label(type.name, systemImage: "checkmark")
+                } else {
+                    Text(type.name)
+                }
+            }
+        }
+
+        Divider()
+
+        Button {
+            showingAddType = true
+        } label: {
+            Label("Add New Type", systemImage: "plus")
+        }
+
+        if !viewModel.availableTypes.isEmpty {
+            Menu {
+                ForEach(viewModel.availableTypes) { type in
+                    Button(role: .destructive) {
+                        typeToDelete = type
+                        showingDeleteTypeConfirmation = true
+                    } label: {
+                        Label(type.name, systemImage: "trash")
+                    }
+                }
+            } label: {
+                Label("Delete a Type", systemImage: "trash")
+            }
         }
     }
 }
@@ -356,124 +456,3 @@ struct KeyboardToolbarView: View {
     }
 }
 
-// MARK: - Type Selector Sheet Overlay
-private struct TypeSelectorSheetOverlay: View {
-    let types: [ToDoListType]
-    @Binding var selectedType: String?
-    let onAddNewType: () -> Void
-    let onDeleteType: (ToDoListType) -> Void
-    let onDismiss: () -> Void
-    let isShowing: Bool
-    @Environment(\.appAccentColor) private var appAccentColor
-    @State private var scale: CGFloat = 0.8
-    @State private var opacity: Double = 0
-    @State private var typeToDelete: ToDoListType?
-    @State private var showDeleteConfirmation = false
-
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text("Select Type")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-                Spacer()
-                Button {
-                    onAddNewType()
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(appAccentColor)
-                }
-            }
-            .padding(.top, AppDimensions.cardPadding)
-            .padding(.horizontal, AppDimensions.cardPadding)
-
-            ScrollView {
-                VStack(spacing: 8) {
-                    // None option
-                    Button {
-                        selectedType = nil
-                        onDismiss()
-                    } label: {
-                        HStack {
-                            Text("None")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                            Spacer()
-                            if selectedType == nil {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(appAccentColor)
-                            }
-                        }
-                        .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft.opacity(0.4))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Type options with delete button
-                    ForEach(types) { type in
-                        HStack(spacing: 0) {
-                            Button {
-                                selectedType = type.name
-                                onDismiss()
-                            } label: {
-                                HStack {
-                                    Text(type.name)
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-                                    Spacer()
-                                    if selectedType == type.name {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                typeToDelete = type
-                                showDeleteConfirmation = true
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.red)
-                                    .frame(width: 44, height: 44)
-                            }
-                        }
-                        .padding(.leading, AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft.opacity(0.4))
-                        .cornerRadius(8)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
-            }
-            .frame(maxHeight: 300)
-        }
-        .frame(width: 280)
-        .background(Color.cardBackgroundLight)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-        .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
-        .scaleEffect(scale)
-        .opacity(opacity)
-        .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                scale = 1.0
-                opacity = 1.0
-            }
-        }
-        .alert("Delete Type", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                if let type = typeToDelete {
-                    onDeleteType(type)
-                }
-            }
-        } message: {
-            if let type = typeToDelete {
-                Text("Are you sure you want to delete the type '\(type.name)'? This will not delete any lists.")
-            }
-        }
-    }
-}

@@ -133,6 +133,27 @@ final class CachedStickyReminderRepository {
         triggerTime: Date,
         repeatInterval: StickyReminderInterval = .everyHour
     ) async throws -> StickyReminder {
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let insert = StickyReminderInsert(
+                    accountId: accountId,
+                    title: title,
+                    message: message,
+                    triggerTime: triggerTime,
+                    repeatInterval: repeatInterval
+                )
+                let remote = try await remoteRepository.createReminder(insert)
+                let local = LocalStickyReminder(from: remote)
+                modelContext.insert(local)
+                try? modelContext.save()
+                return remote
+            } catch {
+                print("[CachedStickyReminderRepo] Remote createReminder failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: create locally and queue for sync
         let local = LocalStickyReminder(
             id: UUID(),
             accountId: accountId,
@@ -162,29 +183,42 @@ final class CachedStickyReminderRepository {
             predicate: #Predicate { $0.id == reminderId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.title = reminder.title
-            local.message = reminder.message
-            local.triggerTime = reminder.triggerTime
-            local.repeatInterval = "\(reminder.repeatInterval.value)_\(reminder.repeatInterval.unit.rawValue)"
-            local.isActive = reminder.isActive
-            local.isDismissed = reminder.isDismissed
-            local.lastNotifiedAt = reminder.lastNotifiedAt
-            local.sortOrder = reminder.sortOrder
-            local.markAsModified()
-
-            syncEngine.queueChange(
-                entityType: "stickyReminder",
-                entityId: reminder.id,
-                accountId: reminder.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.title = reminder.title
+        local.message = reminder.message
+        local.triggerTime = reminder.triggerTime
+        local.repeatInterval = "\(reminder.repeatInterval.value)_\(reminder.repeatInterval.unit.rawValue)"
+        local.isActive = reminder.isActive
+        local.isDismissed = reminder.isDismissed
+        local.lastNotifiedAt = reminder.lastNotifiedAt
+        local.sortOrder = reminder.sortOrder
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let updated = try await remoteRepository.updateReminder(reminder)
+                local.isSynced = true
+                try modelContext.save()
+                return updated
+            } catch {
+                print("[CachedStickyReminderRepo] Remote updateReminder failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "stickyReminder",
+            entityId: reminder.id,
+            accountId: reminder.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Dismiss a reminder
@@ -193,22 +227,35 @@ final class CachedStickyReminderRepository {
             predicate: #Predicate { $0.id == id }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.isDismissed = true
-            local.markAsModified()
-
-            syncEngine.queueChange(
-                entityType: "stickyReminder",
-                entityId: id,
-                accountId: local.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.isDismissed = true
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let updated = try await remoteRepository.updateReminder(local.toRemote())
+                local.isSynced = true
+                try modelContext.save()
+                return updated
+            } catch {
+                print("[CachedStickyReminderRepo] Remote dismissReminder failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "stickyReminder",
+            entityId: id,
+            accountId: local.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Reactivate a dismissed reminder
@@ -217,23 +264,36 @@ final class CachedStickyReminderRepository {
             predicate: #Predicate { $0.id == id }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.isDismissed = false
-            local.isActive = true
-            local.markAsModified()
-
-            syncEngine.queueChange(
-                entityType: "stickyReminder",
-                entityId: id,
-                accountId: local.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.isDismissed = false
+        local.isActive = true
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let updated = try await remoteRepository.updateReminder(local.toRemote())
+                local.isSynced = true
+                try modelContext.save()
+                return updated
+            } catch {
+                print("[CachedStickyReminderRepo] Remote reactivateReminder failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "stickyReminder",
+            entityId: id,
+            accountId: local.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Delete a reminder
@@ -242,18 +302,31 @@ final class CachedStickyReminderRepository {
             predicate: #Predicate { $0.id == id }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.locallyDeleted = true
-            local.markAsModified()
+        guard let local = try modelContext.fetch(descriptor).first else { return }
 
-            syncEngine.queueChange(
-                entityType: "stickyReminder",
-                entityId: id,
-                accountId: local.accountId,
-                changeType: .delete
-            )
+        local.locallyDeleted = true
+        local.markAsModified()
 
-            try modelContext.save()
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.deleteReminder(id: id)
+                local.isSynced = true
+                try modelContext.save()
+                return
+            } catch {
+                print("[CachedStickyReminderRepo] Remote deleteReminder failed: \(error). Saving locally.")
+            }
         }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "stickyReminder",
+            entityId: id,
+            accountId: local.accountId,
+            changeType: .delete
+        )
+
+        try modelContext.save()
     }
 }

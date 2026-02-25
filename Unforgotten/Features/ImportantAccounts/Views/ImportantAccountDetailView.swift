@@ -14,6 +14,7 @@ struct ImportantAccountDetailView: View {
 
     @State private var showEditSheet = false
     @State private var showDeleteConfirmation = false
+    @State private var showFullscreenPhoto = false
     @State private var isDeleting = false
 
     var body: some View {
@@ -24,18 +25,57 @@ struct ImportantAccountDetailView: View {
                     accountName: account.accountName,
                     category: account.category,
                     onBack: { dismiss() },
-                    onEdit: { showEditSheet = true }
+                    onEdit: profile.isSyncedProfile ? nil : { showEditSheet = true }
                 )
 
                 // Detail Cards
                 VStack(spacing: AppDimensions.cardSpacing) {
+                    // Account Photo
+                    if let imageUrl = account.imageUrl, !imageUrl.isEmpty {
+                        Button {
+                            showFullscreenPhoto = true
+                        } label: {
+                            AsyncImage(url: URL(string: imageUrl)) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 200)
+                                        .clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                                        .contentShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                                case .failure:
+                                    EmptyView()
+                                case .empty:
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 200)
+                                @unknown default:
+                                    EmptyView()
+                                }
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
                     // Website
                     if let website = account.websiteURL, !website.isEmpty {
                         DetailRowCard(
                             label: "Website",
                             value: website,
                             icon: "globe",
-                            copyable: true
+                            copyable: true,
+                            tappable: true,
+                            onTap: {
+                                let urlString = website.hasPrefix("http://") || website.hasPrefix("https://")
+                                    ? website
+                                    : "https://\(website)"
+                                if let url = URL(string: urlString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
                         )
                     }
 
@@ -124,26 +164,28 @@ struct ImportantAccountDetailView: View {
                         .cornerRadius(AppDimensions.cardCornerRadius)
                     }
 
-                    // Delete Button
-                    Button(action: { showDeleteConfirmation = true }) {
-                        HStack {
-                            if isDeleting {
-                                ProgressView()
-                                    .tint(.red)
-                            } else {
-                                Image(systemName: "trash")
+                    // Delete Button (hidden for synced profiles - read-only view)
+                    if !profile.isSyncedProfile {
+                        Button(action: { showDeleteConfirmation = true }) {
+                            HStack {
+                                if isDeleting {
+                                    ProgressView()
+                                        .tint(.red)
+                                } else {
+                                    Image(systemName: "trash")
+                                }
+                                Text("Delete Account")
                             }
-                            Text("Delete Account")
+                            .font(.appBody)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(AppDimensions.cardCornerRadius)
                         }
-                        .font(.appBody)
-                        .foregroundColor(.red)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .disabled(isDeleting)
+                        .padding(.top, 20)
                     }
-                    .disabled(isDeleting)
-                    .padding(.top, 20)
 
                     // Bottom spacing for nav bar
                     Spacer()
@@ -164,6 +206,11 @@ struct ImportantAccountDetailView: View {
             ) { updatedAccount in
                 account = updatedAccount
                 onUpdate(updatedAccount)
+            }
+        }
+        .fullScreenCover(isPresented: $showFullscreenPhoto) {
+            if let imageUrl = account.imageUrl {
+                RemoteFullscreenImageView(imageUrl: imageUrl, title: account.accountName)
             }
         }
         .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
@@ -202,6 +249,8 @@ struct DetailRowCard: View {
     let icon: String
     let copyable: Bool
     var isHint: Bool = false
+    var tappable: Bool = false
+    var onTap: (() -> Void)? = nil
     @Environment(\.appAccentColor) private var appAccentColor
 
     @State private var showCopied = false
@@ -219,6 +268,12 @@ struct DetailRowCard: View {
 
                 Spacer()
 
+                if tappable {
+                    Image(systemName: "arrow.up.right.square")
+                        .foregroundColor(appAccentColor)
+                        .font(.caption)
+                }
+
                 if copyable {
                     Button(action: copyToClipboard) {
                         Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
@@ -230,11 +285,17 @@ struct DetailRowCard: View {
 
             Text(value)
                 .font(.appBody)
-                .foregroundColor(isHint ? appAccentColor : .textPrimary)
+                .foregroundColor(tappable ? appAccentColor : (isHint ? appAccentColor : .textPrimary))
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if tappable {
+                onTap?()
+            }
+        }
     }
 
     private func copyToClipboard() {
@@ -252,7 +313,7 @@ struct AccountDetailHeaderView: View {
     let accountName: String
     let category: AccountCategory?
     let onBack: () -> Void
-    let onEdit: () -> Void
+    let onEdit: (() -> Void)?
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(HeaderStyleManager.self) private var headerStyleManager
 
@@ -284,6 +345,7 @@ struct AccountDetailHeaderView: View {
                 }
             }
             .frame(height: headerHeight)
+            .allowsHitTesting(false)
 
             // Overlay
             LinearGradient(
@@ -291,6 +353,7 @@ struct AccountDetailHeaderView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .allowsHitTesting(false)
 
             // Content
             VStack {
@@ -324,19 +387,21 @@ struct AccountDetailHeaderView: View {
 
                     Spacer()
 
-                    // Edit button at bottom right
-                    Button(action: onEdit) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Edit")
-                                .font(.system(size: 14, weight: .semibold))
+                    // Edit button at bottom right (hidden for synced profiles)
+                    if let onEdit = onEdit {
+                        Button(action: onEdit) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Edit")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.2))
+                            .clipShape(Capsule())
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.2))
-                        .clipShape(Capsule())
                     }
                 }
                 .padding(.horizontal, AppDimensions.screenPadding)

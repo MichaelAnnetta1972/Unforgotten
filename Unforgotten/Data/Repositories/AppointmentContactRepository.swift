@@ -8,6 +8,8 @@ protocol AppointmentRepositoryProtocol {
     func getAppointmentsInRange(accountId: UUID, startDate: Date, endDate: Date) async throws -> [Appointment]
     func getTodaysAppointments(accountId: UUID) async throws -> [Appointment]
     func getAppointment(id: UUID) async throws -> Appointment
+    func getAppointmentsByIds(_ ids: [UUID]) async throws -> [Appointment]
+    func getSharedAppointments() async throws -> [Appointment]
     func createAppointment(_ appointment: AppointmentInsert) async throws -> Appointment
     func updateAppointment(_ appointment: Appointment) async throws -> Appointment
     func toggleAppointmentCompletion(id: UUID, isCompleted: Bool) async throws -> Appointment
@@ -109,7 +111,38 @@ final class AppointmentRepository: AppointmentRepositoryProtocol {
         
         return appointment
     }
-    
+
+    // MARK: - Get Appointments By IDs
+    func getAppointmentsByIds(_ ids: [UUID]) async throws -> [Appointment] {
+        guard !ids.isEmpty else { return [] }
+
+        let appointments: [Appointment] = try await supabase
+            .from(TableName.appointments)
+            .select()
+            .in("id", values: ids.map { $0.uuidString })
+            .order("date")
+            .execute()
+            .value
+
+        return appointments
+    }
+
+    // MARK: - Get Shared Appointments (via RPC)
+    /// Fetches appointments shared with the current user via SECURITY DEFINER function.
+    /// Bypasses RLS on the appointments table to enable cross-account reads.
+    func getSharedAppointments() async throws -> [Appointment] {
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            throw SupabaseError.notAuthenticated
+        }
+
+        let appointments: [Appointment] = try await supabase
+            .rpc("get_shared_appointments", params: ["p_user_id": userId.uuidString])
+            .execute()
+            .value
+
+        return appointments
+    }
+
     // MARK: - Create Appointment
     func createAppointment(_ appointment: AppointmentInsert) async throws -> Appointment {
         let created: Appointment = try await supabase
@@ -133,7 +166,11 @@ final class AppointmentRepository: AppointmentRepositoryProtocol {
             time: appointment.time,
             location: appointment.location,
             notes: appointment.notes,
+            imageUrl: appointment.imageUrl,
+            localImagePath: appointment.localImagePath,
             reminderOffsetMinutes: appointment.reminderOffsetMinutes,
+            repeatInterval: appointment.repeatInterval,
+            repeatUnit: appointment.repeatUnit,
             isCompleted: appointment.isCompleted
         )
 
@@ -187,7 +224,11 @@ struct AppointmentInsert: Encodable {
     let time: Date?
     let location: String?
     let notes: String?
+    let imageUrl: String?
+    let localImagePath: String?
     let reminderOffsetMinutes: Int?
+    let repeatInterval: Int?
+    let repeatUnit: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -200,7 +241,11 @@ struct AppointmentInsert: Encodable {
         case time
         case location
         case notes
+        case imageUrl = "image_url"
+        case localImagePath = "local_image_path"
         case reminderOffsetMinutes = "reminder_offset_minutes"
+        case repeatInterval = "repeat_interval"
+        case repeatUnit = "repeat_unit"
     }
 
     init(
@@ -214,7 +259,11 @@ struct AppointmentInsert: Encodable {
         time: Date? = nil,
         location: String? = nil,
         notes: String? = nil,
-        reminderOffsetMinutes: Int? = 60
+        imageUrl: String? = nil,
+        localImagePath: String? = nil,
+        reminderOffsetMinutes: Int? = 60,
+        repeatInterval: Int? = nil,
+        repeatUnit: String? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -226,7 +275,11 @@ struct AppointmentInsert: Encodable {
         self.time = time
         self.location = location
         self.notes = notes
+        self.imageUrl = imageUrl
+        self.localImagePath = localImagePath
         self.reminderOffsetMinutes = reminderOffsetMinutes
+        self.repeatInterval = repeatInterval
+        self.repeatUnit = repeatUnit
     }
 
     // Custom encoding to handle date and time fields for PostgreSQL
@@ -262,7 +315,11 @@ struct AppointmentInsert: Encodable {
 
         try container.encodeIfPresent(location, forKey: .location)
         try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try container.encodeIfPresent(localImagePath, forKey: .localImagePath)
         try container.encodeIfPresent(reminderOffsetMinutes, forKey: .reminderOffsetMinutes)
+        try container.encodeIfPresent(repeatInterval, forKey: .repeatInterval)
+        try container.encodeIfPresent(repeatUnit, forKey: .repeatUnit)
     }
 }
 
@@ -274,7 +331,11 @@ private struct AppointmentUpdate: Encodable {
     let time: Date?
     let location: String?
     let notes: String?
+    let imageUrl: String?
+    let localImagePath: String?
     let reminderOffsetMinutes: Int?
+    let repeatInterval: Int?
+    let repeatUnit: String?
     let isCompleted: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -285,7 +346,11 @@ private struct AppointmentUpdate: Encodable {
         case time
         case location
         case notes
+        case imageUrl = "image_url"
+        case localImagePath = "local_image_path"
         case reminderOffsetMinutes = "reminder_offset_minutes"
+        case repeatInterval = "repeat_interval"
+        case repeatUnit = "repeat_unit"
         case isCompleted = "is_completed"
     }
 
@@ -319,7 +384,11 @@ private struct AppointmentUpdate: Encodable {
 
         try container.encodeIfPresent(location, forKey: .location)
         try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try container.encodeIfPresent(localImagePath, forKey: .localImagePath)
         try container.encodeIfPresent(reminderOffsetMinutes, forKey: .reminderOffsetMinutes)
+        try container.encodeIfPresent(repeatInterval, forKey: .repeatInterval)
+        try container.encodeIfPresent(repeatUnit, forKey: .repeatUnit)
         try container.encode(isCompleted, forKey: .isCompleted)
     }
 }

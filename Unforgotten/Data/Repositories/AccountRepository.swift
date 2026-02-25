@@ -27,6 +27,7 @@ protocol AccountRepositoryProtocol {
     func updateMemberRole(memberId: UUID, role: MemberRole) async throws -> AccountMember
     func removeMember(memberId: UUID) async throws
     func getCurrentUserRole(accountId: UUID) async throws -> MemberRole?
+    func getAccountMember(accountId: UUID, userId: UUID) async throws -> AccountMember?
 }
 
 // MARK: - Account Repository Implementation
@@ -249,6 +250,19 @@ final class AccountRepository: AccountRepositoryProtocol {
             .value
         
         return members.first?.role
+    }
+
+    // MARK: - Get Account Member by User ID
+    func getAccountMember(accountId: UUID, userId: UUID) async throws -> AccountMember? {
+        let members: [AccountMember] = try await supabase
+            .from(TableName.accountMembers)
+            .select()
+            .eq("account_id", value: accountId)
+            .eq("user_id", value: userId)
+            .execute()
+            .value
+
+        return members.first
     }
 }
 

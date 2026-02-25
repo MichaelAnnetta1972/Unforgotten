@@ -8,17 +8,16 @@ struct CalendarView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     // iPad environment actions for full-screen overlays
-    @Environment(\.iPadCalendarFilterAction) private var iPadCalendarFilterAction
-    @Environment(\.iPadCalendarMemberFilterAction) private var iPadCalendarMemberFilterAction
     @Environment(\.iPadCalendarFilterBinding) private var iPadCalendarFilterBinding
+    @Environment(\.iPadCalendarCountdownTypeFilterBinding) private var iPadCalendarCountdownTypeFilterBinding
+    @Environment(\.iPadCalendarCustomTypeNameFilterBinding) private var iPadCalendarCustomTypeNameFilterBinding
     @Environment(\.iPadCalendarMemberFilterBinding) private var iPadCalendarMemberFilterBinding
     @Environment(\.iPadCalendarMembersWithEventsBinding) private var iPadCalendarMembersWithEventsBinding
     @Environment(\.iPadCalendarDayDetailAction) private var iPadCalendarDayDetailAction
     @Environment(\.iPadHomeAction) private var iPadHomeAction
+    @Environment(\.navigateToHomeTab) private var navigateToHomeTab
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showingFilters = false
-    @State private var showingMemberFilters = false
     @State private var showingDayDetail = false
     @State private var scrollToTodayTrigger = false
 
@@ -27,9 +26,20 @@ struct CalendarView: View {
     @State private var selectedCountdown: Countdown?
     @State private var selectedProfile: Profile?
     @State private var selectedMedication: Medication?
+    @State private var selectedToDoList: ToDoList?
 
     private var isiPad: Bool {
         horizontalSizeClass == .regular
+    }
+
+    /// Whether any main type filter is not at its default (all selected) state
+    private var hasActiveFilters: Bool {
+        viewModel.selectedFilters.count < CalendarEventFilter.allCases.count
+    }
+
+    /// Whether any countdown sub-type filter is deselected
+    private var hasActiveCountdownSubFilters: Bool {
+        !viewModel.allCountdownSubTypesSelected
     }
 
     var body: some View {
@@ -37,41 +47,60 @@ struct CalendarView: View {
             Color.appBackgroundLight.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Fixed Header Section
-                VStack(spacing: 0) {
-                    // Header
-                    CustomizableHeaderView(
-                        pageIdentifier: .calendar,
-                        title: "Calendar",
-                        showBackButton: iPadHomeAction == nil,
-                        backAction: { dismiss() },
-                        showHomeButton: iPadHomeAction != nil,
-                        homeAction: iPadHomeAction
-                    )
+                if isiPad {
+                    // iPad: Fixed Header Section
+                    VStack(spacing: 0) {
+                        CustomizableHeaderView(
+                            pageIdentifier: .calendar,
+                            title: "Calendar",
+                            showBackButton: iPadHomeAction == nil,
+                            backAction: { dismiss() },
+                            showHomeButton: iPadHomeAction != nil,
+                            homeAction: iPadHomeAction
+                        )
 
-                    // Viewing As Bar
-                    ViewingAsBar()
+                        ViewingAsBar()
 
-                    // Tab Picker and Controls - fixed below header
-                    VStack(spacing: AppDimensions.cardSpacing) {
-                        // Tab Picker - full width on iPhone, inline on iPad
-                        if !isiPad {
-                            calendarTabPicker
+                        VStack(spacing: AppDimensions.cardSpacing) {
+                            controlsRow
                         }
-
-                        // Controls Row (Tab Picker on iPad + View Mode Toggle + Filters)
-                        controlsRow
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .padding(.top, AppDimensions.cardSpacing)
+                        .padding(.bottom, AppDimensions.cardSpacing)
+                        .background(Color.appBackgroundLight)
                     }
-                    .padding(.horizontal, AppDimensions.screenPadding)
-                    .padding(.top, AppDimensions.cardSpacing)
-                    .padding(.bottom, AppDimensions.cardSpacing)
-                    .background(Color.appBackgroundLight)
                 }
 
                 // Scrollable Content Section
                 ScrollViewReader { scrollProxy in
                     ScrollView {
                         VStack(spacing: AppDimensions.cardSpacing) {
+                            // iPhone: Header scrolls with content
+                            if !isiPad {
+                                VStack(spacing: 0) {
+                                    CustomizableHeaderView(
+                                        pageIdentifier: .calendar,
+                                        title: "Calendar",
+                                        showBackButton: true,
+                                        backAction: { navigateToHomeTab?() ?? dismiss() },
+                                        showHomeButton: false,
+                                        homeAction: nil,
+                                        heightOverride: AppDimensions.headerHeight
+                                    )
+
+                                    ViewingAsBar()
+
+                                    VStack(spacing: AppDimensions.cardSpacing) {
+                                        calendarTabPicker
+                                        controlsRow
+                                    }
+                                    .padding(.horizontal, AppDimensions.screenPadding)
+                                    .padding(.top, AppDimensions.cardSpacing)
+                                    .padding(.bottom, AppDimensions.cardSpacing)
+                                }
+                                .padding(.horizontal, -AppDimensions.screenPadding)
+                            }
+
                             // Calendar Content
                             if viewModel.viewMode == .month {
                                 CalendarMonthView(viewModel: viewModel) {
@@ -114,22 +143,6 @@ struct CalendarView: View {
                 }
             }
 
-            // Event Type Filter overlay (only shown on iPhone - iPad uses full-screen overlay from iPadRootView)
-            if showingFilters && !isiPad {
-                CalendarFilterView(
-                    selectedFilters: $viewModel.selectedFilters,
-                    isPresented: $showingFilters
-                )
-            }
-
-            // Member Filter overlay (only shown on iPhone - iPad uses full-screen overlay from iPadRootView)
-            if showingMemberFilters && !isiPad {
-                CalendarMemberFilterView(
-                    selectedMemberFilters: $viewModel.selectedMemberFilters,
-                    isPresented: $showingMemberFilters,
-                    membersWithEvents: viewModel.membersWithEvents
-                )
-            }
 
             // Day detail overlay (only shown on iPhone - iPad uses full-screen overlay from iPadRootView)
             if showingDayDetail && !isiPad, let selectedDate = viewModel.selectedDate {
@@ -181,10 +194,30 @@ struct CalendarView: View {
                 MedicationDetailView(medication: medication)
             }
         }
+        .navigationDestination(isPresented: Binding(
+            get: { selectedToDoList != nil },
+            set: { if !$0 { selectedToDoList = nil } }
+        )) {
+            if let list = selectedToDoList {
+                ToDoListDetailView(list: list)
+            }
+        }
         .onChange(of: iPadCalendarFilterBinding?.wrappedValue) { _, newValue in
             // Sync iPad filter binding back to viewModel
             if let newValue = newValue {
                 viewModel.selectedFilters = newValue
+            }
+        }
+        .onChange(of: iPadCalendarCountdownTypeFilterBinding?.wrappedValue) { _, newValue in
+            // Sync iPad countdown type filter binding back to viewModel
+            if let newValue = newValue {
+                viewModel.selectedCountdownTypes = newValue
+            }
+        }
+        .onChange(of: iPadCalendarCustomTypeNameFilterBinding?.wrappedValue) { _, newValue in
+            // Sync iPad custom type name filter binding back to viewModel
+            if let newValue = newValue {
+                viewModel.selectedCustomTypeNames = newValue
             }
         }
         .onChange(of: iPadCalendarMemberFilterBinding?.wrappedValue) { _, newValue in
@@ -207,8 +240,9 @@ struct CalendarView: View {
         .navigationBarHidden(true)
         .task {
             await viewModel.loadData(appState: appState)
-            // After data loads, sync members with events to iPad
+            // After data loads, sync state to iPad bindings
             iPadCalendarMembersWithEventsBinding?.wrappedValue = viewModel.membersWithEvents
+            iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
         }
     }
 
@@ -255,7 +289,7 @@ struct CalendarView: View {
                                 .lineLimit(1)
                                 .foregroundColor(viewModel.selectedTab == tab ? .black : .textSecondary)
                                 .frame(minWidth: 60)
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
                                 .background(
                                     viewModel.selectedTab == tab ? appAccentColor : Color.clear
@@ -311,38 +345,147 @@ struct CalendarView: View {
             .background(Color.cardBackgroundSoft)
             .cornerRadius(12)
 
-            // Event Type Filter button
-            Button {
-                // On iPad, use the environment action for full-screen overlay
-                if let iPadAction = iPadCalendarFilterAction {
-                    iPadAction()
-                } else {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showingFilters = true
+            // Event Type Filter menu
+            Menu {
+                ForEach(CalendarEventFilter.allCases) { filter in
+                    Button {
+                        toggleFilter(filter)
+                    } label: {
+                        if viewModel.selectedFilters.contains(filter) {
+                            Label(filter.displayName, systemImage: "checkmark")
+                        } else {
+                            Label(filter.displayName, systemImage: filter.icon)
+                        }
                     }
                 }
+
+                Divider()
+
+                Button {
+                    viewModel.selectedFilters = Set(CalendarEventFilter.allCases)
+                    iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
+                } label: {
+                    Label("Select All", systemImage: "checkmark.circle")
+                }
+
+                Button {
+                    viewModel.selectedFilters = []
+                    iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
+                } label: {
+                    Label("Clear All", systemImage: "xmark.circle")
+                }
             } label: {
-                Image(systemName: viewModel.selectedFilters.count < CalendarEventFilter.allCases.count
+                Image(systemName: hasActiveFilters
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
                     .font(.system(size: 20))
-                    .foregroundColor(viewModel.selectedFilters.count < CalendarEventFilter.allCases.count
+                    .foregroundColor(hasActiveFilters
                         ? appAccentColor
                         : .textSecondary)
                     .frame(width: 44, height: 44)
                     .background(Color.cardBackgroundSoft)
                     .cornerRadius(AppDimensions.cardCornerRadius)
             }
+            .tint(appAccentColor)
 
-            // Member Filter button (only shown when Family tab is selected)
+            // Countdown Event Sub-Type Filter menu (only shown when Events filter is active)
+            if viewModel.selectedFilters.contains(.countdowns),
+               !viewModel.availableCountdownTypes.isEmpty || !viewModel.availableCustomTypeNames.isEmpty {
+                Menu {
+                    Text("Event Types")
+
+                    // Standard countdown types in use
+                    ForEach(viewModel.availableCountdownTypes) { type in
+                        Button {
+                            viewModel.toggleCountdownType(type)
+                            iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
+                        } label: {
+                            if viewModel.selectedCountdownTypes.contains(type) {
+                                Label(type.displayName, systemImage: "checkmark")
+                            } else {
+                                Label(type.displayName, systemImage: type.icon)
+                            }
+                        }
+                    }
+
+                    // Custom type names in use
+                    ForEach(viewModel.availableCustomTypeNames, id: \.self) { name in
+                        Button {
+                            viewModel.toggleCustomTypeName(name)
+                            iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
+                        } label: {
+                            if viewModel.selectedCustomTypeNames.contains(name) {
+                                Label(name, systemImage: "checkmark")
+                            } else {
+                                Label(name, systemImage: CountdownType.custom.icon)
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    Button {
+                        viewModel.selectAllCountdownSubTypes()
+                        iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
+                        iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
+                    } label: {
+                        Label("Select All", systemImage: "checkmark.circle")
+                    }
+
+                    Button {
+                        viewModel.clearAllCountdownSubTypes()
+                        iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
+                        iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
+                    } label: {
+                        Label("Clear All", systemImage: "xmark.circle")
+                    }
+                } label: {
+                    Image(systemName: hasActiveCountdownSubFilters
+                        ? "tag.circle.fill"
+                        : "tag.circle")
+                        .font(.system(size: 20))
+                        .foregroundColor(hasActiveCountdownSubFilters
+                            ? appAccentColor
+                            : .textSecondary)
+                        .frame(width: 44, height: 44)
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                }
+                .tint(appAccentColor)
+            }
+
+            // Member Filter menu (only shown when Family tab is selected)
             if viewModel.selectedTab == .family {
-                Button {
-                    // On iPad, use the environment action for full-screen overlay
-                    if let iPadAction = iPadCalendarMemberFilterAction {
-                        iPadAction()
+                Menu {
+                    if viewModel.membersWithEvents.isEmpty {
+                        Text("No members with events")
                     } else {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showingMemberFilters = true
+                        ForEach(viewModel.membersWithEvents) { member in
+                            Button {
+                                toggleMemberFilter(member.userId)
+                            } label: {
+                                if viewModel.selectedMemberFilters.contains(member.userId) {
+                                    Label(viewModel.profileName(for: member), systemImage: "checkmark")
+                                } else {
+                                    Label(viewModel.profileName(for: member), systemImage: "person")
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        Button {
+                            viewModel.selectedMemberFilters = Set(viewModel.membersWithEvents.map { $0.userId })
+                            iPadCalendarMemberFilterBinding?.wrappedValue = viewModel.selectedMemberFilters
+                        } label: {
+                            Label("Select All", systemImage: "checkmark.circle")
+                        }
+
+                        Button {
+                            viewModel.selectedMemberFilters = []
+                            iPadCalendarMemberFilterBinding?.wrappedValue = viewModel.selectedMemberFilters
+                        } label: {
+                            Label("Clear All", systemImage: "xmark.circle")
                         }
                     }
                 } label: {
@@ -357,6 +500,7 @@ struct CalendarView: View {
                         .background(Color.cardBackgroundSoft)
                         .cornerRadius(AppDimensions.cardCornerRadius)
                 }
+                .tint(appAccentColor)
             }
         }
     }
@@ -403,18 +547,40 @@ struct CalendarView: View {
         .padding(.vertical, 40)
     }
 
+    // MARK: - Filter Toggles
+
+    private func toggleFilter(_ filter: CalendarEventFilter) {
+        if viewModel.selectedFilters.contains(filter) {
+            viewModel.selectedFilters.remove(filter)
+        } else {
+            viewModel.selectedFilters.insert(filter)
+        }
+        iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
+    }
+
+    private func toggleMemberFilter(_ userId: UUID) {
+        if viewModel.selectedMemberFilters.contains(userId) {
+            viewModel.selectedMemberFilters.remove(userId)
+        } else {
+            viewModel.selectedMemberFilters.insert(userId)
+        }
+        iPadCalendarMemberFilterBinding?.wrappedValue = viewModel.selectedMemberFilters
+    }
+
     // MARK: - Event Selection Handler
 
     private func handleEventSelection(_ event: CalendarEvent) {
         switch event {
         case .appointment(let appointment, _):
             selectedAppointment = appointment
-        case .countdown(let countdown, _):
+        case .countdown(let countdown, _, _):
             selectedCountdown = countdown
         case .birthday(let upcomingBirthday):
             selectedProfile = upcomingBirthday.profile
         case .medication(let medication, _, _):
             selectedMedication = medication
+        case .todoList(let list):
+            selectedToDoList = list
         }
     }
 }

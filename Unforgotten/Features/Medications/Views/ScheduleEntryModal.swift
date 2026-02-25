@@ -249,7 +249,7 @@ struct ScheduleEntryModal: View {
             } else if dayNames.count == 2 {
                 daysDescription = dayNames.joined(separator: " and ")
             } else {
-                daysDescription = dayNames.dropLast().joined(separator: ", ") + ", and " + dayNames.last!
+                daysDescription = dayNames.dropLast().joined(separator: ", ") + ", and " + (dayNames.last ?? "")
             }
 
             return "This schedule will be active on \(daysDescription) for \(durationValue) \(unitName)."

@@ -12,6 +12,10 @@ struct StickyReminderListView: View {
     @State private var showAddReminder = false
     @State private var showUpgradePrompt = false
     @State private var errorMessage: String?
+    @State private var reminderToDelete: StickyReminder?
+    @State private var showDeleteConfirmation = false
+    @State private var activeListHeight: CGFloat = 0
+    @State private var dismissedListHeight: CGFloat = 0
 
     /// Check if we're in iPad mode (regular size class)
     private var isiPad: Bool {
@@ -87,22 +91,88 @@ struct StickyReminderListView: View {
                         // Active Reminders Section
                         if !activeReminders.isEmpty {
                             sectionHeader("Active Reminders", count: activeReminders.count)
-                            ForEach(activeReminders) { reminder in
-                                NavigationLink(destination: StickyReminderDetailView(reminder: reminder)) {
-                                    StickyReminderCard(reminder: reminder)
+                            List {
+                                ForEach(activeReminders) { reminder in
+                                    ZStack {
+                                        NavigationLink(destination: StickyReminderDetailView(reminder: reminder)) {
+                                            EmptyView()
+                                        }
+                                        .opacity(0)
+
+                                        StickyReminderCard(reminder: reminder)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        if canEdit {
+                                            Button(role: .destructive) {
+                                                reminderToDelete = reminder
+                                                showDeleteConfirmation = true
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
+                                    }
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .listStyle(.plain)
+                            .scrollDisabled(true)
+                            .scrollContentBackground(.hidden)
+                            .frame(height: activeListHeight)
+                            .onChange(of: activeReminders.count) { _, count in
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                activeListHeight = CGFloat(count) * (rowHeight + spacing)
+                            }
+                            .onAppear {
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                activeListHeight = CGFloat(activeReminders.count) * (rowHeight + spacing)
                             }
                         }
 
                         // Dismissed Reminders Section
                         if !dismissedReminders.isEmpty {
                             sectionHeader("Dismissed", count: dismissedReminders.count)
-                            ForEach(dismissedReminders) { reminder in
-                                NavigationLink(destination: StickyReminderDetailView(reminder: reminder)) {
-                                    StickyReminderCard(reminder: reminder)
+                            List {
+                                ForEach(dismissedReminders) { reminder in
+                                    ZStack {
+                                        NavigationLink(destination: StickyReminderDetailView(reminder: reminder)) {
+                                            EmptyView()
+                                        }
+                                        .opacity(0)
+
+                                        StickyReminderCard(reminder: reminder)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        if canEdit {
+                                            Button(role: .destructive) {
+                                                reminderToDelete = reminder
+                                                showDeleteConfirmation = true
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
+                                    }
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .listStyle(.plain)
+                            .scrollDisabled(true)
+                            .scrollContentBackground(.hidden)
+                            .frame(height: dismissedListHeight)
+                            .onChange(of: dismissedReminders.count) { _, count in
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                dismissedListHeight = CGFloat(count) * (rowHeight + spacing)
+                            }
+                            .onAppear {
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                dismissedListHeight = CGFloat(dismissedReminders.count) * (rowHeight + spacing)
                             }
                         }
                     }
@@ -141,6 +211,23 @@ struct StickyReminderListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .stickyRemindersDidChange)) { _ in
             Task {
                 await loadReminders()
+            }
+        }
+        .alert("Delete Reminder", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                reminderToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let reminder = reminderToDelete {
+                    Task {
+                        await deleteReminder(reminder)
+                        reminderToDelete = nil
+                    }
+                }
+            }
+        } message: {
+            if let reminder = reminderToDelete {
+                Text("Are you sure you want to delete \"\(reminder.title)\"? This cannot be undone.")
             }
         }
     }
@@ -236,6 +323,17 @@ struct StickyReminderListView: View {
     }
 
     // MARK: - Actions
+    private func deleteReminder(_ reminder: StickyReminder) async {
+        do {
+            try await appState.stickyReminderRepository.deleteReminder(id: reminder.id)
+            await NotificationService.shared.cancelStickyReminder(reminderId: reminder.id)
+            reminders.removeAll { $0.id == reminder.id }
+            NotificationCenter.default.post(name: .stickyRemindersDidChange, object: nil)
+        } catch {
+            errorMessage = "Failed to delete reminder: \(error.localizedDescription)"
+        }
+    }
+
     private func loadReminders() async {
         guard let account = appState.currentAccount else { return }
         isLoading = true
@@ -314,11 +412,6 @@ struct StickyReminderCard: View {
             }
 
             Spacer()
-
-            // Chevron indicator for navigation
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.textSecondary.opacity(0.5))
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)

@@ -39,6 +39,7 @@ struct CustomizableHeaderView: View {
     var roundedTopLeftCorner: Bool = false
     var useLogo: Bool = false
     var logoImageName: String? = nil
+    var heightOverride: CGFloat? = nil
 
     // Environment
     @Environment(UserHeaderOverrides.self) private var headerOverrides
@@ -82,6 +83,11 @@ struct CustomizableHeaderView: View {
         return corners
     }
 
+    /// Effective header height (uses override if provided, otherwise default)
+    private var effectiveHeaderHeight: CGFloat {
+        heightOverride ?? AppDimensions.headerHeight
+    }
+
     /// Corner radius for header
     private var headerCornerRadius: CGFloat {
         headerRoundedCorners.isEmpty ? 0 : 24
@@ -93,9 +99,9 @@ struct CustomizableHeaderView: View {
             // Use id modifier to force recreation when style changes
             GeometryReader { geometry in
                 backgroundView
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottom)
             }
-            .frame(height: AppDimensions.headerHeight)
+            .frame(height: effectiveHeaderHeight)
             .clipped()
             .id(headerStyleManager.currentStyle.id)
 
@@ -231,7 +237,7 @@ struct CustomizableHeaderView: View {
                     .scaleEffect(1.5)
             }
         }
-        .frame(height: AppDimensions.headerHeight)
+        .frame(height: effectiveHeaderHeight)
         .clipShape(
             RoundedCorner(
                 radius: headerCornerRadius,

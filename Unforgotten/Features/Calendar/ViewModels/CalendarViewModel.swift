@@ -39,6 +39,8 @@ class CalendarViewModel: ObservableObject {
     @Published var selectedDate: Date? = nil
     @Published var currentMonth: Date = Date()
     @Published var selectedFilters: Set<CalendarEventFilter> = Set(CalendarEventFilter.allCases)
+    @Published var selectedCountdownTypes: Set<CountdownType> = Set(CountdownType.allCases) // Sub-filter for standard countdown types
+    @Published var selectedCustomTypeNames: Set<String> = [] // Sub-filter for custom countdown type names (populated on data load)
     @Published var selectedMemberFilters: Set<UUID> = [] // Empty means "all members" - stores user IDs
 
     @Published var events: [CalendarEvent] = []
@@ -58,21 +60,69 @@ class CalendarViewModel: ObservableObject {
     var membersWithEvents: [AccountMemberWithUser] {
         // Return all account members - they represent the "invited family members"
         // The filter will work for any events linked to profiles that have linkedUserId set
-        return accountMembers.sorted { $0.displayName < $1.displayName }
+        return accountMembers.sorted { profileName(for: $0) < profileName(for: $1) }
     }
 
     /// Helper to check which profiles are linked to account members (for debugging)
     var linkedProfileUserIds: Set<UUID> {
-        Set(profiles.compactMap { $0.linkedUserId })
+        Set(profiles.compactMap { $0.linkedUserId ?? $0.sourceUserId })
+    }
+
+    /// Standard countdown types that are actually in use (excluding .custom which is shown by name)
+    var availableCountdownTypes: [CountdownType] {
+        let countdownEvents = events.compactMap { event -> Countdown? in
+            if case .countdown(let cd, _, _) = event { return cd }
+            return nil
+        }
+        let usedTypes = Set(countdownEvents.map { $0.type })
+        return CountdownType.allCases.filter { usedTypes.contains($0) && $0 != .custom }
+    }
+
+    /// Unique custom type names used by existing countdowns
+    var availableCustomTypeNames: [String] {
+        let countdownEvents = events.compactMap { event -> Countdown? in
+            if case .countdown(let cd, _, _) = event { return cd }
+            return nil
+        }
+        let names = countdownEvents
+            .filter { $0.type == .custom }
+            .compactMap { $0.customType }
+        return Array(Set(names)).sorted()
+    }
+
+    /// Whether all countdown sub-types are selected
+    var allCountdownSubTypesSelected: Bool {
+        let allStandardSelected = Set(availableCountdownTypes).isSubset(of: selectedCountdownTypes)
+        let allCustomSelected = Set(availableCustomTypeNames).isSubset(of: selectedCustomTypeNames)
+        return allStandardSelected && allCustomSelected
+    }
+
+    /// Resolves a member's display name using their linked profile's preferred name/full name
+    func profileName(for member: AccountMemberWithUser) -> String {
+        if let profile = profiles.first(where: { ($0.linkedUserId ?? $0.sourceUserId) == member.userId }) {
+            return profile.displayName
+        }
+        return member.displayName
     }
 
     // MARK: - Computed Properties
 
-    /// Events filtered by the selected type filters and member filters
+    /// Events filtered by the selected type filters, countdown sub-type filters, and member filters
     var filteredEvents: [CalendarEvent] {
         events.filter { event in
             // Must match type filter
             guard selectedFilters.contains(event.filterType) else { return false }
+
+            // For countdown events, also check the sub-type filter
+            if case .countdown(let cd, _, _) = event {
+                if cd.type == .custom {
+                    if let customName = cd.customType, !customName.isEmpty {
+                        guard selectedCustomTypeNames.contains(customName) else { return false }
+                    }
+                } else {
+                    guard selectedCountdownTypes.contains(cd.type) else { return false }
+                }
+            }
 
             // If no member filters selected, show all events
             if selectedMemberFilters.isEmpty {
@@ -85,7 +135,7 @@ class CalendarViewModel: ObservableObject {
             if let profileId = event.profileId {
                 // Find the profile and check its linkedUserId
                 if let profile = profiles.first(where: { $0.id == profileId }),
-                   let linkedUserId = profile.linkedUserId {
+                   let linkedUserId = profile.linkedUserId ?? profile.sourceUserId {
                     return selectedMemberFilters.contains(linkedUserId)
                 }
                 // Profile not linked to any user - don't show when filtering by members
@@ -112,9 +162,21 @@ class CalendarViewModel: ObservableObject {
     /// - Shared BY a selected member, OR
     /// - Shared WITH a selected member
     var familyEvents: [CalendarEvent] {
-        // Start with events filtered by type
+        // Start with events filtered by type and countdown sub-type
         let typeFilteredEvents = events.filter { event in
-            selectedFilters.contains(event.filterType)
+            guard selectedFilters.contains(event.filterType) else { return false }
+
+            // For countdown events, also check the sub-type filter
+            if case .countdown(let cd, _, _) = event {
+                if cd.type == .custom {
+                    if let customName = cd.customType, !customName.isEmpty {
+                        return selectedCustomTypeNames.contains(customName)
+                    }
+                } else {
+                    return selectedCountdownTypes.contains(cd.type)
+                }
+            }
+            return true
         }
 
         // Filter to only shared events
@@ -135,11 +197,11 @@ class CalendarViewModel: ObservableObject {
             case .appointment(let apt, _):
                 eventId = apt.id
                 eventType = .appointment
-            case .countdown(let cd, _):
+            case .countdown(let cd, _, _):
                 eventId = cd.id
                 eventType = .countdown
-            case .birthday, .medication:
-                // Birthdays and medications can't be shared to family calendar
+            case .birthday, .medication, .todoList:
+                // Birthdays, medications, and to-do lists can't be shared to family calendar
                 return false
             }
 
@@ -252,8 +314,8 @@ class CalendarViewModel: ObservableObject {
             sharedAppointmentIds = sharedIds.appointmentIds
             sharedCountdownIds = sharedIds.countdownIds
 
-            // Load full share objects for filtering by sharedByUserId
-            familyShares = try await appState.familyCalendarRepository.getAllSharesForAccount(accountId: account.id)
+            // Load full share objects for filtering by sharedByUserId (across all accounts)
+            familyShares = try await appState.familyCalendarRepository.getSharesVisibleToUser()
 
             // Load share members for each share (for filtering by "shared with")
             var memberMap: [UUID: Set<UUID>] = [:]
@@ -263,17 +325,48 @@ class CalendarViewModel: ObservableObject {
             }
             familyShareMembers = memberMap
 
+            // Add all connected users (from profile_syncs) to accountMembers so they appear in the member filter
+            let existingMemberUserIds = Set(accountMembers.map { $0.userId })
+            if let currentUserId = await SupabaseManager.shared.currentUserId {
+                let syncs = try await appState.profileSyncRepository.getSyncsForUser(userId: currentUserId)
+                var connectedUserIds = Set<UUID>()
+                for sync in syncs {
+                    if sync.inviterUserId == currentUserId {
+                        connectedUserIds.insert(sync.acceptorUserId)
+                    } else {
+                        connectedUserIds.insert(sync.inviterUserId)
+                    }
+                }
+                // Remove users already in accountMembers
+                connectedUserIds.subtract(existingMemberUserIds)
+                // Look up connected users and create synthetic AccountMemberWithUser entries
+                for userId in connectedUserIds {
+                    if let appUser = try? await appState.appUserRepository.getUser(id: userId) {
+                        let syntheticMember = AccountMember(
+                            id: userId,
+                            accountId: account.id,
+                            userId: userId,
+                            role: .viewer,
+                            createdAt: Date()
+                        )
+                        accountMembers.append(AccountMemberWithUser(member: syntheticMember, user: appUser))
+                    }
+                }
+            }
+
             // Load all event types in parallel
             async let appointmentsTask = loadAppointments(appState: appState, accountId: account.id)
             async let countdownsTask = loadCountdowns(appState: appState, accountId: account.id)
             async let birthdaysTask = loadBirthdays(appState: appState, accountId: account.id)
             async let medicationsTask = loadMedications(appState: appState, accountId: account.id)
+            async let todoListsTask = loadToDoLists(appState: appState, accountId: account.id)
 
-            let (appointments, countdowns, birthdays, medications) = await (
+            let (appointments, countdowns, birthdays, medications, todoLists) = await (
                 appointmentsTask,
                 countdownsTask,
                 birthdaysTask,
-                medicationsTask
+                medicationsTask,
+                todoListsTask
             )
 
             // Combine all events
@@ -282,8 +375,12 @@ class CalendarViewModel: ObservableObject {
             allEvents.append(contentsOf: countdowns)
             allEvents.append(contentsOf: birthdays)
             allEvents.append(contentsOf: medications)
+            allEvents.append(contentsOf: todoLists)
 
             events = allEvents
+
+            // Initialize custom type name selections to include all available custom types
+            selectedCustomTypeNames = Set(availableCustomTypeNames)
 
         } catch {
             self.error = error.localizedDescription
@@ -297,8 +394,22 @@ class CalendarViewModel: ObservableObject {
 
     private func loadAppointments(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
         do {
-            let appointments = try await appState.appointmentRepository.getAppointments(accountId: accountId)
-            return appointments.map { apt in
+            let ownAppointments = try await appState.appointmentRepository.getAppointments(accountId: accountId)
+            let ownIds = Set(ownAppointments.map { $0.id })
+            var allAppointments = ownAppointments
+
+            // Fetch shared appointments via RPC (bypasses RLS on appointments table)
+            do {
+                let shared = try await appState.appointmentRepository.getSharedAppointments()
+                let newShared = shared.filter { !ownIds.contains($0.id) }
+                allAppointments.append(contentsOf: newShared)
+            } catch {
+                #if DEBUG
+                print("Failed to load shared appointments: \(error)")
+                #endif
+            }
+
+            return allAppointments.map { apt in
                 let isShared = sharedAppointmentIds.contains(apt.id)
                 return CalendarEvent.appointment(apt, isShared: isShared)
             }
@@ -312,10 +423,47 @@ class CalendarViewModel: ObservableObject {
 
     private func loadCountdowns(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
         do {
-            let countdowns = try await appState.countdownRepository.getCountdowns(accountId: accountId)
-            return countdowns.map { cd in
+            let ownCountdowns = try await appState.countdownRepository.getCountdowns(accountId: accountId)
+            let ownIds = Set(ownCountdowns.map { $0.id })
+            var allCountdowns = ownCountdowns
+
+            // Fetch shared countdowns via RPC (bypasses RLS on countdowns table)
+            do {
+                let shared = try await appState.countdownRepository.getSharedCountdowns()
+                let newShared = shared.filter { !ownIds.contains($0.id) }
+                allCountdowns.append(contentsOf: newShared)
+            } catch {
+                #if DEBUG
+                print("Failed to load shared countdowns: \(error)")
+                #endif
+            }
+
+            let calendar = Calendar.current
+            return allCountdowns.flatMap { cd -> [CalendarEvent] in
                 let isShared = sharedCountdownIds.contains(cd.id)
-                return CalendarEvent.countdown(cd, isShared: isShared)
+
+                // Grouped events (new multi-day) or single-day — each is its own calendar event
+                if cd.groupId != nil || cd.endDate == nil {
+                    return [CalendarEvent.countdown(cd, isShared: isShared)]
+                }
+
+                // Legacy multi-day events (endDate set, no groupId) — expand into per-day entries
+                guard let endDate = cd.endDate else {
+                    return [CalendarEvent.countdown(cd, isShared: isShared)]
+                }
+
+                let startDay = calendar.startOfDay(for: cd.date)
+                let endDay = calendar.startOfDay(for: endDate)
+                var events: [CalendarEvent] = []
+                var currentDay = startDay
+
+                while currentDay <= endDay {
+                    events.append(CalendarEvent.countdown(cd, isShared: isShared, displayDate: currentDay))
+                    guard let nextDay = calendar.date(byAdding: .day, value: 1, to: currentDay) else { break }
+                    currentDay = nextDay
+                }
+
+                return events
             }
         } catch {
             #if DEBUG
@@ -389,6 +537,20 @@ class CalendarViewModel: ObservableObject {
         }
     }
 
+    private func loadToDoLists(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
+        do {
+            let lists = try await appState.toDoRepository.getListsWithDueDates(accountId: accountId)
+            return lists.map { list in
+                CalendarEvent.todoList(list)
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load todo lists: \(error)")
+            #endif
+            return []
+        }
+    }
+
     // MARK: - Actions
 
     func toggleFilter(_ filter: CalendarEventFilter) {
@@ -405,6 +567,32 @@ class CalendarViewModel: ObservableObject {
 
     func clearAllFilters() {
         selectedFilters = []
+    }
+
+    func toggleCountdownType(_ type: CountdownType) {
+        if selectedCountdownTypes.contains(type) {
+            selectedCountdownTypes.remove(type)
+        } else {
+            selectedCountdownTypes.insert(type)
+        }
+    }
+
+    func toggleCustomTypeName(_ name: String) {
+        if selectedCustomTypeNames.contains(name) {
+            selectedCustomTypeNames.remove(name)
+        } else {
+            selectedCustomTypeNames.insert(name)
+        }
+    }
+
+    func selectAllCountdownSubTypes() {
+        selectedCountdownTypes = Set(CountdownType.allCases)
+        selectedCustomTypeNames = Set(availableCustomTypeNames)
+    }
+
+    func clearAllCountdownSubTypes() {
+        selectedCountdownTypes = []
+        selectedCustomTypeNames = []
     }
 
     func toggleMemberFilter(_ userId: UUID) {

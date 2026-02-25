@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import PhotosUI
 
 // MARK: - Note Editor View
 /// Full-screen editor for creating and editing notes with rich text formatting like Apple Notes
@@ -8,6 +9,7 @@ struct NoteEditorView: View {
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(HeaderStyleManager.self) private var headerStyleManager
 
     let note: LocalNote
     let isNewNote: Bool
@@ -23,9 +25,10 @@ struct NoteEditorView: View {
 
     @State private var title: String = ""
     @State private var attributedContent: NSAttributedString = NSAttributedString()
-    @State private var selectedTheme: NoteTheme = .standard
     @State private var showShareSheet = false
     @State private var showDeleteConfirmation = false
+    @State private var showImagePicker = false
+    @State private var pickedImage: UIImage?
     @State private var isPinned: Bool = false
     @State private var didSave: Bool = false
     @State private var syncTask: Task<Void, Never>?
@@ -45,9 +48,8 @@ struct NoteEditorView: View {
     // Store original values to detect changes
     private let originalTitle: String
     private let originalContent: NSAttributedString
-    private let originalTheme: NoteTheme
     private let originalIsPinned: Bool
-    
+
 
     init(note: LocalNote, isNewNote: Bool = false, onDelete: (() -> Void)? = nil, onSave: (() -> Void)? = nil, onClose: (() -> Void)? = nil) {
         self.note = note
@@ -59,12 +61,10 @@ struct NoteEditorView: View {
         // Store original values
         self.originalTitle = note.title
         self.originalContent = note.getAttributedContent()
-        self.originalTheme = note.noteTheme
         self.originalIsPinned = note.isPinned
 
         _title = State(initialValue: note.title)
         _attributedContent = State(initialValue: note.getAttributedContent())
-        _selectedTheme = State(initialValue: note.noteTheme)
         _isPinned = State(initialValue: note.isPinned)
     }
 
@@ -74,7 +74,7 @@ struct NoteEditorView: View {
 
                 // Main content with fixed header and editor
                 VStack(spacing: 0) {
-                    // Fixed theme-based header image (50% height)
+                    // Fixed header image (50% height)
                     noteHeaderSection
 
                     // Content area
@@ -83,7 +83,10 @@ struct NoteEditorView: View {
                         if isiPad {
                             InlineFormattingToolbar(
                                 formattingActions: formattingActions,
-                                accentColor: appAccentColor
+                                accentColor: appAccentColor,
+                                onAttachImage: {
+                                    showImagePicker = true
+                                }
                             )
                             .padding(.horizontal, 24)
                             .padding(.top, 16)
@@ -107,7 +110,10 @@ struct NoteEditorView: View {
                                 // Content changed - auto-save will handle this on dismiss
                             },
                             hideKeyboardToolbar: isiPad,
-                            formattingActions: formattingActions
+                            formattingActions: formattingActions,
+                            onAttachImageTapped: {
+                                showImagePicker = true
+                            }
                         )
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
@@ -151,8 +157,20 @@ struct NoteEditorView: View {
                     Spacer()
 
                     HStack(alignment: .center, spacing: 12) {
-                        // Theme picker (36x36 circle)
-                        CompactThemePicker(selectedTheme: $selectedTheme)
+                        // Attach image button
+                        // Button {
+                        //     showImagePicker = true
+                        // } label: {
+                        //     Circle()
+                        //         .fill(Color.white.opacity(0.3))
+                        //         .frame(width: 36, height: 36)
+                        //         .overlay(
+                        //             Image(systemName: "paperclip")
+                        //                 .font(.system(size: 16, weight: .medium))
+                        //                 .foregroundColor(.white)
+                        //         )
+                        // }
+                        // .buttonStyle(.plain)
 
                         // Share button
                         Button {
@@ -213,7 +231,6 @@ struct NoteEditorView: View {
                             // Update local SwiftData properties
                             note.title = title
                             note.setContent(attributedContent)
-                            note.noteTheme = selectedTheme
                             note.isPinned = isPinned
                             note.updatedAt = Date()
                             note.isSynced = false
@@ -236,7 +253,6 @@ struct NoteEditorView: View {
                         // Update local SwiftData properties
                         note.title = title
                         note.setContent(attributedContent)
-                        note.noteTheme = selectedTheme
                         note.isPinned = isPinned
                         note.updatedAt = Date()
                         note.isSynced = false
@@ -265,7 +281,16 @@ struct NoteEditorView: View {
                 Text("Are you sure you want to delete this note? This action cannot be undone.")
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: [shareText])
+                ShareSheet(items: shareItems)
+            }
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker(image: $pickedImage)
+            }
+            .onChange(of: pickedImage) { _, newImage in
+                if let image = newImage {
+                    formattingActions.insertImage(image)
+                    pickedImage = nil
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
@@ -281,7 +306,7 @@ struct NoteEditorView: View {
 
     private var noteHeaderSection: some View {
         ZStack {
-            // Theme-based header image - use GeometryReader to constrain fill properly
+            // Header image - use GeometryReader to constrain fill properly
             GeometryReader { geometry in
                 noteHeaderBackground
                     .frame(width: geometry.size.width, height: geometry.size.height)
@@ -318,17 +343,21 @@ struct NoteEditorView: View {
 
     @ViewBuilder
     private var noteHeaderBackground: some View {
-        // Use independent note theme header images (not tied to app style)
-        if let uiImage = UIImage(named: selectedTheme.headerImageName) {
+        // Use the style-based notes detail header image
+        let asset = headerStyleManager.asset(for: .notesDetail)
+        if let uiImage = UIImage(named: asset.fileName) {
             Image(uiImage: uiImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .transition(.opacity)
-                .id(selectedTheme.rawValue) // Force view refresh on theme change
+        } else if let uiImage = UIImage(named: "note_header_standard") {
+            // Fallback to legacy image
+            Image(uiImage: uiImage)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
         } else {
-            // Fallback gradient if image not found
+            // Fallback gradient if no image found
             LinearGradient(
-                colors: selectedTheme.headerGradientColors,
+                colors: [Color(.systemBlue).opacity(0.3), Color(.systemBlue).opacity(0.1), Color(.systemBackground)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -352,7 +381,6 @@ struct NoteEditorView: View {
     private var hasUnsavedChanges: Bool {
         title != originalTitle ||
         attributedContent.string != originalContent.string ||
-        selectedTheme != originalTheme ||
         isPinned != originalIsPinned
     }
 
@@ -364,6 +392,21 @@ struct NoteEditorView: View {
         return text
     }
 
+    /// Items for the share sheet including text and any embedded images
+    private var shareItems: [Any] {
+        var items: [Any] = [shareText]
+
+        // Extract images from attributed content
+        attributedContent.enumerateAttribute(.attachment, in: NSRange(location: 0, length: attributedContent.length), options: []) { value, _, _ in
+            if let attachment = value as? NSTextAttachment,
+               let image = attachment.image ?? attachment.image(forBounds: attachment.bounds, textContainer: nil, characterIndex: 0) {
+                items.append(image)
+            }
+        }
+
+        return items
+    }
+
     // MARK: - Actions
 
     private func saveNote() {
@@ -371,7 +414,6 @@ struct NoteEditorView: View {
         // SwiftData will auto-save changes
         note.title = title
         note.setContent(attributedContent)
-        note.noteTheme = selectedTheme
         note.isPinned = isPinned
         note.updatedAt = Date()
         note.isSynced = false
@@ -428,6 +470,7 @@ struct NoteEditorView: View {
 struct InlineFormattingToolbar: View {
     @ObservedObject var formattingActions: RichTextFormattingActions
     let accentColor: Color
+    var onAttachImage: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -442,6 +485,12 @@ struct InlineFormattingToolbar: View {
             FormatButton(icon: "list.bullet", action: formattingActions.bulletList, accentColor: accentColor)
             FormatButton(icon: "list.number", action: formattingActions.numberedList, accentColor: accentColor)
             FormatButton(icon: "textformat.size.larger", action: formattingActions.heading, accentColor: accentColor)
+
+            Divider()
+                .frame(height: 24)
+                .padding(.horizontal, 8)
+
+            FormatButton(icon: "paperclip", action: { onAttachImage?() }, accentColor: accentColor)
 
             Spacer()
 
@@ -486,7 +535,7 @@ private struct FormatButton: View {
     let container = try! NotesContainerConfiguration.createPreviewContainer()
     let context = container.mainContext
 
-    let note = LocalNote(title: "Gift Ideas for Mom", theme: .festive)
+    let note = LocalNote(title: "Gift Ideas for Mom")
     note.setPlainTextContent("""
     Thinking about getting her a nice scarf this year.
 
@@ -506,7 +555,7 @@ private struct FormatButton: View {
     let container = try! NotesContainerConfiguration.createPreviewContainer()
     let context = container.mainContext
 
-    let note = LocalNote(title: "", theme: .standard)
+    let note = LocalNote(title: "")
     context.insert(note)
 
     return NoteEditorView(note: note, isNewNote: true)

@@ -31,6 +31,8 @@ struct LocalStorageContainer {
             LocalStickyReminder.self,
             LocalMoodEntry.self,
             LocalImportantAccount.self,
+            LocalRecipe.self,
+            LocalPlannedMeal.self,
 
             // Sync infrastructure
             PendingChange.self,

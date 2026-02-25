@@ -23,10 +23,10 @@ struct CalendarEventRow: View {
             VStack {
                 Image(systemName: event.icon)
                     .font(.system(size: 16))
-                    .foregroundColor(event.color)
+                    .foregroundColor(appAccentColor)
             }
             .frame(width: 40, height: 40)
-            .background(event.color.opacity(0.2))
+            .background(appAccentColor.opacity(0.2))
             .cornerRadius(10)
 
             // Event details
@@ -37,14 +37,14 @@ struct CalendarEventRow: View {
                         .foregroundColor(.textPrimary)
                         .lineLimit(showFullDetails ? nil : 1)
 
-                    // Type badge (inline with title)
-                    if showFullDetails {
-                        Text(eventTypeName)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(event.color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(event.color.opacity(0.2))
+                    // Age badge for birthdays
+                    if case .birthday(let bday) = event, let age = birthdayAge(for: bday) {
+                        Text("\(age)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(appAccentColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(appAccentColor.opacity(0.2))
                             .cornerRadius(AppDimensions.pillCornerRadius)
                     }
 
@@ -126,15 +126,28 @@ struct CalendarEventRow: View {
         case .countdown: return "text.alignleft"
         case .birthday: return "gift"
         case .medication: return "pill"
+        case .todoList: return "checklist"
         }
+    }
+
+    /// Calculate the age the person will be turning on this birthday
+    private func birthdayAge(for bday: UpcomingBirthday) -> Int? {
+        guard let birthDate = bday.profile.birthday else { return nil }
+        let calendar = Calendar.current
+        // Use the event's actual date (the birthday occurrence shown on the calendar)
+        let eventDate = calendar.startOfDay(for: event.date)
+        let birthStart = calendar.startOfDay(for: birthDate)
+        let components = calendar.dateComponents([.year], from: birthStart, to: eventDate)
+        return components.year
     }
 
     private var eventTypeName: String {
         switch event {
         case .appointment(let apt, _): return apt.type.displayName
-        case .countdown(let cd, _): return cd.displayTypeName
+        case .countdown(let cd, _, _): return cd.displayTypeName
         case .birthday: return "Birthday"
         case .medication: return "Medication"
+        case .todoList(let list): return list.listType ?? "To Do"
         }
     }
 }

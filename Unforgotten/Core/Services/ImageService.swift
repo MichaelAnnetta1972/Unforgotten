@@ -73,6 +73,42 @@ final class ImageUploadService {
         )
     }
 
+    /// Uploads an appointment photo and returns the public URL
+    func uploadAppointmentPhoto(image: UIImage, appointmentId: UUID) async throws -> String {
+        try await uploadImage(
+            image: image,
+            bucket: SupabaseConfig.appointmentPhotosBucket,
+            path: "appointments/\(appointmentId.uuidString)/photo.jpg"
+        )
+    }
+
+    /// Uploads a countdown event photo and returns the public URL
+    func uploadCountdownPhoto(image: UIImage, countdownId: UUID) async throws -> String {
+        try await uploadImage(
+            image: image,
+            bucket: SupabaseConfig.countdownPhotosBucket,
+            path: "countdowns/\(countdownId.uuidString)/photo.jpg"
+        )
+    }
+
+    /// Uploads a recipe photo and returns the public URL
+    func uploadRecipePhoto(image: UIImage, recipeId: UUID) async throws -> String {
+        try await uploadImage(
+            image: image,
+            bucket: SupabaseConfig.recipePhotosBucket,
+            path: "recipes/\(recipeId.uuidString)/photo.jpg"
+        )
+    }
+
+    /// Uploads an important account photo and returns the public URL
+    func uploadAccountPhoto(image: UIImage, accountId: UUID) async throws -> String {
+        try await uploadImage(
+            image: image,
+            bucket: SupabaseConfig.accountPhotosBucket,
+            path: "accounts/\(accountId.uuidString)/photo.jpg"
+        )
+    }
+
     /// Generic image upload method
     private func uploadImage(image: UIImage, bucket: String, path: String) async throws -> String {
         // Resize image if needed

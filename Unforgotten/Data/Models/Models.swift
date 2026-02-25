@@ -82,6 +82,15 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
     var acceptedAt: Date?
     var acceptedBy: UUID?
 
+    // Sharing preferences set at invite time
+    var sharingProfileFields: Bool
+    var sharingMedical: Bool
+    var sharingGiftIdea: Bool
+    var sharingClothing: Bool
+    var sharingHobby: Bool
+    var sharingActivityIdea: Bool
+    var sharingImportantAccounts: Bool
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
@@ -94,6 +103,35 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
         case expiresAt = "expires_at"
         case acceptedAt = "accepted_at"
         case acceptedBy = "accepted_by"
+        case sharingProfileFields = "sharing_profile_fields"
+        case sharingMedical = "sharing_medical"
+        case sharingGiftIdea = "sharing_gift_idea"
+        case sharingClothing = "sharing_clothing"
+        case sharingHobby = "sharing_hobby"
+        case sharingActivityIdea = "sharing_activity_idea"
+        case sharingImportantAccounts = "sharing_important_accounts"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        email = try container.decode(String.self, forKey: .email)
+        role = try container.decode(MemberRole.self, forKey: .role)
+        inviteCode = try container.decode(String.self, forKey: .inviteCode)
+        invitedBy = try container.decode(UUID.self, forKey: .invitedBy)
+        status = try container.decode(InvitationStatus.self, forKey: .status)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        expiresAt = try container.decode(Date.self, forKey: .expiresAt)
+        acceptedAt = try container.decodeIfPresent(Date.self, forKey: .acceptedAt)
+        acceptedBy = try container.decodeIfPresent(UUID.self, forKey: .acceptedBy)
+        sharingProfileFields = try container.decodeIfPresent(Bool.self, forKey: .sharingProfileFields) ?? true
+        sharingMedical = try container.decodeIfPresent(Bool.self, forKey: .sharingMedical) ?? true
+        sharingGiftIdea = try container.decodeIfPresent(Bool.self, forKey: .sharingGiftIdea) ?? true
+        sharingClothing = try container.decodeIfPresent(Bool.self, forKey: .sharingClothing) ?? true
+        sharingHobby = try container.decodeIfPresent(Bool.self, forKey: .sharingHobby) ?? true
+        sharingActivityIdea = try container.decodeIfPresent(Bool.self, forKey: .sharingActivityIdea) ?? true
+        sharingImportantAccounts = try container.decodeIfPresent(Bool.self, forKey: .sharingImportantAccounts) ?? true
     }
 
     var isExpired: Bool {
@@ -102,6 +140,19 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
 
     var isActive: Bool {
         status == .pending && !isExpired
+    }
+
+    /// Returns a dictionary of sharing preferences keyed by SharingCategoryKey
+    var sharingPreferences: [SharingCategoryKey: Bool] {
+        [
+            .profileFields: sharingProfileFields,
+            .medical: sharingMedical,
+            .giftIdea: sharingGiftIdea,
+            .clothing: sharingClothing,
+            .hobby: sharingHobby,
+            .activityIdea: sharingActivityIdea,
+            .importantAccounts: sharingImportantAccounts
+        ]
     }
 }
 
@@ -206,6 +257,77 @@ struct ProfileDetailSync: Codable, Identifiable, Equatable {
         case sourceDetailId = "source_detail_id"
         case syncedDetailId = "synced_detail_id"
         case createdAt = "created_at"
+    }
+}
+
+// MARK: - Profile Sharing Preference
+
+/// Represents a user's sharing preference for a specific category on their profile
+struct ProfileSharingPreference: Codable, Identifiable, Equatable {
+    let id: UUID
+    let profileId: UUID
+    let userId: UUID
+    let targetUserId: UUID?
+    let category: String
+    var isShared: Bool
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case profileId = "profile_id"
+        case userId = "user_id"
+        case targetUserId = "target_user_id"
+        case category
+        case isShared = "is_shared"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+/// Defines the sharing category keys used for controlling what profile data is shared with connected users
+enum SharingCategoryKey: String, CaseIterable {
+    case profileFields = "profile_fields"
+    case medical = "medical"
+    case giftIdea = "gift_idea"
+    case clothing = "clothing"
+    case hobby = "hobby"
+    case activityIdea = "activity_idea"
+    case importantAccounts = "important_accounts"
+
+    var displayName: String {
+        switch self {
+        case .profileFields: return "Profile"
+        case .medical: return "Medical Conditions"
+        case .giftIdea: return "Gift Ideas"
+        case .clothing: return "Clothing Sizes"
+        case .hobby: return "Hobbies & Interests"
+        case .activityIdea: return "Activity Ideas"
+        case .importantAccounts: return "Important Accounts"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .profileFields: return "Share your key information"
+        case .medical: return "Share medical conditions"
+        case .giftIdea: return "Share gift ideas"
+        case .clothing: return "Share clothing sizes"
+        case .hobby: return "Share hobbies and interests"
+        case .activityIdea: return "Share activity ideas"
+        case .importantAccounts: return "Share important account details"
+        }
+    }
+
+    /// Map from ProfileCategoryType to SharingCategoryKey
+    static func from(categoryType: ProfileCategoryType) -> SharingCategoryKey? {
+        switch categoryType {
+        case .medical: return .medical
+        case .gifts: return .giftIdea
+        case .clothing: return .clothing
+        case .hobbies: return .hobby
+        case .activities: return .activityIdea
+        }
     }
 }
 
@@ -947,7 +1069,11 @@ struct Appointment: Codable, Identifiable, Equatable, Hashable {
     var time: Date?
     var location: String?
     var notes: String?
+    var imageUrl: String?
+    var localImagePath: String?
     var reminderOffsetMinutes: Int?
+    var repeatInterval: Int?
+    var repeatUnit: String?
     var isCompleted: Bool
     let createdAt: Date
     var updatedAt: Date
@@ -963,7 +1089,11 @@ struct Appointment: Codable, Identifiable, Equatable, Hashable {
         case time
         case location
         case notes
+        case imageUrl = "image_url"
+        case localImagePath = "local_image_path"
         case reminderOffsetMinutes = "reminder_offset_minutes"
+        case repeatInterval = "repeat_interval"
+        case repeatUnit = "repeat_unit"
         case isCompleted = "is_completed"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -982,7 +1112,11 @@ struct Appointment: Codable, Identifiable, Equatable, Hashable {
         time = try container.decodeIfPresent(Date.self, forKey: .time)
         location = try container.decodeIfPresent(String.self, forKey: .location)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+        localImagePath = try container.decodeIfPresent(String.self, forKey: .localImagePath)
         reminderOffsetMinutes = try container.decodeIfPresent(Int.self, forKey: .reminderOffsetMinutes)
+        repeatInterval = try container.decodeIfPresent(Int.self, forKey: .repeatInterval)
+        repeatUnit = try container.decodeIfPresent(String.self, forKey: .repeatUnit)
         isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
@@ -1000,7 +1134,11 @@ struct Appointment: Codable, Identifiable, Equatable, Hashable {
         time: Date? = nil,
         location: String? = nil,
         notes: String? = nil,
+        imageUrl: String? = nil,
+        localImagePath: String? = nil,
         reminderOffsetMinutes: Int? = nil,
+        repeatInterval: Int? = nil,
+        repeatUnit: String? = nil,
         isCompleted: Bool = false,
         createdAt: Date,
         updatedAt: Date
@@ -1015,7 +1153,11 @@ struct Appointment: Codable, Identifiable, Equatable, Hashable {
         self.time = time
         self.location = location
         self.notes = notes
+        self.imageUrl = imageUrl
+        self.localImagePath = localImagePath
         self.reminderOffsetMinutes = reminderOffsetMinutes
+        self.repeatInterval = repeatInterval
+        self.repeatUnit = repeatUnit
         self.isCompleted = isCompleted
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -1395,7 +1537,7 @@ struct ConnectionWithProfile: Identifiable {
 
 // MARK: - Note Models
 // Note: Notes feature now uses SwiftData with LocalNote model
-// See Features/Notes/Storage/Note.swift and Features/Notes/Models/NoteTheme.swift
+// See Features/Notes/Storage/Note.swift
 
 // MARK: - Sticky Reminder
 /// A persistent reminder that keeps notifying until dismissed in-app
@@ -1664,6 +1806,7 @@ struct ImportantAccount: Codable, Identifiable, Equatable {
     var recoveryHint: String?
     var notes: String?
     var category: AccountCategory?
+    var imageUrl: String?
     let createdAt: Date
     var updatedAt: Date
 
@@ -1679,6 +1822,7 @@ struct ImportantAccount: Codable, Identifiable, Equatable {
         case recoveryHint = "recovery_hint"
         case notes
         case category
+        case imageUrl = "image_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -1696,6 +1840,7 @@ struct ImportantAccount: Codable, Identifiable, Equatable {
         recoveryHint: String? = nil,
         notes: String? = nil,
         category: AccountCategory? = nil,
+        imageUrl: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -1710,6 +1855,7 @@ struct ImportantAccount: Codable, Identifiable, Equatable {
         self.recoveryHint = recoveryHint
         self.notes = notes
         self.category = category
+        self.imageUrl = imageUrl
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -1817,10 +1963,15 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let accountId: UUID
     var title: String
+    var subtitle: String?
     var date: Date
+    var endDate: Date?
+    var hasTime: Bool
     var type: CountdownType
     var customType: String?
     var notes: String?
+    var imageUrl: String?
+    var groupId: UUID?
     var reminderOffsetMinutes: Int?
     var isRecurring: Bool
     let createdAt: Date
@@ -1830,10 +1981,15 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         case id
         case accountId = "account_id"
         case title
+        case subtitle
         case date
+        case endDate = "end_date"
+        case hasTime = "has_time"
         case type
         case customType = "custom_type"
         case notes
+        case imageUrl = "image_url"
+        case groupId = "group_id"
         case reminderOffsetMinutes = "reminder_offset_minutes"
         case isRecurring = "is_recurring"
         case createdAt = "created_at"
@@ -1845,10 +2001,15 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         id: UUID = UUID(),
         accountId: UUID,
         title: String,
+        subtitle: String? = nil,
         date: Date,
+        endDate: Date? = nil,
+        hasTime: Bool = false,
         type: CountdownType = .countdown,
         customType: String? = nil,
         notes: String? = nil,
+        imageUrl: String? = nil,
+        groupId: UUID? = nil,
         reminderOffsetMinutes: Int? = nil,
         isRecurring: Bool = false,
         createdAt: Date = Date(),
@@ -1857,10 +2018,15 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         self.id = id
         self.accountId = accountId
         self.title = title
+        self.subtitle = subtitle
         self.date = date
+        self.endDate = endDate
+        self.hasTime = hasTime
         self.type = type
         self.customType = customType
         self.notes = notes
+        self.imageUrl = imageUrl
+        self.groupId = groupId
         self.reminderOffsetMinutes = reminderOffsetMinutes
         self.isRecurring = isRecurring
         self.createdAt = createdAt
@@ -1873,14 +2039,29 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         id = try container.decode(UUID.self, forKey: .id)
         accountId = try container.decode(UUID.self, forKey: .accountId)
         title = try container.decode(String.self, forKey: .title)
+        subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
         date = try container.decode(Date.self, forKey: .date)
+        endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
+        hasTime = try container.decodeIfPresent(Bool.self, forKey: .hasTime) ?? false
         type = try container.decodeIfPresent(CountdownType.self, forKey: .type) ?? .countdown
         customType = try container.decodeIfPresent(String.self, forKey: .customType)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+        groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         reminderOffsetMinutes = try container.decodeIfPresent(Int.self, forKey: .reminderOffsetMinutes)
         isRecurring = try container.decodeIfPresent(Bool.self, forKey: .isRecurring) ?? false
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    /// Whether this is a multi-day event
+    var isMultiDay: Bool {
+        endDate != nil || groupId != nil
+    }
+
+    /// Whether this countdown is part of a multi-day group
+    var isGrouped: Bool {
+        groupId != nil
     }
 
     /// The display name for the type (uses customType if type is .custom)
@@ -1889,6 +2070,52 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
             return customName
         }
         return type.displayName
+    }
+
+    /// Formatted date string for display (handles single/multi-day and time)
+    var formattedDateDisplay: String {
+        if let endDate = endDate {
+            // Multi-day
+            let startStr = date.formattedBirthdayWithOrdinal()
+            let endStr = endDate.formattedBirthdayWithOrdinal()
+            if hasTime {
+                let timeFormatter = DateFormatter()
+                timeFormatter.dateFormat = "h:mm a"
+                return "\(startStr), \(timeFormatter.string(from: date)) – \(endStr), \(timeFormatter.string(from: endDate))"
+            }
+            return "\(startStr) – \(endStr)"
+        } else {
+            // Single day
+            let dateStr = date.formattedBirthdayWithOrdinal()
+            if hasTime {
+                let timeFormatter = DateFormatter()
+                timeFormatter.dateFormat = "h:mm a"
+                return "\(dateStr) at \(timeFormatter.string(from: date))"
+            }
+            return dateStr
+        }
+    }
+
+    /// Short formatted date string without year (for list cards)
+    var formattedDateShort: String {
+        if let endDate = endDate {
+            let startStr = date.formattedDayMonth()
+            let endStr = endDate.formattedDayMonth()
+            if hasTime {
+                let timeFormatter = DateFormatter()
+                timeFormatter.dateFormat = "h:mm a"
+                return "\(startStr), \(timeFormatter.string(from: date)) – \(endStr), \(timeFormatter.string(from: endDate))"
+            }
+            return "\(startStr) – \(endStr)"
+        } else {
+            let dateStr = date.formattedDayMonth()
+            if hasTime {
+                let timeFormatter = DateFormatter()
+                timeFormatter.dateFormat = "h:mm a"
+                return "\(dateStr) at \(timeFormatter.string(from: date))"
+            }
+            return dateStr
+        }
     }
 
     /// Calculate days until the next occurrence of this countdown
@@ -2020,6 +2247,7 @@ enum CalendarEventFilter: String, CaseIterable, Identifiable {
     case countdowns
     case birthdays
     case medications
+    case todoLists
 
     var id: String { rawValue }
 
@@ -2029,6 +2257,7 @@ enum CalendarEventFilter: String, CaseIterable, Identifiable {
         case .countdowns: return "Events"
         case .birthdays: return "Birthdays"
         case .medications: return "Medications"
+        case .todoLists: return "To Do Lists"
         }
     }
 
@@ -2038,6 +2267,7 @@ enum CalendarEventFilter: String, CaseIterable, Identifiable {
         case .countdowns: return "clock.fill"
         case .birthdays: return "gift.fill"
         case .medications: return "pill.fill"
+        case .todoLists: return "checklist"
         }
     }
 
@@ -2047,6 +2277,7 @@ enum CalendarEventFilter: String, CaseIterable, Identifiable {
         case .countdowns: return .blue
         case .birthdays: return .pink
         case .medications: return .badgeGreen
+        case .todoLists: return .orange
         }
     }
 }
@@ -2055,34 +2286,42 @@ enum CalendarEventFilter: String, CaseIterable, Identifiable {
 /// A unified type for displaying different event types in the calendar
 enum CalendarEvent: Identifiable {
     case appointment(Appointment, isShared: Bool)
-    case countdown(Countdown, isShared: Bool)
+    case countdown(Countdown, isShared: Bool, displayDate: Date? = nil)
     case birthday(UpcomingBirthday)
     case medication(Medication, ScheduleEntry, Date)
+    case todoList(ToDoList)
 
     var id: String {
         switch self {
         case .appointment(let apt, _): return "apt-\(apt.id)"
-        case .countdown(let cd, _): return "cd-\(cd.id)"
+        case .countdown(let cd, _, let displayDate):
+            if let displayDate {
+                let day = Calendar.current.startOfDay(for: displayDate)
+                return "cd-\(cd.id)-\(day.timeIntervalSince1970)"
+            }
+            return "cd-\(cd.id)"
         case .birthday(let bday): return "bday-\(bday.id)"
         case .medication(let med, let entry, let date):
             let dateStr = ISO8601DateFormatter().string(from: date)
             return "med-\(med.id)-\(entry.id)-\(dateStr)"
+        case .todoList(let list): return "todo-\(list.id)"
         }
     }
 
     var date: Date {
         switch self {
         case .appointment(let apt, _): return apt.date
-        case .countdown(let cd, _): return cd.date
+        case .countdown(let cd, _, let displayDate): return displayDate ?? cd.date
         case .birthday(let bday): return bday.profile.birthday?.nextOccurrenceDate() ?? Date()
         case .medication(_, _, let date): return date
+        case .todoList(let list): return list.dueDate ?? Date()
         }
     }
 
     var dateTime: Date {
         switch self {
         case .appointment(let apt, _): return apt.dateTime
-        case .countdown(let cd, _): return cd.date
+        case .countdown(let cd, _, let displayDate): return displayDate ?? cd.date
         case .birthday(let bday): return bday.profile.birthday?.nextOccurrenceDate() ?? Date()
         case .medication(_, let entry, let date):
             // Combine date with schedule entry time
@@ -2095,22 +2334,24 @@ enum CalendarEvent: Identifiable {
                 return calendar.date(from: dateComponents) ?? date
             }
             return date
+        case .todoList(let list): return list.dueDate ?? Date()
         }
     }
 
     var title: String {
         switch self {
         case .appointment(let apt, _): return apt.title
-        case .countdown(let cd, _): return cd.title
+        case .countdown(let cd, _, _): return cd.title
         case .birthday(let bday): return "\(bday.profile.displayName)'s Birthday"
         case .medication(let med, _, _): return med.name
+        case .todoList(let list): return list.title
         }
     }
 
     var subtitle: String? {
         switch self {
         case .appointment(let apt, _): return apt.location
-        case .countdown(let cd, _): return cd.notes
+        case .countdown(let cd, _, _): return cd.subtitle ?? cd.notes
         case .birthday(let bday):
             if let age = bday.profile.age {
                 return "Turning \(age + 1)"
@@ -2118,6 +2359,7 @@ enum CalendarEvent: Identifiable {
             return nil
         case .medication(let med, let entry, _):
             return entry.dosage ?? med.strength
+        case .todoList(let list): return list.progressText
         }
     }
 
@@ -2131,24 +2373,27 @@ enum CalendarEvent: Identifiable {
         case .countdown: return nil
         case .birthday: return nil
         case .medication(_, let entry, _): return entry.time
+        case .todoList: return nil
         }
     }
 
     var icon: String {
         switch self {
         case .appointment(let apt, _): return apt.type.icon
-        case .countdown(let cd, _): return cd.type.icon
+        case .countdown(let cd, _, _): return cd.type.icon
         case .birthday: return "gift.fill"
         case .medication: return "pill.fill"
+        case .todoList: return "checklist"
         }
     }
 
     var color: Color {
         switch self {
         case .appointment(let apt, _): return apt.type.color
-        case .countdown(let cd, _): return cd.type.color
+        case .countdown(let cd, _, _): return cd.type.color
         case .birthday: return .pink
         case .medication: return .badgeGreen
+        case .todoList: return .orange
         }
     }
 
@@ -2158,33 +2403,234 @@ enum CalendarEvent: Identifiable {
         case .countdown: return .countdowns
         case .birthday: return .birthdays
         case .medication: return .medications
+        case .todoList: return .todoLists
         }
     }
 
     var isSharedToFamily: Bool {
         switch self {
         case .appointment(_, let isShared): return isShared
-        case .countdown(_, let isShared): return isShared
+        case .countdown(_, let isShared, _): return isShared
         case .birthday: return false
         case .medication: return false
+        case .todoList: return false
         }
     }
 
     var canBeShared: Bool {
         switch self {
         case .appointment, .countdown: return true
-        case .birthday, .medication: return false
+        case .birthday, .medication, .todoList: return false
         }
     }
 
     /// The profile ID associated with this event (if any)
-    /// Note: Countdowns are account-scoped and don't have a specific profile
+    /// Note: Countdowns and ToDo Lists are account-scoped and don't have a specific profile
     var profileId: UUID? {
         switch self {
         case .appointment(let apt, _): return apt.profileId
         case .countdown: return nil // Countdowns are account-wide, not profile-specific
         case .birthday(let bday): return bday.profile.id
         case .medication(let med, _, _): return med.profileId
+        case .todoList: return nil // ToDo lists are account-wide, not profile-specific
         }
+    }
+}
+
+// MARK: - Meal Planner
+
+/// The type of meal (breakfast, lunch, or dinner)
+enum MealType: String, Codable, CaseIterable, Identifiable {
+    case breakfast
+    case lunch
+    case dinner
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .breakfast: return "Breakfast"
+        case .lunch: return "Lunch"
+        case .dinner: return "Dinner"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .breakfast: return "sunrise.fill"
+        case .lunch: return "sun.max.fill"
+        case .dinner: return "moon.stars.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .breakfast: return .orange
+        case .lunch: return .yellow
+        case .dinner: return .indigo
+        }
+    }
+}
+
+// MARK: - Recipe
+/// A saved recipe name that can be reused across meal plans
+struct Recipe: Codable, Identifiable, Equatable, Hashable {
+    let id: UUID
+    let accountId: UUID
+    var name: String
+    var websiteUrl: String?
+    var imageUrl: String?
+    var mealType: MealType?
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case name
+        case websiteUrl = "website_url"
+        case imageUrl = "image_url"
+        case mealType = "meal_type"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    init(id: UUID = UUID(), accountId: UUID, name: String, websiteUrl: String? = nil, imageUrl: String? = nil, mealType: MealType? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
+        self.id = id
+        self.accountId = accountId
+        self.name = name
+        self.websiteUrl = websiteUrl
+        self.imageUrl = imageUrl
+        self.mealType = mealType
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        name = try container.decode(String.self, forKey: .name)
+        websiteUrl = try container.decodeIfPresent(String.self, forKey: .websiteUrl)
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+        mealType = try container.decodeIfPresent(MealType.self, forKey: .mealType)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
+}
+
+// MARK: - Recipe Insert
+struct RecipeInsert: Encodable {
+    let id: UUID
+    let accountId: UUID
+    let name: String
+    let websiteUrl: String?
+    let imageUrl: String?
+    let mealType: MealType?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case name
+        case websiteUrl = "website_url"
+        case imageUrl = "image_url"
+        case mealType = "meal_type"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(accountId, forKey: .accountId)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(websiteUrl, forKey: .websiteUrl)
+        try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try container.encodeIfPresent(mealType, forKey: .mealType)
+    }
+}
+
+// MARK: - Planned Meal
+/// A meal planned for a specific date and meal type, linked to a recipe
+struct PlannedMeal: Codable, Identifiable, Equatable, Hashable {
+    let id: UUID
+    let accountId: UUID
+    var recipeId: UUID
+    var date: Date
+    var mealType: MealType
+    var notes: String?
+    let createdAt: Date
+    var updatedAt: Date
+
+    // Denormalized for display (populated from join or local lookup)
+    var recipeName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case recipeId = "recipe_id"
+        case date
+        case mealType = "meal_type"
+        case notes
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case recipeName = "recipe_name"
+    }
+
+    init(id: UUID = UUID(), accountId: UUID, recipeId: UUID, date: Date, mealType: MealType, notes: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), recipeName: String? = nil) {
+        self.id = id
+        self.accountId = accountId
+        self.recipeId = recipeId
+        self.date = date
+        self.mealType = mealType
+        self.notes = notes
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.recipeName = recipeName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        recipeId = try container.decode(UUID.self, forKey: .recipeId)
+        date = try container.decode(Date.self, forKey: .date)
+        mealType = try container.decode(MealType.self, forKey: .mealType)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        recipeName = try container.decodeIfPresent(String.self, forKey: .recipeName)
+    }
+}
+
+// MARK: - Planned Meal Insert
+struct PlannedMealInsert: Encodable {
+    let id: UUID
+    let accountId: UUID
+    let recipeId: UUID
+    let date: Date
+    let mealType: MealType
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case recipeId = "recipe_id"
+        case date
+        case mealType = "meal_type"
+        case notes
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(accountId, forKey: .accountId)
+        try container.encode(recipeId, forKey: .recipeId)
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        try container.encode(dateFormatter.string(from: date), forKey: .date)
+
+        try container.encode(mealType, forKey: .mealType)
+        try container.encodeIfPresent(notes, forKey: .notes)
     }
 }

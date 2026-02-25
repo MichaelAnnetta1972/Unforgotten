@@ -11,6 +11,7 @@ struct NotesListView: View {
     @Environment(\.iPadAddNoteAction) private var iPadAddNoteAction
     @Environment(\.iPadEditNoteAction) private var iPadEditNoteAction
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.appAccentColor) private var appAccentColor
 
     // SwiftData query
     @Query(sort: \LocalNote.updatedAt, order: .reverse)
@@ -25,8 +26,7 @@ struct NotesListView: View {
     @State private var showDeleteConfirmation = false
     @State private var showUpgradePrompt = false
     @State private var searchText = ""
-    @State private var filterTheme: NoteTheme?
-    @State private var showThemeFilter = false
+    @State private var listContentHeight: CGFloat = 0
     @State private var newNoteSaved = false
     @FocusState private var isSearchFocused: Bool
 
@@ -90,7 +90,7 @@ struct NotesListView: View {
                         EmptyStateView(
                             icon: "note.text",
                             title: "No Notes",
-                            message: "Create notes with themes for different occasions",
+                            message: "Create notes to keep track of important information",
                             buttonTitle: "Create Note",
                             buttonAction: {
                                 guard canAddNote else {
@@ -107,7 +107,7 @@ struct NotesListView: View {
                         )
                         .padding(.top, 40)
                     } else if displayedNotes.isEmpty {
-                        // No search results (has notes but filtered/searched to nothing)
+                        // No search results (has notes but searched to nothing)
                         VStack(spacing: 12) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 40))
@@ -119,7 +119,7 @@ struct NotesListView: View {
                         .padding(.top, 40)
                     } else {
                         // Notes list
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
+                        List {
                             ForEach(displayedNotes) { note in
                                 NoteListCard(
                                     note: note,
@@ -131,15 +131,36 @@ struct NotesListView: View {
                                             selectedNote = note
                                         }
                                     },
-                                    onDelete: {
-                                        noteToDelete = note
-                                        showDeleteConfirmation = true
-                                    },
                                     onTogglePin: {
                                         note.isPinned.toggle()
                                     }
                                 )
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        noteToDelete = note
+                                        showDeleteConfirmation = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
                             }
+                        }
+                        .listStyle(.plain)
+                        .scrollDisabled(true)
+                        .scrollContentBackground(.hidden)
+                        .frame(height: listContentHeight)
+                        .onChange(of: displayedNotes.count) { _, count in
+                            let rowHeight: CGFloat = 76
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(count) * (rowHeight + spacing)
+                        }
+                        .onAppear {
+                            let rowHeight: CGFloat = 76
+                            let spacing: CGFloat = AppDimensions.cardSpacing
+                            listContentHeight = CGFloat(displayedNotes.count) * (rowHeight + spacing)
                         }
 
                         // Premium limit reached banner
@@ -210,6 +231,12 @@ struct NotesListView: View {
         .refreshable {
             await fetchRemoteChanges()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .notesDidChange)) { _ in
+            Task { await fetchRemoteChanges() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
+            Task { await fetchRemoteChanges() }
+        }
     }
 
     // MARK: - Sync Methods
@@ -251,69 +278,39 @@ struct NotesListView: View {
 
     private var searchBar: some View {
         HStack(spacing: 10) {
-            // Search field
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.textSecondary)
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.textSecondary)
 
-                TextField("Search notes", text: $searchText)
-                    .font(.appBody)
-                    .foregroundColor(.textPrimary)
-                    .focused($isSearchFocused)
+            TextField("Search notes", text: $searchText)
+                .font(.appBody)
+                .foregroundColor(.textPrimary)
+                .focused($isSearchFocused)
 
-                // Show confirm button when typing, X button when focused or has text
-                if !searchText.isEmpty && isSearchFocused {
-                    // Confirm search (dismiss keyboard but keep search)
-                    Button {
-                        isSearchFocused = false
-                    } label: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.accentYellow)
-                    }
-                }
-
-                if !searchText.isEmpty || isSearchFocused {
-                    // Clear search and dismiss keyboard
-                    Button {
-                        searchText = ""
-                        isSearchFocused = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.textSecondary)
-                    }
+            // Show confirm button when typing, X button when focused or has text
+            if !searchText.isEmpty && isSearchFocused {
+                // Confirm search (dismiss keyboard but keep search)
+                Button {
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.accentYellow)
                 }
             }
-            .padding(12)
-            .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.cardCornerRadius)
 
-            // Theme filter button
-            Button {
-                showThemeFilter = true
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(filterTheme?.accentColor ?? Color.cardBackground)
-                        .frame(width: 44, height: 44)
-
-                    Image(systemName: "paintpalette")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(filterTheme != nil ? .white : .textSecondary)
-
-                    // Badge for active filter
-                    if filterTheme != nil {
-                        Circle()
-                            .fill(Color.accentYellow)
-                            .frame(width: 12, height: 12)
-                            .offset(x: 14, y: -14)
-                    }
+            if !searchText.isEmpty || isSearchFocused {
+                // Clear search and dismiss keyboard
+                Button {
+                    searchText = ""
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.textSecondary)
                 }
-            }
-            .popover(isPresented: $showThemeFilter) {
-                ThemeFilterPopover(selectedTheme: $filterTheme)
-                    .presentationCompactAdaptation(.popover)
             }
         }
+        .padding(12)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 
     // MARK: - Filtered Notes
@@ -324,11 +321,6 @@ struct NotesListView: View {
         // Filter by account
         if let accountId = appState.currentAccount?.id {
             notes = notes.filter { $0.accountId == accountId }
-        }
-
-        // Filter by theme if selected
-        if let theme = filterTheme {
-            notes = notes.filter { $0.noteTheme == theme }
         }
 
         // Filter by search text
@@ -352,7 +344,6 @@ struct NotesListView: View {
         newNoteSaved = false
         let note = LocalNote(
             title: "",
-            theme: .standard,
             accountId: appState.currentAccount?.id
         )
         newNote = note
@@ -382,21 +373,22 @@ struct NotesListView: View {
 struct NoteListCard: View {
     let note: LocalNote
     var onTap: () -> Void = {}
-    var onDelete: () -> Void = {}
     var onTogglePin: () -> Void = {}
+
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .top, spacing: 16) {
-                // Theme icon - rounded square, aligned to top
+                // Note icon - rounded square, aligned to top
                 ZStack {
                     RoundedRectangle(cornerRadius: 14)
-                        .fill(note.noteTheme.accentColor.opacity(0.15))
+                        .fill(appAccentColor.opacity(0.15))
                         .frame(width: 48, height: 48)
 
-                    Image(systemName: note.noteTheme.icon)
+                    Image(systemName: "note.text")
                         .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(note.noteTheme.accentColor)
+                        .foregroundColor(appAccentColor)
                 }
 
                 // Content
@@ -405,7 +397,7 @@ struct NoteListCard: View {
                         if note.isPinned {
                             Image(systemName: "pin.fill")
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(note.noteTheme.accentColor)
+                                .foregroundColor(appAccentColor)
                                 .padding(.top, 4)
                         }
 
@@ -422,128 +414,23 @@ struct NoteListCard: View {
 
                 Spacer()
 
-                // Action buttons
-                HStack(spacing: 8) {
-                    // Pin/Unpin button
-                    Button {
-                        onTogglePin()
-                    } label: {
-                        Image(systemName: note.isPinned ? "pin.slash.fill" : "pin.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(note.isPinned ? note.noteTheme.accentColor : .textSecondary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    // Delete button
-                    Button {
-                        onDelete()
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 16))
-                            .foregroundColor(.badgeRed)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                // Pin/Unpin button
+                Button {
+                    onTogglePin()
+                } label: {
+                    Image(systemName: note.isPinned ? "pin.slash.fill" : "pin.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(note.isPinned ? appAccentColor : .textSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
             .padding(AppDimensions.cardPadding)
             .background(Color.cardBackground)
             .cornerRadius(AppDimensions.cardCornerRadius)
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Theme Filter Popover
-/// Popover for filtering notes by theme
-struct ThemeFilterPopover: View {
-    @Binding var selectedTheme: NoteTheme?
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Filter by Theme")
-                .font(.headline)
-                .padding(.top, 16)
-
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 16) {
-                // "All" option to clear filter
-                Button {
-                    withAnimation {
-                        selectedTheme = nil
-                    }
-                    dismiss()
-                } label: {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.cardBackground)
-                                .frame(width: 56, height: 56)
-                                .overlay(
-                                    Image(systemName: "note.text")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(.textSecondary)
-                                )
-
-                            if selectedTheme == nil {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.accentYellow, lineWidth: 2)
-                                    .frame(width: 64, height: 64)
-                            }
-                        }
-
-                        Text("All")
-                            .font(.caption)
-                            .foregroundColor(selectedTheme == nil ? .accentYellow : .textSecondary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                // Theme options
-                ForEach(NoteTheme.allCases) { theme in
-                    Button {
-                        withAnimation {
-                            selectedTheme = theme
-                        }
-                        dismiss()
-                    } label: {
-                        VStack(spacing: 8) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(theme.accentColor)
-                                    .frame(width: 56, height: 56)
-                                    .overlay(
-                                        Image(systemName: theme.icon)
-                                            .font(.system(size: 18))
-                                            .foregroundColor(.white)
-                                    )
-
-                                if selectedTheme == theme {
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(theme.accentColor, lineWidth: 2)
-                                        .frame(width: 64, height: 64)
-                                }
-                            }
-
-                            Text(theme.displayName)
-                                .font(.caption)
-                                .foregroundColor(selectedTheme == theme ? theme.accentColor : .textSecondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-        }
-        .frame(width: 280)
     }
 }
 

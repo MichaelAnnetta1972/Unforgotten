@@ -44,14 +44,13 @@ final class LocalNote {
 
     init(
         title: String = "",
-        theme: NoteTheme = .standard,
         accountId: UUID? = nil
     ) {
         self.id = UUID()
         self.title = title
         self.content = Data()
         self.contentPlainText = ""
-        self.theme = theme.rawValue
+        self.theme = "standard"
         self.createdAt = Date()
         self.updatedAt = Date()
         self.isPinned = false
@@ -61,12 +60,6 @@ final class LocalNote {
     }
 
     // MARK: - Computed Properties
-
-    /// Get the NoteTheme enum value
-    var noteTheme: NoteTheme {
-        get { NoteTheme(rawValue: theme) ?? .standard }
-        set { theme = newValue.rawValue }
-    }
 
     /// Display title (with fallback for empty)
     var displayTitle: String {
@@ -121,18 +114,31 @@ final class LocalNote {
     /// Update content from attributed string
     func setContent(_ attributedString: NSAttributedString) {
         do {
+            // Use RTFD to preserve image attachments
             let data = try attributedString.data(
                 from: NSRange(location: 0, length: attributedString.length),
-                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
             )
             self.content = data
             self.contentPlainText = attributedString.string
             self.updatedAt = Date()
             self.isSynced = false
         } catch {
-            #if DEBUG
-            print("Error encoding attributed string: \(error)")
-            #endif
+            // Fall back to RTF if RTFD fails (e.g. no attachments)
+            do {
+                let data = try attributedString.data(
+                    from: NSRange(location: 0, length: attributedString.length),
+                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+                )
+                self.content = data
+                self.contentPlainText = attributedString.string
+                self.updatedAt = Date()
+                self.isSynced = false
+            } catch {
+                #if DEBUG
+                print("Error encoding attributed string: \(error)")
+                #endif
+            }
         }
     }
 
@@ -140,6 +146,15 @@ final class LocalNote {
     func getAttributedContent() -> NSAttributedString {
         guard !content.isEmpty else {
             return NSAttributedString(string: "")
+        }
+
+        // Try RTFD first (supports images), then fall back to RTF
+        if let attributedString = try? NSAttributedString(
+            data: content,
+            options: [.documentType: NSAttributedString.DocumentType.rtfd],
+            documentAttributes: nil
+        ) {
+            return attributedString
         }
 
         do {
@@ -171,13 +186,22 @@ final class LocalNote {
         do {
             let data = try attributedString.data(
                 from: NSRange(location: 0, length: attributedString.length),
-                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
             )
             self.content = data
         } catch {
-            #if DEBUG
-            print("Error encoding plain text: \(error)")
-            #endif
+            // Fall back to RTF for plain text (no attachments)
+            do {
+                let data = try attributedString.data(
+                    from: NSRange(location: 0, length: attributedString.length),
+                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+                )
+                self.content = data
+            } catch {
+                #if DEBUG
+                print("Error encoding plain text: \(error)")
+                #endif
+            }
         }
         self.updatedAt = Date()
         self.isSynced = false

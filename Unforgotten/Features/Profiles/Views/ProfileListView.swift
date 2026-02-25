@@ -15,6 +15,7 @@ struct ProfileListView: View {
     @State private var profileToDelete: Profile?
     @State private var showDeleteConfirmation = false
     @State private var searchText = ""
+    @State private var listContentHeight: CGFloat = 0
 
     /// Check if user can add more friend profiles
     private var canAddProfile: Bool {
@@ -25,10 +26,12 @@ struct ProfileListView: View {
     }
 
     private var filteredProfiles: [Profile] {
+        let base = viewModel.profiles
         if searchText.isEmpty {
-            return viewModel.profiles
+            return base
         }
-        return viewModel.profiles.filter { profile in
+        return base.filter { profile in
+            profile.displayName.localizedCaseInsensitiveContains(searchText) ||
             profile.fullName.localizedCaseInsensitiveContains(searchText) ||
             (profile.relationship?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
@@ -90,17 +93,50 @@ struct ProfileListView: View {
                         .cornerRadius(AppDimensions.cardCornerRadius)
                         .padding(.horizontal, AppDimensions.screenPadding)
 
-                        // Profile list
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
-                            ForEach(filteredProfiles) { profile in
-                                ProfileListRow(
-                                    profile: profile,
-                                    onDelete: {
-                                        profileToDelete = profile
-                                        showDeleteConfirmation = true
+                        // Profile list with swipe-to-delete
+                        if !filteredProfiles.isEmpty {
+                            List {
+                                ForEach(filteredProfiles) { profile in
+                                    ZStack {
+                                        NavigationLink(destination: ProfileDetailView(profile: profile)) {
+                                            EmptyView()
+                                        }
+                                        .opacity(0)
+
+                                        ProfileListRow(
+                                            profile: profile,
+                                            isPinned: viewModel.isPinned(profile.id),
+                                            onTogglePin: { viewModel.togglePin(profile.id) }
+                                        )
                                     }
-                                )
-                                .padding(.horizontal, AppDimensions.screenPadding)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        if appState.canEdit {
+                                            Button(role: .destructive) {
+                                                profileToDelete = profile
+                                                showDeleteConfirmation = true
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
+                                    }
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                                }
+                            }
+                            .listStyle(.plain)
+                            .scrollDisabled(true)
+                            .scrollContentBackground(.hidden)
+                            .frame(height: listContentHeight)
+                            .onChange(of: filteredProfiles.count) { _, count in
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                listContentHeight = CGFloat(count) * (rowHeight + spacing)
+                            }
+                            .onAppear {
+                                let rowHeight: CGFloat = 76
+                                let spacing: CGFloat = AppDimensions.cardSpacing
+                                listContentHeight = CGFloat(filteredProfiles.count) * (rowHeight + spacing)
                             }
                         }
 
@@ -175,10 +211,10 @@ struct ProfileListView: View {
         }
         // Only show sidePanel on iPhone - iPad handles this at iPadRootView level
         .sidePanel(isPresented: iPadHomeAction == nil ? $showAddProfile : .constant(false)) {
-            AddProfileView { newProfile in
-                Task {
-                    await viewModel.loadProfiles(appState: appState)
-                }
+            AddProfileView { _ in
+                // Profile was saved - post notification to trigger a single authoritative reload
+                // The .profilesDidChange handler will do a force-refresh from the server
+                NotificationCenter.default.post(name: .profilesDidChange, object: nil)
             }
         }
         .sheet(isPresented: $showUpgradePrompt) {
@@ -235,82 +271,81 @@ struct ProfileListView: View {
 // MARK: - Profile List Row
 struct ProfileListRow: View {
     let profile: Profile
-    let onDelete: () -> Void
+    var isPinned: Bool = false
+    var onTogglePin: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Navigation link for the main content area
-            NavigationLink(destination: ProfileDetailView(profile: profile)) {
-                HStack(spacing: 12) {
-                    // Profile photo with optional deceased indicator
-                    ZStack(alignment: .bottomTrailing) {
-                        AsyncProfileImage(url: profile.photoUrl, size: 44)
-                            .opacity(profile.isDeceased ? 0.7 : 1.0)
+        HStack(spacing: 12) {
+            // Profile photo with optional deceased indicator
+            ZStack(alignment: .bottomTrailing) {
+                AsyncProfileImage(url: profile.photoUrl, size: 44)
+                    .opacity(profile.isDeceased ? 0.7 : 1.0)
 
-                        if profile.isDeceased {
-                            Image(systemName: "heart.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.textSecondary)
-                                .background(
-                                    Circle()
-                                        .fill(Color.cardBackground)
-                                        .frame(width: 16, height: 16)
-                                )
-                                .offset(x: 2, y: 2)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(profile.fullName)
-                            .font(.appCardTitle)
-                            .foregroundColor(.textPrimary)
-
-                        HStack(spacing: 8) {
-                            if profile.isSyncedProfile {
-                                Text("Connected")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.accentYellow)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.accentYellow.opacity(0.15))
-                                    .cornerRadius(4)
-                            }
-
-                            if let subtitle = profile.relationship {
-                                Text(subtitle)
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                            }
-
-                            if profile.isDeceased {
-                                Text("In Memory")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textMuted)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(Color.cardBackgroundLight.opacity(0.6))
-                                    .cornerRadius(6)
-                            }
-                        }
-                    }
-
-                    Spacer()
+                if profile.isDeceased {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.textSecondary)
+                        .background(
+                            Circle()
+                                .fill(Color.cardBackground)
+                                .frame(width: 16, height: 16)
+                        )
+                        .offset(x: 2, y: 2)
                 }
-                .padding(AppDimensions.cardPadding)
-                .padding(.trailing, 44) // Make room for delete button
             }
-            .buttonStyle(PlainButtonStyle())
 
-            // Delete button - separate from NavigationLink
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 16))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 4) {
+                Text(profile.displayName)
+                    .font(.appCardTitle)
+                    .foregroundColor(.textPrimary)
+
+                HStack(spacing: 8) {
+                    if profile.isSyncedProfile {
+                        Text("Connected")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.accentYellow)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentYellow.opacity(0.15))
+                            .cornerRadius(4)
+                    }
+
+                    if let subtitle = profile.relationship {
+                        Text(subtitle)
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    if profile.isDeceased {
+                        Text("In Memory")
+                            .font(.appCaption)
+                            .foregroundColor(.textMuted)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.cardBackgroundLight.opacity(0.6))
+                            .cornerRadius(6)
+                    }
+                }
             }
-            .buttonStyle(PlainButtonStyle())
+
+            Spacer()
+
+            // Pin button
+            if let onTogglePin = onTogglePin {
+                Button {
+                    onTogglePin()
+                } label: {
+                    Image(systemName: isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 16))
+                        .foregroundColor(isPinned ? .accentYellow : .textSecondary)
+                        .rotationEffect(.degrees(45))
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
+        .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }
@@ -376,40 +411,111 @@ struct ProfileListHeaderView: View {
 @MainActor
 class ProfileListViewModel: ObservableObject {
     @Published var profiles: [Profile] = []
+    @Published var pinnedProfileIds: Set<UUID> = []
     @Published var isLoading = false
     @Published var error: String?
+
+    private let pinnedProfilesKey = "pinned_profile_ids"
+
+    init() {
+        loadPinnedIds()
+    }
+
+    // MARK: - Pinned Profiles
+
+    func isPinned(_ profileId: UUID) -> Bool {
+        pinnedProfileIds.contains(profileId)
+    }
+
+    func togglePin(_ profileId: UUID) {
+        if pinnedProfileIds.contains(profileId) {
+            pinnedProfileIds.remove(profileId)
+        } else {
+            pinnedProfileIds.insert(profileId)
+        }
+        savePinnedIds()
+        sortProfiles()
+    }
+
+    private func loadPinnedIds() {
+        if let strings = UserDefaults.standard.stringArray(forKey: pinnedProfilesKey) {
+            pinnedProfileIds = Set(strings.compactMap { UUID(uuidString: $0) })
+        }
+    }
+
+    private func savePinnedIds() {
+        let strings = pinnedProfileIds.map { $0.uuidString }
+        UserDefaults.standard.set(strings, forKey: pinnedProfilesKey)
+    }
+
+    private func sortProfiles() {
+        profiles.sort { a, b in
+            let aPinned = pinnedProfileIds.contains(a.id)
+            let bPinned = pinnedProfileIds.contains(b.id)
+            if aPinned != bPinned {
+                return aPinned
+            }
+            return a.displayName.localizedCaseInsensitiveCompare(b.displayName) == .orderedAscending
+        }
+    }
+
+    private var loadTask: Task<Void, Never>?
 
     func loadProfiles(appState: AppState, forceRefresh: Bool = false) async {
         guard let account = appState.currentAccount else { return }
 
-        isLoading = true
+        // Cancel any in-progress load to prevent overlapping fetches that can cause duplicates
+        loadTask?.cancel()
 
-        do {
-            // Use refreshProfiles when force refresh is requested (e.g., from realtime notification)
-            if forceRefresh {
-                profiles = try await appState.profileRepository.refreshProfiles(accountId: account.id)
-            } else {
-                profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+        let task = Task {
+            isLoading = true
+
+            do {
+                try Task.checkCancellation()
+
+                // Use refreshProfiles when force refresh is requested (e.g., from realtime notification)
+                var loaded: [Profile]
+                if forceRefresh {
+                    loaded = try await appState.profileRepository.refreshProfiles(accountId: account.id)
+                } else {
+                    loaded = try await appState.profileRepository.getProfiles(accountId: account.id)
+                }
+
+                try Task.checkCancellation()
+
+                #if DEBUG
+                print("📋 ProfileListViewModel: Loaded \(loaded.count) profiles for account \(account.id) (forceRefresh: \(forceRefresh))")
+                for profile in loaded {
+                    print("📋   - [\(profile.id.uuidString)] \(profile.fullName): type=\(profile.type.rawValue), sourceUserId=\(profile.sourceUserId?.uuidString ?? "nil"), isLocalOnly=\(profile.isLocalOnly), isSyncedProfile=\(profile.isSyncedProfile)")
+                }
+                #endif
+
+                // Filter out primary profile for family list
+                loaded = loaded.filter { $0.type != .primary }
+
+                // Deduplicate by profile ID (keep first occurrence)
+                var seenIds = Set<UUID>()
+                loaded = loaded.filter { profile in
+                    if seenIds.contains(profile.id) {
+                        return false
+                    }
+                    seenIds.insert(profile.id)
+                    return true
+                }
+
+                profiles = loaded
+                // Sort with pinned profiles first, then alphabetically
+                sortProfiles()
+            } catch {
+                if !error.isCancellation {
+                    self.error = error.localizedDescription
+                }
             }
 
-            #if DEBUG
-            print("📋 ProfileListViewModel: Loaded \(profiles.count) profiles for account \(account.id) (forceRefresh: \(forceRefresh))")
-            for profile in profiles {
-                print("📋   - [\(profile.id.uuidString)] \(profile.fullName): type=\(profile.type.rawValue), sourceUserId=\(profile.sourceUserId?.uuidString ?? "nil"), isLocalOnly=\(profile.isLocalOnly), isSyncedProfile=\(profile.isSyncedProfile)")
-            }
-            #endif
-
-            // Filter out primary profile for family list
-            profiles = profiles.filter { $0.type != .primary }
-            // Sort alphabetically by first name (case-insensitive)
-            profiles.sort { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending }
-        } catch {
-            if !error.isCancellation {
-                self.error = error.localizedDescription
-            }
+            isLoading = false
         }
-
-        isLoading = false
+        loadTask = task
+        await task.value
     }
 
     func deleteProfile(id: UUID, appState: AppState) async {
@@ -432,13 +538,20 @@ struct ProfileDetailView: View {
     @State var profile: Profile
     var showHomeButton: Bool = false
     var homeAction: (() -> Void)? = nil
+    var isOwnProfile: Bool = false
     @StateObject private var viewModel = ProfileDetailViewModel()
     @State private var showEditProfile = false
     @State private var showSettings = false
     @State private var showInviteMember = false
     @State private var inviteEmail: String = ""
     @State private var showUpgradePrompt = false
+    @State private var showSharingPreferences = false
     @State private var syncedDetailIds: Set<UUID> = []
+    @State private var hasActiveSyncConnections = false
+    @State private var sharingPreferences: [SharingCategoryKey: Bool] = [:]
+    @State private var isSharingLoading = false
+    @State private var syncedProfileSharingPrefs: [SharingCategoryKey: Bool] = [:]
+    @Environment(\.appAccentColor) private var appAccentColor
 
     /// Whether the current user has full access (owner or admin)
     private var hasFullAccess: Bool {
@@ -497,10 +610,13 @@ struct ProfileDetailView: View {
             }
         }
         .sidePanel(isPresented: $showInviteMember) {
-            InviteMemberView(prefilledEmail: inviteEmail)
+            InviteShareView(profileEmail: inviteEmail, onDismiss: { showInviteMember = false })
+        }
+        .sidePanel(isPresented: $showSharingPreferences) {
+            SharingPreferencesView(profile: profile, onDismiss: { showSharingPreferences = false })
         }
         .task {
-            await viewModel.loadDetails(profile: profile, appState: appState)
+            await viewModel.loadDetails(profile: profile, appState: appState, forceRefresh: true)
             // Load synced detail IDs if this is a synced profile
             if profile.isSyncedProfile {
                 do {
@@ -510,6 +626,14 @@ struct ProfileDetailView: View {
                     print("Error loading synced detail IDs: \(error)")
                     #endif
                 }
+            }
+            // Load sharing preferences if viewing own profile
+            if isOwnProfile {
+                await loadSharingPreferences()
+            }
+            // Load sharing preferences for synced profiles to gate category visibility
+            if profile.isSyncedProfile {
+                await loadSyncedProfileSharingPreferences()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .profilesDidChange)) { _ in
@@ -535,7 +659,7 @@ struct ProfileDetailView: View {
             // Remote sync without profileId (e.g., delete) - refresh to be safe
 
             Task {
-                await viewModel.loadDetails(profile: profile, appState: appState)
+                await viewModel.loadDetails(profile: profile, appState: appState, forceRefresh: isRemoteSync)
                 // Reload synced detail IDs if this is a synced profile
                 if profile.isSyncedProfile {
                     do {
@@ -573,6 +697,125 @@ struct ProfileDetailView: View {
         }
     }
 
+    // MARK: - Sharing Preferences Helpers
+
+    /// Whether a category card should be visible. For own profiles and non-synced profiles,
+    /// all categories are visible. For synced profiles, categories are only visible if the
+    /// source user has sharing enabled for that category.
+    /// Important Accounts additionally requires full access for non-synced profiles.
+    private func isCategoryVisible(_ category: SharingCategoryKey) -> Bool {
+        if category == .importantAccounts {
+            // Important Accounts requires full access OR synced profile with sharing enabled
+            if !profile.isSyncedProfile {
+                return hasFullAccess
+            }
+            return syncedProfileSharingPrefs[category] ?? true
+        }
+        // For non-synced profiles, all other categories are always visible
+        if !profile.isSyncedProfile {
+            return true
+        }
+        // For synced profiles, check sharing preferences
+        return syncedProfileSharingPrefs[category] ?? true
+    }
+
+    private func loadSharingPreferences() async {
+        do {
+            let prefs = try await appState.profileSharingPreferencesRepository.getPreferences(profileId: profile.id)
+            var dict: [SharingCategoryKey: Bool] = [:]
+            // Default all to true
+            for key in SharingCategoryKey.allCases {
+                dict[key] = true
+            }
+            // Override with stored values
+            for pref in prefs {
+                if let key = SharingCategoryKey(rawValue: pref.category) {
+                    dict[key] = pref.isShared
+                }
+            }
+            sharingPreferences = dict
+
+            // Check if user has active sync connections
+            if let userId = await SupabaseManager.shared.currentUserId {
+                let syncs = try await appState.profileSyncRepository.getSyncsForUser(userId: userId)
+                hasActiveSyncConnections = !syncs.isEmpty
+            }
+        } catch {
+            #if DEBUG
+            print("Error loading sharing preferences: \(error)")
+            #endif
+        }
+    }
+
+    private func toggleSharingPreference(category: SharingCategoryKey, newValue: Bool) {
+        // Optimistic update
+        sharingPreferences[category] = newValue
+        isSharingLoading = true
+
+        Task {
+            do {
+                try await appState.profileSharingPreferencesRepository.updatePreference(
+                    profileId: profile.id,
+                    category: category,
+                    isShared: newValue
+                )
+                NotificationCenter.default.post(
+                    name: .profileSharingPreferencesDidChange,
+                    object: nil,
+                    userInfo: ["profileId": profile.id, "category": category.rawValue]
+                )
+            } catch {
+                // Revert on failure
+                sharingPreferences[category] = !newValue
+                #if DEBUG
+                print("Error updating sharing preference: \(error)")
+                #endif
+            }
+            isSharingLoading = false
+        }
+    }
+
+    private func loadSyncedProfileSharingPreferences() async {
+        do {
+            guard let currentUserId = await SupabaseManager.shared.currentUserId else { return }
+
+            // Find the source profile ID via the sync connection
+            var sourceProfileId: UUID?
+            if let syncConnectionId = profile.syncConnectionId,
+               let sync = try await appState.profileSyncRepository.getSyncById(id: syncConnectionId) {
+                // Determine which side is the source: the other user's source profile
+                if sync.acceptorSyncedProfileId == profile.id {
+                    sourceProfileId = sync.inviterSourceProfileId
+                } else if sync.inviterSyncedProfileId == profile.id {
+                    sourceProfileId = sync.acceptorSourceProfileId
+                }
+            }
+
+            guard let sourceId = sourceProfileId else { return }
+
+            let prefs = try await appState.profileSharingPreferencesRepository.getPreferences(
+                profileId: sourceId,
+                targetUserId: currentUserId
+            )
+            var dict: [SharingCategoryKey: Bool] = [:]
+            // Default all to true (shared by default)
+            for key in SharingCategoryKey.allCases {
+                dict[key] = true
+            }
+            // Override with stored values
+            for pref in prefs {
+                if let key = SharingCategoryKey(rawValue: pref.category) {
+                    dict[key] = pref.isShared
+                }
+            }
+            syncedProfileSharingPrefs = dict
+        } catch {
+            #if DEBUG
+            print("Error loading synced profile sharing preferences: \(error)")
+            #endif
+        }
+    }
+
     // MARK: - Deceased Profile Content
     /// Simplified view for deceased profiles - shows only essential memorial information
     private var deceasedProfileContent: some View {
@@ -601,8 +844,8 @@ struct ProfileDetailView: View {
                     .foregroundColor(.textSecondary)
 
                 VStack(spacing: AppDimensions.cardSpacing) {
-                    // Relationship
-                    if let relationship = profile.relationship {
+                    // Relationship (hidden for own profile)
+                    if let relationship = profile.relationship, !isOwnProfile {
                         DetailItemCard(label: "Relationship", value: relationship)
                     }
 
@@ -658,76 +901,98 @@ struct ProfileDetailView: View {
     // MARK: - Living Profile Content
     /// Full profile view with all categories and information
     private var livingProfileContent: some View {
+
         VStack(spacing: AppDimensions.cardSpacing) {
                 // Category cards
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        // Medical
-                        NavigationLink(destination: ProfileCategoryListView(
-                            profile: profile,
-                            category: .medical,
-                            details: viewModel.medicalConditions + viewModel.allergies
-                        )) {
-                            CategoryCardView(
-                                title: "Medical\nConditions",
-                                iconName: "icon-medical"
-                            )
+                        // Medical (hidden for synced profiles if sharing is off)
+                        if isCategoryVisible(.medical) {
+                            NavigationLink(destination: ProfileCategoryListView(
+                                profile: profile,
+                                category: .medical,
+                                details: viewModel.medicalConditions + viewModel.allergies,
+                                isOwnProfile: isOwnProfile
+                            )) {
+                                CategoryCardView(
+                                    title: "Medical\nConditions",
+                                    iconName: "icon-medical",
+                                    hasContent: !(viewModel.medicalConditions + viewModel.allergies).isEmpty
+                                )
+                            }
                         }
 
-                        // Gift Ideas (visible to all roles)
-                        NavigationLink(destination: ProfileCategoryListView(
-                            profile: profile,
-                            category: .gifts,
-                            details: viewModel.giftIdeas
-                        )) {
-                            CategoryCardView(
-                                title: "Gift\nIdeas",
-                                iconName: "icon-gifts"
-                            )
+                        // Gift Ideas
+                        if isCategoryVisible(.giftIdea) {
+                            NavigationLink(destination: ProfileCategoryListView(
+                                profile: profile,
+                                category: .gifts,
+                                details: viewModel.giftIdeas,
+                                isOwnProfile: isOwnProfile
+                            )) {
+                                CategoryCardView(
+                                    title: "Gift\nIdeas",
+                                    iconName: "icon-gifts",
+                                    hasContent: !viewModel.giftIdeas.isEmpty
+                                )
+                            }
                         }
 
-                        // Clothing Sizes (visible to all roles)
-                        NavigationLink(destination: ProfileCategoryListView(
-                            profile: profile,
-                            category: .clothing,
-                            details: viewModel.clothingSizes
-                        )) {
-                            CategoryCardView(
-                                title: "Clothing\nSizes",
-                                iconName: "icon-clothing"
-                            )
+                        // Clothing Sizes
+                        if isCategoryVisible(.clothing) {
+                            NavigationLink(destination: ProfileCategoryListView(
+                                profile: profile,
+                                category: .clothing,
+                                details: viewModel.clothingSizes,
+                                isOwnProfile: isOwnProfile
+                            )) {
+                                CategoryCardView(
+                                    title: "Clothing\nSizes",
+                                    iconName: "icon-clothing",
+                                    hasContent: !viewModel.clothingSizes.isEmpty
+                                )
+                            }
                         }
 
-                        // Hobbies & Interests (visible to all roles)
-                        NavigationLink(destination: SectionBasedCategoryView(
-                            profile: profile,
-                            category: .hobbies,
-                            details: viewModel.hobbies
-                        )) {
-                            CategoryCardView(
-                                title: "Hobbies &\nInterests",
-                                iconName: "icon-hobbies"
-                            )
+                        // Hobbies & Interests
+                        if isCategoryVisible(.hobby) {
+                            NavigationLink(destination: SectionBasedCategoryView(
+                                profile: profile,
+                                category: .hobbies,
+                                details: viewModel.hobbies,
+                                isOwnProfile: isOwnProfile
+                            )) {
+                                CategoryCardView(
+                                    title: "Hobbies &\nInterests",
+                                    iconName: "icon-hobbies",
+                                    hasContent: !viewModel.hobbies.isEmpty
+                                )
+                            }
                         }
 
-                        // Activity Ideas (visible to all roles)
-                        NavigationLink(destination: SectionBasedCategoryView(
-                            profile: profile,
-                            category: .activities,
-                            details: viewModel.activityIdeas
-                        )) {
-                            CategoryCardView(
-                                title: "Activity\nIdeas",
-                                iconName: "icon-activities"
-                            )
+                        // Activity Ideas
+                        if isCategoryVisible(.activityIdea) {
+                            NavigationLink(destination: SectionBasedCategoryView(
+                                profile: profile,
+                                category: .activities,
+                                details: viewModel.activityIdeas,
+                                isOwnProfile: isOwnProfile
+                            )) {
+                                CategoryCardView(
+                                    title: "Activity\nIdeas",
+                                    iconName: "icon-activities",
+                                    hasContent: !viewModel.activityIdeas.isEmpty
+                                )
+                            }
                         }
 
-                        // Important Accounts (only for full access - contains sensitive info)
-                        if hasFullAccess {
+                        // Important Accounts (full access or synced profile with sharing enabled)
+                        if isCategoryVisible(.importantAccounts) {
                             NavigationLink(destination: ImportantAccountsListView(profile: profile)) {
                                 CategoryCardView(
                                     title: "Important\nAccounts",
-                                    iconName: "icon-accounts"
+                                    iconName: "icon-accounts",
+                                    hasContent: viewModel.hasImportantAccounts
                                 )
                             }
                         }
@@ -737,12 +1002,48 @@ struct ProfileDetailView: View {
                             NavigationLink(destination: FamilyTreeView()) {
                                 CategoryCardView(
                                     title: "Family\nTree",
-                                    iconName: "icon-connections"
+                                    iconName: "icon-connections",
+                                    hasContent: true
                                 )
                             }
                         }
 
                     }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                }
+
+                // Sharing Preferences card (only for synced/connected profiles)
+                if profile.isSyncedProfile {
+                    Button(action: { showSharingPreferences = true }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.badge.shield.checkmark")
+                                .font(.system(size: 20))
+                                .foregroundColor(appAccentColor)
+                                .frame(width: 40, height: 40)
+                                .background(appAccentColor.opacity(0.15))
+                                .clipShape(Circle())
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Sharing Preferences")
+                                    .font(.appCardTitle)
+                                    .foregroundColor(.textPrimary)
+
+                                Text("Control what \(profile.displayName) can see")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.textSecondary)
+                        }
+                        .padding(AppDimensions.cardPadding)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                     .padding(.horizontal, AppDimensions.screenPadding)
                 }
 
@@ -753,7 +1054,7 @@ struct ProfileDetailView: View {
                         .foregroundColor(.textSecondary)
 
                     VStack(spacing: AppDimensions.cardSpacing) {
-                        if let relationship = profile.relationship {
+                        if let relationship = profile.relationship, !isOwnProfile {
                             DetailItemCard(label: "Relationship", value: relationship)
                         }
 
@@ -780,14 +1081,11 @@ struct ProfileDetailView: View {
                                 email: email,
                                 isSynced: profile.isFieldSynced("email"),
                                 sourceName: profile.isSyncedProfile ? profile.displayName : nil,
-                                showInviteButton: !profile.isSyncedProfile,
-                                canInvite: appState.currentUserRole?.canManageMembers == true && PremiumLimitsManager.shared.canInviteMembers(appState: appState),
+                                showInviteButton: !profile.isSyncedProfile && !isOwnProfile,
+                                canInvite: appState.currentUserRole?.canManageMembers == true,
                                 onInvite: {
                                     inviteEmail = email
                                     showInviteMember = true
-                                },
-                                onUpgradeRequired: {
-                                    showUpgradePrompt = true
                                 }
                             )
                         }
@@ -863,8 +1161,10 @@ struct ProfileDetailHeaderView: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            // "Connected" tag for synced profiles - positioned above the name
-            if profile.isSyncedProfile {
+            // "Connected" tag for synced profiles - only show when profile has a photo
+            // (when no photo is set, the header area is kept clean)
+            if profile.isSyncedProfile,
+               let photoUrl = profile.photoUrl, !photoUrl.isEmpty {
                 Text("Connected")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.accentYellow)
@@ -888,7 +1188,6 @@ struct EmailCardWithInvite: View {
     let showInviteButton: Bool
     let canInvite: Bool
     let onInvite: () -> Void
-    let onUpgradeRequired: () -> Void
     @Environment(\.appAccentColor) private var appAccentColor
 
     init(
@@ -897,8 +1196,7 @@ struct EmailCardWithInvite: View {
         sourceName: String? = nil,
         showInviteButton: Bool,
         canInvite: Bool,
-        onInvite: @escaping () -> Void,
-        onUpgradeRequired: @escaping () -> Void
+        onInvite: @escaping () -> Void
     ) {
         self.email = email
         self.isSynced = isSynced
@@ -906,7 +1204,6 @@ struct EmailCardWithInvite: View {
         self.showInviteButton = showInviteButton
         self.canInvite = canInvite
         self.onInvite = onInvite
-        self.onUpgradeRequired = onUpgradeRequired
     }
 
     var body: some View {
@@ -929,30 +1226,17 @@ struct EmailCardWithInvite: View {
 
             Spacer()
 
-            if showInviteButton {
-                if canInvite {
-                    Button(action: onInvite) {
-                        Text("Invite")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(appAccentColor)
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                } else {
-                    Button(action: onUpgradeRequired) {
-                        Text("Invite")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.textSecondary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Color.textSecondary.opacity(0.2))
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(PlainButtonStyle())
+            if showInviteButton && canInvite {
+                Button(action: onInvite) {
+                    Text("Invite")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(appAccentColor)
+                        .cornerRadius(8)
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(AppDimensions.cardPadding)
@@ -1018,6 +1302,7 @@ struct CategoryCardView: View {
     let title: String
     let iconName: String
     var systemIcon: Bool = false
+    var hasContent: Bool = false
     @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
@@ -1044,7 +1329,7 @@ struct CategoryCardView: View {
             // Title - allows up to 2 lines
             Text(title)
                 .font(.appBody)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1059,13 +1344,11 @@ struct CategoryCardView: View {
             ZStack {
                 // Base frosted glass material
                 RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    //.fill(.ultraThinMaterial)
-                   .fill(Color.cardBackgroundLight.opacity(0.8))
+                   .fill(hasContent ? appAccentColor.opacity(0.6) : Color.cardBackgroundLight.opacity(0.8))
 
                 // Subtle color tint overlay
                 RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                 .fill(Color.cardBackgroundLight.opacity(0.8))
-                 //  .fill(appAccentColor.opacity(0.6))
+                 .fill(hasContent ? appAccentColor.opacity(0.3) : Color.cardBackgroundLight.opacity(0.8))
 
 
                 // Top-left light refraction highlight
@@ -1137,6 +1420,7 @@ class ProfileDetailViewModel: ObservableObject {
     @Published var customFields: [ProfileDetail] = []
     @Published var hobbies: [ProfileDetail] = []
     @Published var activityIdeas: [ProfileDetail] = []
+    @Published var hasImportantAccounts: Bool = false
     @Published var isLoading = false
     @Published var error: String?
 
@@ -1144,9 +1428,12 @@ class ProfileDetailViewModel: ObservableObject {
         isLoading = true
 
         do {
-            // Always refresh from network to ensure data is current
             let allDetails: [ProfileDetail]
-            allDetails = try await appState.profileRepository.refreshProfileDetails(profileId: profile.id)
+            if forceRefresh {
+                allDetails = try await appState.profileRepository.refreshProfileDetails(profileId: profile.id)
+            } else {
+                allDetails = try await appState.profileRepository.getProfileDetails(profileId: profile.id)
+            }
 
             clothingSizes = allDetails.filter { $0.category == .clothing }
             giftIdeas = allDetails.filter { $0.category == .giftIdea }
@@ -1155,6 +1442,15 @@ class ProfileDetailViewModel: ObservableObject {
             customFields = allDetails.filter { $0.category == .note }
             hobbies = allDetails.filter { $0.category == .hobby }
             activityIdeas = allDetails.filter { $0.category == .activityIdea }
+
+            // Check if important accounts exist
+            let accounts: [ImportantAccount]
+            if profile.isSyncedProfile {
+                accounts = try await appState.importantAccountRepository.getSharedAccounts(syncedProfileId: profile.id)
+            } else {
+                accounts = try await appState.importantAccountRepository.getAccounts(profileId: profile.id)
+            }
+            hasImportantAccounts = !accounts.isEmpty
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription
@@ -1177,7 +1473,7 @@ struct MyCardView: View {
             Color.appBackgroundLight.ignoresSafeArea()
 
             if let profile = viewModel.primaryProfile {
-                ProfileDetailView(profile: profile, showHomeButton: iPadHomeAction != nil, homeAction: iPadHomeAction)
+                ProfileDetailView(profile: profile, showHomeButton: iPadHomeAction != nil, homeAction: iPadHomeAction, isOwnProfile: true)
             } else if viewModel.isLoading {
                 LoadingView()
             } else {

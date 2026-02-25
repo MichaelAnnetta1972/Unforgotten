@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import UserNotifications
 
 // MARK: - Notification Action Identifiers
@@ -15,6 +16,7 @@ enum NotificationCategory: String {
     case appointmentReminder = "APPOINTMENT_REMINDER"
     case birthdayReminder = "BIRTHDAY_REMINDER"
     case stickyReminder = "STICKY_REMINDER"
+    case morningBriefing = "MORNING_BRIEFING"
 }
 
 // MARK: - Notification Handler Protocol
@@ -25,6 +27,13 @@ protocol NotificationHandlerDelegate: AnyObject {
     func handleBirthdayView(profileId: UUID)
     func handleStickyReminderDismiss(reminderId: UUID) async
     func handleStickyReminderTapped(reminderId: UUID)
+}
+
+// MARK: - Notification Preferences Keys
+enum NotificationPreferenceKey {
+    static let allowNotifications = "unforgotten_allow_notifications"
+    static let hideNotificationPreviews = "unforgotten_hide_notification_previews"
+    static let dailySummaryEnabled = "unforgotten_daily_summary_enabled"
 }
 
 // MARK: - Notification Service
@@ -44,6 +53,49 @@ final class NotificationService: NSObject {
         notificationCenter.delegate = self
     }
 
+    // MARK: - Notification Preferences
+
+    /// Whether notifications are allowed by the user (in-app setting)
+    var allowNotifications: Bool {
+        get {
+            // Default to true if key has never been set (e.g. first launch or granted during onboarding)
+            if UserDefaults.standard.object(forKey: NotificationPreferenceKey.allowNotifications) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: NotificationPreferenceKey.allowNotifications)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: NotificationPreferenceKey.allowNotifications)
+            if !newValue {
+                // When disabled, remove all pending notifications
+                removeAllPendingNotifications()
+                notificationCenter.removeAllDeliveredNotifications()
+            }
+        }
+    }
+
+    /// Whether notification previews should be hidden (show generic text instead of details)
+    var hideNotificationPreviews: Bool {
+        get { UserDefaults.standard.bool(forKey: NotificationPreferenceKey.hideNotificationPreviews) }
+        set { UserDefaults.standard.set(newValue, forKey: NotificationPreferenceKey.hideNotificationPreviews) }
+    }
+
+    /// Whether the daily summary notification at 2:00 AM is enabled
+    var dailySummaryEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: NotificationPreferenceKey.dailySummaryEnabled) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: NotificationPreferenceKey.dailySummaryEnabled)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: NotificationPreferenceKey.dailySummaryEnabled)
+            if !newValue {
+                cancelDailySummary()
+            }
+        }
+    }
+
     /// Check and transfer any pending notification IDs to the delegate
     func processPendingNotifications() {
         guard let delegate = delegate else { return }
@@ -61,6 +113,28 @@ final class NotificationService: NSObject {
         if let reminderId = pendingStickyReminderId {
             pendingStickyReminderId = nil
             delegate.handleStickyReminderTapped(reminderId: reminderId)
+        }
+    }
+
+    /// Checks if notifications are allowed (both system permission and in-app setting)
+    private func isNotificationAllowed() async -> Bool {
+        guard allowNotifications else { return false }
+        let status = await checkPermissionStatus()
+        return status == .authorized
+    }
+
+    /// Applies hide-preview setting to notification content
+    /// Also adds a flag to userInfo so the content extension can detect it
+    private func applyHidePreviewIfNeeded(_ content: UNMutableNotificationContent, fallbackBody: String) {
+        // Always pass the flag so the content extension knows whether to hide previews
+        var info = content.userInfo
+        info["hidePreview"] = hideNotificationPreviews
+        content.userInfo = info
+
+        if hideNotificationPreviews {
+            content.title = "Unforgotten"
+            content.subtitle = ""
+            content.body = fallbackBody
         }
     }
 
@@ -94,20 +168,22 @@ final class NotificationService: NSObject {
         scheduledTime: Date,
         doseDescription: String?
     ) async {
-        // Check permission first
-        let status = await checkPermissionStatus()
-        guard status == .authorized else {
+        guard await isNotificationAllowed() else {
             #if DEBUG
-            print("📱 Notifications not authorized, skipping medication reminder")
+            print("📱 Notifications not allowed, skipping medication reminder")
             #endif
             return
         }
 
         let content = UNMutableNotificationContent()
         content.title = "Time to take your medication"
-        content.body = doseDescription != nil
-            ? "\(medicationName) - \(doseDescription!)"
-            : medicationName
+        content.subtitle = "Press and hold for more details"
+        if let doseDescription {
+            content.body = "\(medicationName) - \(doseDescription)"
+        } else {
+            content.body = medicationName
+        }
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
         content.sound = .default
         content.categoryIdentifier = NotificationCategory.medicationReminder.rawValue
         content.userInfo = [
@@ -160,21 +236,18 @@ final class NotificationService: NSObject {
         location: String?,
         reminderMinutesBefore: Int
     ) async {
-        // Check permission first
-        let status = await checkPermissionStatus()
-        guard status == .authorized else {
+        guard await isNotificationAllowed() else {
             #if DEBUG
-            print("📱 Notifications not authorized, skipping appointment reminder")
+            print("📱 Notifications not allowed, skipping appointment reminder")
             #endif
             return
         }
 
         let content = UNMutableNotificationContent()
         content.title = "Upcoming Appointment"
+        content.subtitle = "Press and hold for more details"
         content.sound = .default
         content.categoryIdentifier = NotificationCategory.appointmentReminder.rawValue
-        content.userInfo = ["appointmentId": appointmentId.uuidString]
-
         // Build body text
         var bodyParts: [String] = [title]
         if let location = location {
@@ -184,11 +257,20 @@ final class NotificationService: NSObject {
         let timeFormatter = DateFormatter()
         timeFormatter.timeStyle = .short
 
+        var timeString = ""
         if let time = appointmentTime {
-            bodyParts.append("at \(timeFormatter.string(from: time))")
+            timeString = timeFormatter.string(from: time)
+            bodyParts.append("at \(timeString)")
         }
 
         content.body = bodyParts.joined(separator: " ")
+        content.userInfo = [
+            "appointmentId": appointmentId.uuidString,
+            "appointmentTitle": title,
+            "appointmentLocation": location ?? "",
+            "appointmentTime": timeString
+        ]
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
 
         // Calculate reminder time
         var reminderDate: Date
@@ -248,11 +330,9 @@ final class NotificationService: NSObject {
         name: String,
         birthday: Date
     ) async {
-        // Check permission first
-        let status = await checkPermissionStatus()
-        guard status == .authorized else {
+        guard await isNotificationAllowed() else {
             #if DEBUG
-            print("📱 Notifications not authorized, skipping birthday reminder")
+            print("📱 Notifications not allowed, skipping birthday reminder")
             #endif
             return
         }
@@ -262,7 +342,9 @@ final class NotificationService: NSObject {
         // MARK: Day Before Notification
         let dayBeforeContent = UNMutableNotificationContent()
         dayBeforeContent.title = "Birthday Tomorrow!"
+        dayBeforeContent.subtitle = "Press and hold for more details"
         dayBeforeContent.body = "\(name)'s birthday is tomorrow. Don't forget!"
+        applyHidePreviewIfNeeded(dayBeforeContent, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
         dayBeforeContent.sound = .default
         dayBeforeContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
         dayBeforeContent.userInfo = ["profileId": profileId.uuidString]
@@ -306,10 +388,12 @@ final class NotificationService: NSObject {
         // MARK: Day Of Notification
         let dayOfContent = UNMutableNotificationContent()
         dayOfContent.title = "Happy Birthday!"
+        dayOfContent.subtitle = "Press and hold for more details"
         dayOfContent.body = "Today is \(name)'s birthday! 🎂"
         dayOfContent.sound = .default
         dayOfContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
         dayOfContent.userInfo = ["profileId": profileId.uuidString]
+        applyHidePreviewIfNeeded(dayOfContent, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
 
         // Schedule for 9am on the birthday
         var dayOfComponents = calendar.dateComponents([.month, .day], from: birthday)
@@ -351,11 +435,9 @@ final class NotificationService: NSObject {
         reminderMinutesBefore: Int,
         isRecurring: Bool
     ) async {
-        // Check permission first
-        let status = await checkPermissionStatus()
-        guard status == .authorized else {
+        guard await isNotificationAllowed() else {
             #if DEBUG
-            print("📱 Notifications not authorized, skipping countdown reminder")
+            print("📱 Notifications not allowed, skipping countdown reminder")
             #endif
             return
         }
@@ -366,6 +448,7 @@ final class NotificationService: NSObject {
         if reminderMinutesBefore > 0 {
             let advanceContent = UNMutableNotificationContent()
             advanceContent.title = "Upcoming Event"
+            advanceContent.subtitle = "Press and hold for more details"
 
             // Create descriptive body based on reminder offset
             let daysUntil = reminderMinutesBefore / 1440
@@ -380,6 +463,7 @@ final class NotificationService: NSObject {
             advanceContent.sound = .default
             advanceContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
             advanceContent.userInfo = ["countdownId": countdownId.uuidString]
+            applyHidePreviewIfNeeded(advanceContent, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
 
             if isRecurring {
                 // For recurring events, use calendar trigger with month/day
@@ -454,10 +538,12 @@ final class NotificationService: NSObject {
         // MARK: Day-Of Notification (always scheduled)
         let dayOfContent = UNMutableNotificationContent()
         dayOfContent.title = "Today's Event"
+        dayOfContent.subtitle = "Press and hold for more details"
         dayOfContent.body = "\(title) is today!"
         dayOfContent.sound = .default
         dayOfContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
         dayOfContent.userInfo = ["countdownId": countdownId.uuidString]
+        applyHidePreviewIfNeeded(dayOfContent, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
 
         if isRecurring {
             // Schedule for 9am on the event day, repeating yearly
@@ -524,11 +610,9 @@ final class NotificationService: NSObject {
 
     /// Schedule a sticky reminder notification
     func scheduleStickyReminder(reminder: StickyReminder) async {
-        // Check permission first
-        let status = await checkPermissionStatus()
-        guard status == .authorized else {
+        guard await isNotificationAllowed() else {
             #if DEBUG
-            print("📱 Notifications not authorized, skipping sticky reminder")
+            print("📱 Notifications not allowed, skipping sticky reminder")
             #endif
             return
         }
@@ -543,7 +627,8 @@ final class NotificationService: NSObject {
 
         let content = UNMutableNotificationContent()
         content.title = reminder.title
-        content.body = reminder.message ?? "Tap to open the app and dismiss this reminder"
+        content.subtitle = "Press and hold for more details"
+        content.body = reminder.message ?? "Press and hold for more details"
         content.sound = .default
         content.categoryIdentifier = NotificationCategory.stickyReminder.rawValue
         content.userInfo = [
@@ -551,6 +636,7 @@ final class NotificationService: NSObject {
             "title": reminder.title,
             "repeatInterval": "\(reminder.repeatInterval.value)_\(reminder.repeatInterval.unit.rawValue)"
         ]
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
 
         // Calculate trigger time
         let triggerDate: Date
@@ -615,6 +701,7 @@ final class NotificationService: NSObject {
     private func scheduleRepeatingStickReminder(reminder: StickyReminder, startAfter: Date) async {
         let content = UNMutableNotificationContent()
         content.title = reminder.title
+        content.subtitle = "Press and hold for more details"
         content.body = reminder.message ?? "Tap to open the app and dismiss this reminder"
         content.sound = .default
         content.categoryIdentifier = NotificationCategory.stickyReminder.rawValue
@@ -623,6 +710,7 @@ final class NotificationService: NSObject {
             "title": reminder.title,
             "repeatInterval": "\(reminder.repeatInterval.value)_\(reminder.repeatInterval.unit.rawValue)"
         ]
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
 
         // Calculate time until first repeat after initial trigger
         let delay = startAfter.timeIntervalSinceNow + reminder.repeatInterval.intervalInSeconds
@@ -756,11 +844,20 @@ final class NotificationService: NSObject {
             options: []
         )
 
+        // Morning briefing category (opens app to start Live Activity)
+        let morningBriefingCategory = UNNotificationCategory(
+            identifier: "MORNING_BRIEFING",
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
         notificationCenter.setNotificationCategories([
             medicationCategory,
             appointmentCategory,
             birthdayCategory,
-            stickyCategory
+            stickyCategory,
+            morningBriefingCategory
         ])
     }
 
@@ -774,9 +871,12 @@ final class NotificationService: NSObject {
     ) async {
         let content = UNMutableNotificationContent()
         content.title = "Medication Reminder"
-        content.body = doseDescription != nil
-            ? "\(medicationName) - \(doseDescription!)"
-            : medicationName
+        content.subtitle = "Press and hold for more details"
+        if let doseDescription {
+            content.body = "\(medicationName) - \(doseDescription)"
+        } else {
+            content.body = medicationName
+        }
         content.sound = .default
         content.categoryIdentifier = NotificationCategory.medicationReminder.rawValue
         content.userInfo = [
@@ -785,6 +885,7 @@ final class NotificationService: NSObject {
             "doseDescription": doseDescription ?? "",
             "scheduledTime": Date().ISO8601Format()
         ]
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
 
         // Trigger in 10 minutes
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 600, repeats: false)
@@ -807,6 +908,305 @@ final class NotificationService: NSObject {
     // MARK: - Re-schedule All Notifications
 
     /// Re-schedule all notifications on app launch (for appointments and birthdays)
+    // MARK: - Morning Briefing Trigger
+
+    /// Schedule a daily notification at midnight (12:00 AM) for the morning briefing
+    func scheduleMorningBriefingTrigger() async {
+        // Remove any existing morning briefing trigger
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["morning-briefing-trigger"])
+
+        guard await isNotificationAllowed() else {
+            #if DEBUG
+            print("📱 Notifications not allowed, skipping morning briefing trigger")
+            #endif
+            return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Good Morning"
+        content.body = "Your daily briefing is ready. Tap to view today's schedule."
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.morningBriefing.rawValue
+        content.userInfo = ["type": "morning_briefing"]
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
+
+        // Trigger at 12:00 AM (midnight) every day
+        var dateComponents = DateComponents()
+        dateComponents.hour = 0
+        dateComponents.minute = 0
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+
+        let request = UNNotificationRequest(
+            identifier: "morning-briefing-trigger",
+            content: content,
+            trigger: trigger
+        )
+
+        do {
+            try await notificationCenter.add(request)
+            #if DEBUG
+            print("📱 Scheduled morning briefing trigger for 12:00 AM daily")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Failed to schedule morning briefing trigger: \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - Daily Summary Notification
+
+    /// Schedule or update the daily summary notification at 2:00 AM
+    func scheduleDailySummary(
+        medications: [Medication],
+        todayLogs: [MedicationLog],
+        todayAppointments: [Appointment],
+        todayBirthdays: [Profile],
+        pendingToDoCount: Int
+    ) async {
+        // Remove any existing daily summary
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["daily-summary"])
+
+        guard await isNotificationAllowed(), dailySummaryEnabled else {
+            #if DEBUG
+            print("📱 Daily summary not allowed or disabled, skipping")
+            #endif
+            return
+        }
+
+        let (title, subtitle, body) = buildDailySummaryContent(
+            medications: medications,
+            todayLogs: todayLogs,
+            todayAppointments: todayAppointments,
+            todayBirthdays: todayBirthdays,
+            pendingToDoCount: pendingToDoCount
+        )
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.subtitle = subtitle
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.morningBriefing.rawValue
+        content.userInfo = ["type": "daily_summary"]
+        content.interruptionLevel = .timeSensitive
+
+        if let attachment = createLogoAttachment() {
+            content.attachments = [attachment]
+        }
+
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
+
+        // Schedule for 2:00 AM daily
+        var dateComponents = DateComponents()
+        dateComponents.hour = 2
+        dateComponents.minute = 0
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+
+        let request = UNNotificationRequest(
+            identifier: "daily-summary",
+            content: content,
+            trigger: trigger
+        )
+
+        do {
+            try await notificationCenter.add(request)
+            #if DEBUG
+            print("📱 Scheduled daily summary notification for 2:00 AM")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Failed to schedule daily summary: \(error)")
+            #endif
+        }
+    }
+
+    /// Build concise summary text for the daily notification
+    private func buildDailySummaryContent(
+        medications: [Medication],
+        todayLogs: [MedicationLog],
+        todayAppointments: [Appointment],
+        todayBirthdays: [Profile],
+        pendingToDoCount: Int
+    ) -> (title: String, subtitle: String, body: String) {
+        // Subtitle: formatted date e.g. "Monday, February 23"
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "EEEE, MMMM d"
+        let subtitleText = dateFormatter.string(from: Date())
+
+        var summaryItems: [String] = []
+        var totalItemCount = 0
+
+        // 1. Medications (highest priority)
+        let scheduledLogs = todayLogs.filter { $0.status == .scheduled }
+        if !scheduledLogs.isEmpty {
+            totalItemCount += scheduledLogs.count
+            let medText = scheduledLogs.count == 1
+                ? "1 medication to take"
+                : "\(scheduledLogs.count) medications to take"
+            summaryItems.append("💊 \(medText)")
+        }
+
+        // 2. Appointments
+        if !todayAppointments.isEmpty {
+            totalItemCount += todayAppointments.count
+            if summaryItems.count < 4 {
+                let timeFormatter = DateFormatter()
+                timeFormatter.timeStyle = .short
+                if let firstAppt = todayAppointments.first {
+                    var apptText = firstAppt.title
+                    if let time = firstAppt.time {
+                        apptText += " at \(timeFormatter.string(from: time))"
+                    }
+                    summaryItems.append("📅 \(apptText)")
+                }
+                if todayAppointments.count > 1 && summaryItems.count < 4 {
+                    summaryItems.append("📅 +\(todayAppointments.count - 1) more appointment\(todayAppointments.count - 1 == 1 ? "" : "s")")
+                }
+            }
+        }
+
+        // 3. Birthdays
+        if !todayBirthdays.isEmpty {
+            totalItemCount += todayBirthdays.count
+            if summaryItems.count < 4 {
+                if let firstBirthday = todayBirthdays.first {
+                    summaryItems.append("🎂 \(firstBirthday.displayName)'s birthday")
+                }
+            }
+        }
+
+        // 4. To-do items (lowest priority)
+        if pendingToDoCount > 0 {
+            totalItemCount += pendingToDoCount
+            if summaryItems.count < 4 {
+                let taskText = pendingToDoCount == 1
+                    ? "1 task pending"
+                    : "\(pendingToDoCount) tasks pending"
+                summaryItems.append("✓ \(taskText)")
+            }
+        }
+
+        // Build body
+        var bodyText = summaryItems.joined(separator: "\n")
+        let displayedCount = summaryItems.count
+        if totalItemCount > displayedCount {
+            let remaining = totalItemCount - displayedCount
+            bodyText += "\n...and \(remaining) more"
+        }
+
+        if summaryItems.isEmpty {
+            bodyText = "No activities scheduled for today. Enjoy your day!"
+        }
+
+        return (title: "Today's Overview", subtitle: subtitleText, body: bodyText)
+    }
+
+    /// Create a notification attachment from the app logo in Assets catalog
+    /// Resizes to a small square so iOS renders it as a thumbnail in the top-right corner
+    private func createLogoAttachment() -> UNNotificationAttachment? {
+        guard let original = UIImage(named: "unforgotten-icon") else {
+            #if DEBUG
+            print("📱 Could not load AppLogo from assets")
+            #endif
+            return nil
+        }
+
+        // Resize to 100x100 so iOS treats it as a small thumbnail, not a full-width image
+        let thumbnailSize = CGSize(width: 200, height: 100)
+        let renderer = UIGraphicsImageRenderer(size: thumbnailSize)
+        let resized = renderer.image { _ in
+            original.draw(in: CGRect(origin: .zero, size: thumbnailSize))
+        }
+
+        guard let data = resized.pngData() else { return nil }
+
+        // Use a unique filename each time since iOS moves the file after attachment creation
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("applogo_\(UUID().uuidString).png")
+
+        do {
+            try data.write(to: fileURL)
+            let attachment = try UNNotificationAttachment(
+                identifier: "appLogo",
+                url: fileURL,
+                options: [
+                    UNNotificationAttachmentOptionsThumbnailClippingRectKey:
+                        CGRect(x: 0, y: 0, width: 1, height: 1).dictionaryRepresentation
+                ]
+            )
+            return attachment
+        } catch {
+            #if DEBUG
+            print("📱 Failed to create logo attachment: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Cancel the daily summary notification
+    func cancelDailySummary() {
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["daily-summary"])
+        #if DEBUG
+        print("📱 Cancelled daily summary notification")
+        #endif
+    }
+
+    /// Schedule a test daily summary notification that fires in 10 seconds
+    func testDailySummary(
+        medications: [Medication],
+        todayLogs: [MedicationLog],
+        todayAppointments: [Appointment],
+        todayBirthdays: [Profile],
+        pendingToDoCount: Int
+    ) async {
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["daily-summary-test"])
+
+        let (title, subtitle, body) = buildDailySummaryContent(
+            medications: medications,
+            todayLogs: todayLogs,
+            todayAppointments: todayAppointments,
+            todayBirthdays: todayBirthdays,
+            pendingToDoCount: pendingToDoCount
+        )
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.subtitle = subtitle
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.morningBriefing.rawValue
+        content.userInfo = ["type": "daily_summary_test"]
+        content.interruptionLevel = .timeSensitive
+
+        if let attachment = createLogoAttachment() {
+            content.attachments = [attachment]
+        }
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)
+
+        let request = UNNotificationRequest(
+            identifier: "daily-summary-test",
+            content: content,
+            trigger: trigger
+        )
+
+        do {
+            try await notificationCenter.add(request)
+            #if DEBUG
+            print("📱 Test daily summary will fire in 10 seconds")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Test daily summary error: \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - Reschedule All Notifications
+
     func rescheduleAllNotifications(
         appointments: [Appointment],
         profiles: [Profile],
@@ -817,11 +1217,9 @@ final class NotificationService: NSObject {
         print("📱 Re-scheduling all notifications...")
         #endif
 
-        // Check permission first
-        let status = await checkPermissionStatus()
-        guard status == .authorized else {
+        guard await isNotificationAllowed() else {
             #if DEBUG
-            print("📱 Notifications not authorized, skipping re-schedule")
+            print("📱 Notifications not allowed, skipping re-schedule")
             #endif
             return
         }
@@ -927,6 +1325,14 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let categoryIdentifier = notification.request.content.categoryIdentifier
+
+        // When the midnight morning briefing notification fires while the app is in the foreground,
+        // regenerate medication logs for the new day
+        if categoryIdentifier == NotificationCategory.morningBriefing.rawValue {
+            NotificationCenter.default.post(name: .morningBriefingShouldRefresh, object: nil)
+        }
+
         // Show notification even when app is in foreground
         completionHandler([.banner, .sound, .badge])
     }
@@ -977,6 +1383,12 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
         case NotificationCategory.stickyReminder.rawValue:
             handleStickyReminderNotificationSync(actionIdentifier: actionIdentifier, userInfo: userInfo)
+
+        case NotificationCategory.morningBriefing.rawValue:
+            // Morning briefing tapped - open the app
+            #if DEBUG
+            print("📱 Morning briefing notification tapped")
+            #endif
 
         default:
             #if DEBUG

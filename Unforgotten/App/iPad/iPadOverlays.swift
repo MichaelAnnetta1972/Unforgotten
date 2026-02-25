@@ -321,7 +321,6 @@ struct iPadSidePanelOverlay: View {
     @Binding var addActivityItemSection: String?
     @Binding var showSettingsInviteMember: Bool
     @Binding var showSettingsManageMembers: Bool
-    @Binding var showSettingsJoinAccount: Bool
     @Binding var showSettingsMoodHistory: Bool
     @Binding var showSettingsAppearance: Bool
     @Binding var showSettingsFeatureVisibility: Bool
@@ -334,7 +333,6 @@ struct iPadSidePanelOverlay: View {
     @Binding var countdownToEdit: Countdown?
     @ObservedObject var toDoListsViewModel: ToDoListsViewModel
     var appState: AppState
-    var toDoDetailTypeSelectorAction: ((ToDoListDetailViewModel, Binding<String?>, @escaping () -> Void) -> Void)?
 
     /// Check if any panel is showing
     private var isAnyPanelShowing: Bool {
@@ -343,7 +341,7 @@ struct iPadSidePanelOverlay: View {
         showEditProfile || showEditMedication || showEditAppointment || showEditUsefulContact ||
         showEditImportantAccount || showAddImportantAccount || showAddMedicalCondition || showAddGiftIdea || showEditGiftIdea || showAddClothingSize || showEditClothingSize ||
         showAddHobbySection || showAddActivitySection || showAddHobbyItem || showAddActivityItem ||
-        showSettingsInviteMember || showSettingsManageMembers || showSettingsJoinAccount || showSettingsMoodHistory ||
+        showSettingsInviteMember || showSettingsManageMembers || showSettingsMoodHistory ||
         showSettingsAppearance || showSettingsFeatureVisibility || showSettingsSwitchAccount || showSettingsEditAccountName ||
         showSettingsAdminPanel || showSettingsUpgrade || showAddCountdown || showEditCountdown
     }
@@ -408,7 +406,6 @@ struct iPadSidePanelOverlay: View {
             addActivityItemSection = nil
             showSettingsInviteMember = false
             showSettingsManageMembers = false
-            showSettingsJoinAccount = false
             showSettingsMoodHistory = false
             showSettingsAppearance = false
             showSettingsFeatureVisibility = false
@@ -574,7 +571,6 @@ struct iPadSidePanelOverlay: View {
                     dismissAll()
                 }
             )
-            .environment(\.iPadToDoDetailTypeSelectorAction, toDoDetailTypeSelectorAction)
             .environmentObject(appState)
         } else if showEditProfile, let profile = profileToEdit {
             EditProfileView(profile: profile, onDismiss: { dismissAll() }) { _ in
@@ -728,15 +724,11 @@ struct iPadSidePanelOverlay: View {
             )
             .environmentObject(appState)
         } else if showSettingsInviteMember {
-            InviteMemberView()
+            InviteShareView(profileEmail: "", onDismiss: { dismissAll() })
                 .environmentObject(appState)
                 .environment(\.sidePanelDismiss, panelDismissAction)
         } else if showSettingsManageMembers {
             ManageMembersView()
-                .environmentObject(appState)
-                .environment(\.sidePanelDismiss, panelDismissAction)
-        } else if showSettingsJoinAccount {
-            JoinAccountView()
                 .environmentObject(appState)
                 .environment(\.sidePanelDismiss, panelDismissAction)
         } else if showSettingsMoodHistory {
@@ -831,7 +823,7 @@ struct AddNoteSheetWrapper: View {
             } else {
                 ProgressView()
                     .onAppear {
-                        note = LocalNote(title: "", theme: .standard, accountId: accountId)
+                        note = LocalNote(title: "", accountId: accountId)
                     }
             }
         }

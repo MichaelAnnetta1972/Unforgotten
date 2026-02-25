@@ -29,6 +29,12 @@ struct iPadUsefulContactsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appAccentColor) private var appAccentColor
 
+    /// Categories that are actually in use by existing contacts
+    var availableCategories: [ContactCategory] {
+        let usedCategories = Set(viewModel.contacts.map { $0.category })
+        return ContactCategory.allCases.filter { usedCategories.contains($0) }
+    }
+
     var filteredContacts: [UsefulContact] {
         var contacts = viewModel.contacts
 
@@ -139,7 +145,7 @@ struct iPadUsefulContactsView: View {
 
             Divider()
 
-            ForEach(ContactCategory.allCases, id: \.self) { category in
+            ForEach(availableCategories, id: \.self) { category in
                 Button {
                     selectedCategory = category
                 } label: {
@@ -154,6 +160,7 @@ struct iPadUsefulContactsView: View {
                 .background(Color.cardBackground)
                 .cornerRadius(10)
         }
+        .tint(appAccentColor)
     }
 
     private var addButton: some View {

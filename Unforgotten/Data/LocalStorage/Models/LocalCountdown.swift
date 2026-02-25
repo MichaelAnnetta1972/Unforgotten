@@ -9,10 +9,15 @@ final class LocalCountdown {
     var id: UUID
     var accountId: UUID
     var title: String
+    var subtitle: String?
     var date: Date
+    var endDate: Date?
+    var hasTime: Bool
     var type: String  // Store as raw value
     var customType: String?
     var notes: String?
+    var imageUrl: String?
+    var groupId: UUID?
     var reminderOffsetMinutes: Int?
     var isRecurring: Bool
     var createdAt: Date
@@ -27,10 +32,15 @@ final class LocalCountdown {
         id: UUID = UUID(),
         accountId: UUID,
         title: String,
+        subtitle: String? = nil,
         date: Date,
+        endDate: Date? = nil,
+        hasTime: Bool = false,
         type: String = "countdown",
         customType: String? = nil,
         notes: String? = nil,
+        imageUrl: String? = nil,
+        groupId: UUID? = nil,
         reminderOffsetMinutes: Int? = nil,
         isRecurring: Bool = false,
         createdAt: Date = Date(),
@@ -41,10 +51,15 @@ final class LocalCountdown {
         self.id = id
         self.accountId = accountId
         self.title = title
+        self.subtitle = subtitle
         self.date = date
+        self.endDate = endDate
+        self.hasTime = hasTime
         self.type = type
         self.customType = customType
         self.notes = notes
+        self.imageUrl = imageUrl
+        self.groupId = groupId
         self.reminderOffsetMinutes = reminderOffsetMinutes
         self.isRecurring = isRecurring
         self.createdAt = createdAt
@@ -59,10 +74,15 @@ final class LocalCountdown {
             id: remote.id,
             accountId: remote.accountId,
             title: remote.title,
+            subtitle: remote.subtitle,
             date: remote.date,
+            endDate: remote.endDate,
+            hasTime: remote.hasTime,
             type: remote.type.rawValue,
             customType: remote.customType,
             notes: remote.notes,
+            imageUrl: remote.imageUrl,
+            groupId: remote.groupId,
             reminderOffsetMinutes: remote.reminderOffsetMinutes,
             isRecurring: remote.isRecurring,
             createdAt: remote.createdAt,
@@ -78,10 +98,15 @@ final class LocalCountdown {
             id: id,
             accountId: accountId,
             title: title,
+            subtitle: subtitle,
             date: date,
+            endDate: endDate,
+            hasTime: hasTime,
             type: CountdownType(rawValue: type) ?? .countdown,
             customType: customType,
             notes: notes,
+            imageUrl: imageUrl,
+            groupId: groupId,
             reminderOffsetMinutes: reminderOffsetMinutes,
             isRecurring: isRecurring,
             createdAt: createdAt,
@@ -93,10 +118,15 @@ final class LocalCountdown {
     func update(from remote: Countdown) {
         self.accountId = remote.accountId
         self.title = remote.title
+        self.subtitle = remote.subtitle
         self.date = remote.date
+        self.endDate = remote.endDate
+        self.hasTime = remote.hasTime
         self.type = remote.type.rawValue
         self.customType = remote.customType
         self.notes = remote.notes
+        self.imageUrl = remote.imageUrl
+        self.groupId = remote.groupId
         self.reminderOffsetMinutes = remote.reminderOffsetMinutes
         self.isRecurring = remote.isRecurring
         self.createdAt = remote.createdAt

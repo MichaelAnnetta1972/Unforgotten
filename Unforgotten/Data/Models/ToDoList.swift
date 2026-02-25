@@ -7,21 +7,28 @@
 
 import Foundation
 
-struct ToDoList: Identifiable, Equatable {
+struct ToDoList: Identifiable, Equatable, Hashable {
     var id: UUID
     var accountId: UUID
     var title: String
     var listType: String?
+    var dueDate: Date?
     var createdAt: Date
     var updatedAt: Date
 
     var items: [ToDoItem]
+
+    // Hashable: hash by id only (items are loaded separately)
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 
     init(
         id: UUID = UUID(),
         accountId: UUID,
         title: String,
         listType: String? = nil,
+        dueDate: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         items: [ToDoItem] = []
@@ -30,6 +37,7 @@ struct ToDoList: Identifiable, Equatable {
         self.accountId = accountId
         self.title = title
         self.listType = listType
+        self.dueDate = dueDate
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.items = items
@@ -55,6 +63,7 @@ extension ToDoList: Codable {
         case accountId = "account_id"
         case title
         case listType = "list_type"
+        case dueDate = "due_date"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -65,6 +74,7 @@ extension ToDoList: Codable {
         accountId = try container.decode(UUID.self, forKey: .accountId)
         title = try container.decode(String.self, forKey: .title)
         listType = try container.decodeIfPresent(String.self, forKey: .listType)
+        dueDate = try container.decodeIfPresent(Date.self, forKey: .dueDate)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         items = [] // Items are loaded separately
@@ -76,6 +86,7 @@ extension ToDoList: Codable {
         try container.encode(accountId, forKey: .accountId)
         try container.encode(title, forKey: .title)
         try container.encodeIfPresent(listType, forKey: .listType)
+        try container.encodeIfPresent(dueDate, forKey: .dueDate)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         // items are not encoded - they're managed separately

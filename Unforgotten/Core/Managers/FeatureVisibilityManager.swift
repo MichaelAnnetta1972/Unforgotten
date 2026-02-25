@@ -1,8 +1,9 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Feature
 /// Represents toggleable features in the app
-enum Feature: String, CaseIterable, Identifiable {
+enum Feature: String, CaseIterable, Identifiable, Codable {
     case aboutMe = "about_me"
     case calendar = "calendar"
     case familyAndFriends = "family_and_friends"
@@ -15,6 +16,7 @@ enum Feature: String, CaseIterable, Identifiable {
     case birthdays = "birthdays"
     case usefulContacts = "useful_contacts"
     case moodTracker = "mood_tracker"
+    case mealPlanner = "meal_planner"
 
     var id: String { rawValue }
 
@@ -32,6 +34,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .birthdays: return "Birthdays"
         case .usefulContacts: return "Useful Contacts"
         case .moodTracker: return "Mood Tracker"
+        case .mealPlanner: return "Meal Planner"
         }
     }
 
@@ -49,6 +52,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .birthdays: return "gift"
         case .usefulContacts: return "phone"
         case .moodTracker: return "face.smiling"
+        case .mealPlanner: return "fork.knife"
         }
     }
 
@@ -62,10 +66,18 @@ enum Feature: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Feature + Transferable
+extension Feature: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .text)
+    }
+}
+
 // MARK: - Feature Visibility Manager
 @Observable
 class FeatureVisibilityManager {
     private let userDefaultsKey = "feature_visibility"
+    private let orderKey = "feature_order"
 
     /// Current user ID for sync (set by AppState)
     var currentUserId: UUID?
@@ -75,8 +87,12 @@ class FeatureVisibilityManager {
     /// Dictionary of feature visibility states (true = visible)
     private(set) var visibilityStates: [String: Bool] = [:]
 
+    /// Ordered list of feature raw values
+    private(set) var featureOrder: [String] = []
+
     init() {
         loadVisibilityStates()
+        loadFeatureOrder()
     }
 
     /// Trigger async sync to Supabase
@@ -121,15 +137,56 @@ class FeatureVisibilityManager {
         Feature.allCases.filter { isVisible($0) }
     }
 
+    /// Get all visible features in the user's custom order
+    var orderedVisibleFeatures: [Feature] {
+        let visible = Set(Feature.allCases.filter { isVisible($0) }.map { $0.rawValue })
+
+        // Start with features in saved order that are still visible
+        var ordered = featureOrder.compactMap { rawValue -> Feature? in
+            guard visible.contains(rawValue), let feature = Feature(rawValue: rawValue) else { return nil }
+            return feature
+        }
+
+        // Append any visible features not in the saved order (new features)
+        let orderedSet = Set(ordered.map { $0.rawValue })
+        let missing = Feature.allCases.filter { visible.contains($0.rawValue) && !orderedSet.contains($0.rawValue) }
+        ordered.append(contentsOf: missing)
+
+        return ordered
+    }
+
     /// Get all hidden features
     var hiddenFeatures: [Feature] {
         Feature.allCases.filter { !isVisible($0) }
     }
 
-    /// Reset all features to visible
+    /// Move a feature from one index to another in the ordered list
+    func moveFeature(fromIndex: Int, toIndex: Int) {
+        var current = orderedVisibleFeatures.map { $0.rawValue }
+        guard fromIndex >= 0, fromIndex < current.count,
+              toIndex >= 0, toIndex < current.count,
+              fromIndex != toIndex else { return }
+
+        let item = current.remove(at: fromIndex)
+        current.insert(item, at: toIndex)
+        featureOrder = current
+        saveFeatureOrder()
+    }
+
+    /// Apply order from remote sync (does NOT trigger sync back)
+    func applyRemoteOrder(_ order: [String]) {
+        featureOrder = order
+        if let data = try? JSONEncoder().encode(featureOrder) {
+            UserDefaults.standard.set(data, forKey: orderKey)
+        }
+    }
+
+    /// Reset all features to visible and default order
     func resetToDefaults() {
         visibilityStates = [:]
+        featureOrder = []
         saveVisibilityStates()
+        saveFeatureOrder()
     }
 
     // MARK: - Private Methods
@@ -144,6 +201,20 @@ class FeatureVisibilityManager {
     private func saveVisibilityStates() {
         if let data = try? JSONEncoder().encode(visibilityStates) {
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        }
+        triggerSync()
+    }
+
+    private func loadFeatureOrder() {
+        if let data = UserDefaults.standard.data(forKey: orderKey),
+           let order = try? JSONDecoder().decode([String].self, from: data) {
+            featureOrder = order
+        }
+    }
+
+    private func saveFeatureOrder() {
+        if let data = try? JSONEncoder().encode(featureOrder) {
+            UserDefaults.standard.set(data, forKey: orderKey)
         }
         triggerSync()
     }

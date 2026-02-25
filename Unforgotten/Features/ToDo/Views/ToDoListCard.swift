@@ -31,9 +31,28 @@ struct ToDoListCard: View {
                     .foregroundColor(.textPrimary)
                     .multilineTextAlignment(.leading)
 
-                Text(list.listType ?? "Other")
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
+                HStack(spacing: 8) {
+                    Text(list.listType ?? "Other")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+
+                    if let dueDate = list.dueDate {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 10))
+                            Text(dueDate.formatted(.dateTime.day().month(.abbreviated).year()))
+                                .font(.appCaption)
+                        }
+                        .foregroundColor(dueDate < Calendar.current.startOfDay(for: Date()) ? .red : appAccentColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            (dueDate < Calendar.current.startOfDay(for: Date()) ? Color.red : appAccentColor)
+                                .opacity(0.15)
+                        )
+                        .cornerRadius(6)
+                    }
+                }
             }
 
             Spacer()

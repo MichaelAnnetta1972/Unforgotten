@@ -192,6 +192,7 @@ struct iPadAppointmentListView: View {
                 .background(Color.cardBackground)
                 .cornerRadius(10)
         }
+        .tint(appAccentColor)
     }
 
     private var addButton: some View {

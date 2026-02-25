@@ -17,9 +17,10 @@ protocol ToDoRepositoryProtocol {
     // Lists
     func getLists(accountId: UUID) async throws -> [ToDoList]
     func getList(id: UUID) async throws -> ToDoList?
-    func createList(accountId: UUID, title: String, listType: String?) async throws -> ToDoList
+    func createList(accountId: UUID, title: String, listType: String?, dueDate: Date?) async throws -> ToDoList
     func updateList(_ list: ToDoList) async throws
     func deleteList(id: UUID) async throws
+    func getListsWithDueDates(accountId: UUID) async throws -> [ToDoList]
 
     // Items
     func getItems(listId: UUID) async throws -> [ToDoItem]
@@ -120,20 +121,22 @@ class ToDoRepository: ToDoRepositoryProtocol {
         return list
     }
 
-    func createList(accountId: UUID, title: String, listType: String?) async throws -> ToDoList {
+    func createList(accountId: UUID, title: String, listType: String?, dueDate: Date? = nil) async throws -> ToDoList {
         struct Insert: Encodable {
             let accountId: UUID
             let title: String
             let listType: String?
+            let dueDate: Date?
 
             enum CodingKeys: String, CodingKey {
                 case accountId = "account_id"
                 case title
                 case listType = "list_type"
+                case dueDate = "due_date"
             }
         }
 
-        let insert = Insert(accountId: accountId, title: title, listType: listType)
+        let insert = Insert(accountId: accountId, title: title, listType: listType, dueDate: dueDate)
 
         var list: ToDoList = try await client
             .from(TableName.todoLists)
@@ -151,14 +154,16 @@ class ToDoRepository: ToDoRepositoryProtocol {
         struct Update: Encodable {
             let title: String
             let listType: String?
+            let dueDate: Date?
 
             enum CodingKeys: String, CodingKey {
                 case title
                 case listType = "list_type"
+                case dueDate = "due_date"
             }
         }
 
-        let update = Update(title: list.title, listType: list.listType)
+        let update = Update(title: list.title, listType: list.listType, dueDate: list.dueDate)
 
         try await client
             .from(TableName.todoLists)
@@ -173,6 +178,18 @@ class ToDoRepository: ToDoRepositoryProtocol {
             .delete()
             .eq("id", value: id.uuidString)
             .execute()
+    }
+
+    func getListsWithDueDates(accountId: UUID) async throws -> [ToDoList] {
+        let lists: [ToDoList] = try await client
+            .from(TableName.todoLists)
+            .select()
+            .eq("account_id", value: accountId.uuidString)
+            .not("due_date", operator: .is, value: "null")
+            .execute()
+            .value
+
+        return lists
     }
 
     // MARK: - Items

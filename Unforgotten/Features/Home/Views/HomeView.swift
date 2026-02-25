@@ -19,6 +19,37 @@ enum HomeDestination: Hashable {
     case todoLists
     case stickyReminders
     case stickyReminderDetail(StickyReminder)
+    case mealPlanner
+}
+
+// MARK: - Feature Card Data
+/// Maps a Feature enum case to its navigation destination and card display data
+private struct FeatureCardData: Identifiable {
+    let feature: Feature
+    let destination: HomeDestination
+    let title: String
+    let icon: String
+
+    var id: String { feature.rawValue }
+}
+
+/// Build a FeatureCardData from a Feature
+private func featureCardData(for feature: Feature) -> FeatureCardData? {
+    switch feature {
+    case .calendar:         return FeatureCardData(feature: feature, destination: .calendar, title: "Calendar", icon: "calendar.badge.clock")
+    case .aboutMe:          return FeatureCardData(feature: feature, destination: .myCard, title: "About Me", icon: "person.crop.circle")
+    case .familyAndFriends: return FeatureCardData(feature: feature, destination: .profiles, title: "Family and Friends", icon: "person.2")
+    case .medications:      return FeatureCardData(feature: feature, destination: .medications, title: "Medications", icon: "pill")
+    case .appointments:     return FeatureCardData(feature: feature, destination: .appointments, title: "Appointments", icon: "calendar")
+    case .countdownEvents:  return FeatureCardData(feature: feature, destination: .countdownEvents, title: "Events", icon: "timer")
+    case .stickyReminders:  return FeatureCardData(feature: feature, destination: .stickyReminders, title: "Sticky Reminders", icon: "pin.fill")
+    case .todoLists:        return FeatureCardData(feature: feature, destination: .todoLists, title: "To Do Lists", icon: "checklist")
+    case .notes:            return FeatureCardData(feature: feature, destination: .notes, title: "Notes", icon: "note.text")
+    case .usefulContacts:   return FeatureCardData(feature: feature, destination: .contacts, title: "Useful Contacts", icon: "phone")
+    case .birthdays:        return FeatureCardData(feature: feature, destination: .birthdays, title: "Birthdays", icon: "gift")
+    case .moodTracker:      return FeatureCardData(feature: feature, destination: .mood, title: "Mood Tracker", icon: "face.smiling")
+    case .mealPlanner:      return FeatureCardData(feature: feature, destination: .mealPlanner, title: "Meal Planner", icon: "fork.knife")
+    }
 }
 
 // MARK: - Home View
@@ -27,6 +58,7 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings = false
     @State private var showAccountSwitcher = false
+    @State private var isReordering = false
     @Environment(\.navNamespace) private var namespace
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(FeatureVisibilityManager.self) private var featureVisibility
@@ -62,6 +94,13 @@ struct HomeView: View {
         return true
     }
 
+    /// Ordered list of visible feature cards respecting user's custom order
+    private var orderedFeatureCards: [FeatureCardData] {
+        featureVisibility.orderedVisibleFeatures
+            .filter { shouldShowFeature($0) }
+            .compactMap { featureCardData(for: $0) }
+    }
+
     var body: some View {
         ZStack {
             ScrollView {
@@ -74,6 +113,13 @@ struct HomeView: View {
                         accountSwitcherAction: { showAccountSwitcher = true },
                         //showSettingsButton: true,
                         settingsAction: { showSettings = true },
+                        showReorderButton: true,
+                        isReordering: isReordering,
+                        reorderAction: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                isReordering.toggle()
+                            }
+                        },
                         useLogo: true,
                         logoImageName: "unforgotten-logo"
                     )
@@ -90,92 +136,31 @@ struct HomeView: View {
 
                         // Navigation Cards
                         VStack(spacing: AppDimensions.cardSpacing) {
-                         
-
-                            if shouldShowFeature(.calendar) {
-                                NavigationLink(value: HomeDestination.calendar) {
-                                    NavigationCardContent(title: "Calendar", icon: "calendar.badge.clock")
+                            if isReordering {
+                                // REORDER MODE: draggable cards
+                                ForEach(orderedFeatureCards) { card in
+                                    DraggableHomeCard(
+                                        title: card.title,
+                                        icon: card.icon,
+                                        feature: card.feature,
+                                        onDrop: { droppedFeature in
+                                            guard let fromIndex = orderedFeatureCards.firstIndex(where: { $0.feature == droppedFeature }),
+                                                  let toIndex = orderedFeatureCards.firstIndex(where: { $0.feature == card.feature }),
+                                                  fromIndex != toIndex else { return }
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                featureVisibility.moveFeature(fromIndex: fromIndex, toIndex: toIndex)
+                                            }
+                                        }
+                                    )
                                 }
-                                .matchedTransitionSource(id: HomeDestination.calendar, in: namespace)
-                            }
-                         
-                            if shouldShowFeature(.aboutMe) {
-                                NavigationLink(value: HomeDestination.myCard) {
-                                    NavigationCardContent(title: "About Me", icon: "person.crop.circle")
+                            } else {
+                                // NORMAL MODE: NavigationLinks
+                                ForEach(orderedFeatureCards) { card in
+                                    NavigationLink(value: card.destination) {
+                                        NavigationCardContent(title: card.title, icon: card.icon)
+                                    }
+                                    .matchedTransitionSource(id: card.destination, in: namespace)
                                 }
-                                .matchedTransitionSource(id: HomeDestination.myCard, in: namespace)
-                            }
-
-                            if shouldShowFeature(.familyAndFriends) {
-                                NavigationLink(value: HomeDestination.profiles) {
-                                    NavigationCardContent(title: "Family and Friends", icon: "person.2")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.profiles, in: namespace)
-                            }
-
-                            if shouldShowFeature(.medications) {
-                                NavigationLink(value: HomeDestination.medications) {
-                                    NavigationCardContent(title: "Medications", icon: "pill")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.medications, in: namespace)
-                            }
-
-                            if shouldShowFeature(.appointments) {
-                                NavigationLink(value: HomeDestination.appointments) {
-                                    NavigationCardContent(title: "Appointments", icon: "calendar")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.appointments, in: namespace)
-                            }
-
-                            if shouldShowFeature(.countdownEvents) {
-                                NavigationLink(value: HomeDestination.countdownEvents) {
-                                    NavigationCardContent(title: "Events", icon: "timer")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.countdownEvents, in: namespace)
-                            }
-
-                            if shouldShowFeature(.stickyReminders) {
-                                NavigationLink(value: HomeDestination.stickyReminders) {
-                                    NavigationCardContent(title: "Sticky Reminders", icon: "pin.fill")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.stickyReminders, in: namespace)
-                            }
-                            
-                            if shouldShowFeature(.todoLists) {
-                                NavigationLink(value: HomeDestination.todoLists) {
-                                    NavigationCardContent(title: "To Do Lists", icon: "checklist")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.todoLists, in: namespace)
-                            }
-
-                            if shouldShowFeature(.notes) {
-                                NavigationLink(value: HomeDestination.notes) {
-                                    NavigationCardContent(title: "Notes", icon: "note.text")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.notes, in: namespace)
-                            }
-
-
-                            if shouldShowFeature(.usefulContacts) {
-                                NavigationLink(value: HomeDestination.contacts) {
-                                    NavigationCardContent(title: "Useful Contacts", icon: "phone")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.contacts, in: namespace)
-                            }
-
-                            if shouldShowFeature(.birthdays) {
-                                NavigationLink(value: HomeDestination.birthdays) {
-                                    NavigationCardContent(title: "Birthdays", icon: "gift")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.birthdays, in: namespace)
-                            }
-
-
-                            if shouldShowFeature(.moodTracker) {
-                                NavigationLink(value: HomeDestination.mood) {
-                                    NavigationCardContent(title: "Mood Tracker", icon: "face.smiling")
-                                }
-                                .matchedTransitionSource(id: HomeDestination.mood, in: namespace)
                             }
                         }
 
@@ -257,9 +242,10 @@ struct HomeView: View {
         }
         .onChange(of: appState.currentAccount?.id) { _, _ in
             // Reload data when account changes
-            Task {
-                await viewModel.loadData(appState: appState)
+            Task { @MainActor in
+                guard !Task.isCancelled else { return }
                 await appState.generateTodaysMedicationLogs()
+                guard !Task.isCancelled else { return }
                 await viewModel.loadData(appState: appState)
             }
         }
@@ -294,6 +280,54 @@ struct NavigationCardContent: View {
         .padding(AppDimensions.cardPaddingLarge)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
+    }
+}
+
+// MARK: - Draggable Home Card
+/// Card displayed during reorder mode with drag-and-drop support
+struct DraggableHomeCard: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+    let title: String
+    let icon: String
+    let feature: Feature
+    let onDrop: (Feature) -> Void
+
+    @State private var isTargeted = false
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(appAccentColor)
+                .frame(width: 28)
+
+            Text(title)
+                .font(.appCardTitle)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.textSecondary)
+        }
+        .padding(AppDimensions.cardPaddingLarge)
+        .background(isTargeted ? appAccentColor.opacity(0.15) : Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                .stroke(isTargeted ? appAccentColor : Color.clear, lineWidth: 2)
+        )
+        .draggable(feature)
+        .dropDestination(for: Feature.self) { droppedFeatures, _ in
+            guard let dropped = droppedFeatures.first else { return false }
+            onDrop(dropped)
+            return true
+        } isTargeted: { targeted in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isTargeted = targeted
+            }
+        }
     }
 }
 
@@ -468,7 +502,7 @@ struct TodayMedicationRow: View {
                     // Icon
                     Image(systemName: "pill.fill")
                         .font(.system(size: 18))
-                        .foregroundColor(.medicalRed)
+                        .foregroundColor(appAccentColor)
                         .frame(width: 32, height: 32)
 
                     // Info
@@ -526,7 +560,6 @@ struct TodayAppointmentRow: View {
     @ObservedObject var viewModel: HomeViewModel
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccentColor) private var appAccentColor
-    @State private var showOptions = false
     @State private var navigateToDetail = false
 
     var body: some View {
@@ -539,7 +572,7 @@ struct TodayAppointmentRow: View {
                     // Icon
                     Image(systemName: "calendar")
                         .font(.system(size: 18))
-                        .foregroundColor(.calendarBlue)
+                        .foregroundColor(appAccentColor)
                         .frame(width: 32, height: 32)
 
                     // Info
@@ -576,29 +609,10 @@ struct TodayAppointmentRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
-
-            // Options button (vertical dots)
-            Button {
-                showOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
-                    .font(.system(size: 16))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 32, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
         }
         .padding(AppDimensions.cardPadding)
         .navigationDestination(isPresented: $navigateToDetail) {
             AppointmentDetailView(appointment: appointment)
-        }
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button("View details") {
-                navigateToDetail = true
-            }
-            Button("Cancel", role: .cancel) { }
         }
     }
 }
@@ -606,8 +620,8 @@ struct TodayAppointmentRow: View {
 // MARK: - Today Birthday Row
 struct TodayBirthdayRow: View {
     let profile: Profile
-    @State private var showOptions = false
     @State private var navigateToDetail = false
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         HStack(spacing: 12) {
@@ -619,7 +633,7 @@ struct TodayBirthdayRow: View {
                     // Icon
                     Image(systemName: "gift.fill")
                         .font(.system(size: 18))
-                        .foregroundColor(.calendarPink)
+                        .foregroundColor(appAccentColor)
                         .frame(width: 32, height: 32)
 
                     // Info
@@ -640,29 +654,10 @@ struct TodayBirthdayRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
-
-            // Options button (vertical dots)
-            Button {
-                showOptions = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .rotationEffect(.degrees(90))
-                    .font(.system(size: 16))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 32, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
         }
         .padding(AppDimensions.cardPadding)
         .navigationDestination(isPresented: $navigateToDetail) {
             ProfileDetailView(profile: profile)
-        }
-        .confirmationDialog("Options", isPresented: $showOptions, titleVisibility: .hidden) {
-            Button("View profile") {
-                navigateToDetail = true
-            }
-            Button("Cancel", role: .cancel) { }
         }
     }
 }
@@ -671,6 +666,7 @@ struct TodayBirthdayRow: View {
 struct TodayCountdownRow: View {
     let countdown: Countdown
     @State private var navigateToDetail = false
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button {
@@ -680,7 +676,7 @@ struct TodayCountdownRow: View {
                 // Icon - use the countdown type's icon and color
                 Image(systemName: countdown.type.icon)
                     .font(.system(size: 18))
-                    .foregroundColor(countdown.type.color)
+                    .foregroundColor(appAccentColor)
                     .frame(width: 32, height: 32)
 
                 // Info

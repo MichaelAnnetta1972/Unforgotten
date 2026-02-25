@@ -18,9 +18,7 @@ struct iPadSettingsContentView: View {
     @Environment(\.iPadHomeAction) private var iPadHomeAction
 
     // iPad environment actions for full-screen overlays
-    @Environment(\.iPadShowInviteMemberAction) private var iPadShowInviteMemberAction
     @Environment(\.iPadShowManageMembersAction) private var iPadShowManageMembersAction
-    @Environment(\.iPadShowJoinAccountAction) private var iPadShowJoinAccountAction
     @Environment(\.iPadShowMoodHistoryAction) private var iPadShowMoodHistoryAction
     @Environment(\.iPadShowAppearanceSettingsAction) private var iPadShowAppearanceSettingsAction
     @Environment(\.iPadShowFeatureVisibilityAction) private var iPadShowFeatureVisibilityAction
@@ -35,6 +33,8 @@ struct iPadSettingsContentView: View {
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
     @State private var userEmail: String = ""
+    @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
+    @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
 
     var body: some View {
         settingsListView
@@ -103,6 +103,35 @@ struct iPadSettingsContentView: View {
                             }
                         }
 
+                        // Notifications section
+                        SettingsPanelSection(title: "NOTIFICATIONS") {
+                            SettingsPanelToggleRow(
+                                icon: "bell.fill",
+                                title: "Allow Notifications",
+                                isOn: $allowNotifications
+                            )
+                            .onChange(of: allowNotifications) { _, newValue in
+                                NotificationService.shared.allowNotifications = newValue
+                                if newValue {
+                                    Task {
+                                        _ = await NotificationService.shared.requestPermission()
+                                        await NotificationService.shared.scheduleMorningBriefingTrigger()
+                                    }
+                                }
+                            }
+
+                            if allowNotifications {
+                                SettingsPanelToggleRow(
+                                    icon: "eye.slash.fill",
+                                    title: "Hide Previews",
+                                    isOn: $hideNotificationPreviews
+                                )
+                                .onChange(of: hideNotificationPreviews) { _, newValue in
+                                    NotificationService.shared.hideNotificationPreviews = newValue
+                                }
+                            }
+                        }
+
                         // Account section
                         SettingsPanelSection(title: "ACCOUNT") {
                             if let account = appState.currentAccount {
@@ -141,16 +170,8 @@ struct iPadSettingsContentView: View {
                                 }
                             }
 
-                            // Only show invite/manage if user can manage members
+                            // Only show manage members if user can manage members
                             if appState.currentUserRole?.canManageMembers == true {
-                                SettingsPanelButtonRow(
-                                    icon: "person.badge.plus",
-                                    title: "Invite Family Member",
-                                    isSelected: false
-                                ) {
-                                    iPadShowInviteMemberAction?()
-                                }
-
                                 SettingsPanelButtonRow(
                                     icon: "person.2",
                                     title: "Manage Members",
@@ -158,14 +179,6 @@ struct iPadSettingsContentView: View {
                                 ) {
                                     iPadShowManageMembersAction?()
                                 }
-                            }
-
-                            SettingsPanelButtonRow(
-                                icon: "envelope.badge",
-                                title: "Join Another Account",
-                                isSelected: false
-                            ) {
-                                iPadShowJoinAccountAction?()
                             }
 
                             // Switch Account (only show if multiple accounts)

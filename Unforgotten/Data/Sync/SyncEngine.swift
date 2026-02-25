@@ -26,6 +26,7 @@ final class SyncEngine: ObservableObject {
     private let stickyReminderRepository = StickyReminderRepository()
     private let moodRepository = MoodRepository()
     private let importantAccountRepository = ImportantAccountRepository()
+    private let mealPlannerRepository = MealPlannerRepository()
 
     // MARK: - Sync State
     private var syncTask: Task<Void, Never>?
@@ -88,16 +89,20 @@ final class SyncEngine: ObservableObject {
 
             // 2. Pull and merge remote changes for each entity type
             let entities: [(String, Double)] = [
-                ("profiles", 0.15),
+                ("profiles", 0.10),
+                ("profileDetails", 0.20),
                 ("medications", 0.30),
-                ("schedules", 0.40),
-                ("logs", 0.50),
-                ("appointments", 0.60),
-                ("contacts", 0.70),
-                ("todos", 0.80),
-                ("countdowns", 0.85),
-                ("reminders", 0.90),
-                ("mood", 0.95)
+                ("schedules", 0.38),
+                ("logs", 0.46),
+                ("appointments", 0.54),
+                ("contacts", 0.62),
+                ("todos", 0.70),
+                ("countdowns", 0.76),
+                ("reminders", 0.82),
+                ("mood", 0.86),
+                ("recipes", 0.90),
+                ("plannedMeals", 0.94),
+                ("importantAccounts", 0.97)
             ]
 
             var totalChanges = 0
@@ -139,6 +144,8 @@ final class SyncEngine: ObservableObject {
         switch entityType {
         case "profiles":
             return try await syncProfiles(accountId: accountId)
+        case "profileDetails":
+            return try await syncProfileDetails(accountId: accountId)
         case "medications":
             return try await syncMedications(accountId: accountId)
         case "schedules":
@@ -157,6 +164,12 @@ final class SyncEngine: ObservableObject {
             return try await syncStickyReminders(accountId: accountId)
         case "mood":
             return try await syncMoodEntries(accountId: accountId)
+        case "recipes":
+            return try await syncRecipes(accountId: accountId)
+        case "plannedMeals":
+            return try await syncPlannedMeals(accountId: accountId)
+        case "importantAccounts":
+            return try await syncImportantAccounts(accountId: accountId)
         default:
             return 0
         }
@@ -175,6 +188,10 @@ final class SyncEngine: ObservableObject {
             let localProfiles = try modelContext.fetch(descriptor)
 
             if let local = localProfiles.first {
+                // Skip profiles that have been locally deleted — don't resurrect them
+                if local.locallyDeleted {
+                    continue
+                }
                 // Merge: last-write-wins
                 if remote.updatedAt > local.updatedAt {
                     local.update(from: remote)
@@ -184,6 +201,54 @@ final class SyncEngine: ObservableObject {
                 // Insert new
                 let newLocal = LocalProfile(from: remote)
                 modelContext.insert(newLocal)
+                changesCount += 1
+            }
+        }
+
+        try modelContext.save()
+        return changesCount
+    }
+
+    // MARK: - Profile Details Sync
+    private func syncProfileDetails(accountId: UUID) async throws -> Int {
+        // Get all profiles for this account to know which details to sync
+        let localProfileDescriptor = FetchDescriptor<LocalProfile>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted }
+        )
+        let localProfiles = try modelContext.fetch(localProfileDescriptor)
+        var changesCount = 0
+
+        for profile in localProfiles {
+            let remoteDetails = try await profileRepository.getProfileDetails(profileId: profile.id)
+
+            for remote in remoteDetails {
+                let descriptor = FetchDescriptor<LocalProfileDetail>(
+                    predicate: #Predicate { $0.id == remote.id }
+                )
+
+                let localDetails = try modelContext.fetch(descriptor)
+
+                if let local = localDetails.first {
+                    if remote.updatedAt > local.updatedAt {
+                        local.update(from: remote)
+                        changesCount += 1
+                    }
+                } else {
+                    let newLocal = LocalProfileDetail(from: remote)
+                    modelContext.insert(newLocal)
+                    changesCount += 1
+                }
+            }
+
+            // Remove locally cached details that no longer exist on server
+            let profileId = profile.id
+            let allLocalDescriptor = FetchDescriptor<LocalProfileDetail>(
+                predicate: #Predicate { $0.profileId == profileId && !$0.locallyDeleted }
+            )
+            let allLocal = try modelContext.fetch(allLocalDescriptor)
+            let remoteIds = Set(remoteDetails.map { $0.id })
+            for local in allLocal where !remoteIds.contains(local.id) && local.isSynced {
+                modelContext.delete(local)
                 changesCount += 1
             }
         }
@@ -545,6 +610,8 @@ final class SyncEngine: ObservableObject {
             try await pushProfileChange(change, type: changeType)
         case "medication":
             try await pushMedicationChange(change, type: changeType)
+        case "medicationSchedule":
+            try await pushMedicationScheduleChange(change, type: changeType)
         case "medicationLog":
             try await pushMedicationLogChange(change, type: changeType)
         case "appointment":
@@ -561,6 +628,12 @@ final class SyncEngine: ObservableObject {
             try await pushStickyReminderChange(change, type: changeType)
         case "profileDetail":
             try await pushProfileDetailChange(change, type: changeType)
+        case "recipe":
+            try await pushRecipeChange(change, type: changeType)
+        case "plannedMeal":
+            try await pushPlannedMealChange(change, type: changeType)
+        case "importantAccount":
+            try await pushImportantAccountChange(change, type: changeType)
         default:
             #if DEBUG
             print("🔄 Unknown entity type: \(change.entityType)")
@@ -585,7 +658,20 @@ final class SyncEngine: ObservableObject {
                 accountId: local.accountId,
                 type: local.profileType,
                 fullName: local.fullName,
-                birthday: local.birthday
+                preferredName: local.preferredName,
+                relationship: local.relationship,
+                connectedToProfileId: local.connectedToProfileId,
+                includeInFamilyTree: local.includeInFamilyTree,
+                birthday: local.birthday,
+                isDeceased: local.isDeceased,
+                dateOfDeath: local.dateOfDeath,
+                address: local.address,
+                phone: local.phone,
+                email: local.email,
+                notes: local.notes,
+                isFavourite: local.isFavourite,
+                linkedUserId: local.linkedUserId,
+                photoUrl: local.photoUrl
             )
             _ = try await profileRepository.createProfile(insert)
         case .update:
@@ -636,6 +722,40 @@ final class SyncEngine: ObservableObject {
         local.isSynced = true
     }
 
+    private func pushMedicationScheduleChange(_ change: PendingChange, type: PendingChange.ChangeType?) async throws {
+        let entityId = change.entityId
+        let descriptor = FetchDescriptor<LocalMedicationSchedule>(
+            predicate: #Predicate { $0.id == entityId }
+        )
+
+        guard let local = try modelContext.fetch(descriptor).first else { return }
+
+        switch type {
+        case .create:
+            let remote = local.toRemote()
+            let insert = MedicationScheduleInsert(
+                id: remote.id,
+                accountId: remote.accountId,
+                medicationId: remote.medicationId,
+                scheduleType: remote.scheduleType,
+                startDate: remote.startDate,
+                endDate: remote.endDate,
+                daysOfWeek: remote.daysOfWeek,
+                scheduleEntries: remote.scheduleEntries,
+                doseDescription: remote.doseDescription
+            )
+            _ = try await medicationRepository.createSchedule(insert)
+        case .update:
+            _ = try await medicationRepository.updateSchedule(local.toRemote())
+        case .delete:
+            try await medicationRepository.deleteSchedule(id: change.entityId)
+        default:
+            break
+        }
+
+        local.isSynced = true
+    }
+
     private func pushMedicationLogChange(_ change: PendingChange, type: PendingChange.ChangeType?) async throws {
         let entityId = change.entityId
         let descriptor = FetchDescriptor<LocalMedicationLog>(
@@ -676,6 +796,7 @@ final class SyncEngine: ObservableObject {
                 time: local.time,
                 location: local.location,
                 notes: local.notes,
+                imageUrl: local.imageUrl,
                 reminderOffsetMinutes: local.reminderOffsetMinutes
             )
             _ = try await appointmentRepository.createAppointment(insert)
@@ -738,7 +859,8 @@ final class SyncEngine: ObservableObject {
             _ = try await toDoRepository.createList(
                 accountId: local.accountId,
                 title: local.title,
-                listType: local.listType
+                listType: local.listType,
+                dueDate: local.dueDate
             )
         case .update:
             _ = try await toDoRepository.updateList(local.toRemote())
@@ -790,10 +912,15 @@ final class SyncEngine: ObservableObject {
             let insert = CountdownInsert(
                 accountId: local.accountId,
                 title: local.title,
+                subtitle: local.subtitle,
                 date: local.date,
+                endDate: local.endDate,
+                hasTime: local.hasTime,
                 type: local.countdownType,
                 customType: local.customType,
                 notes: local.notes,
+                imageUrl: local.imageUrl,
+                groupId: local.groupId,
                 reminderOffsetMinutes: local.reminderOffsetMinutes,
                 isRecurring: local.isRecurring
             )
@@ -879,14 +1006,219 @@ final class SyncEngine: ObservableObject {
         local.isSynced = true
     }
 
+    private func pushRecipeChange(_ change: PendingChange, type: PendingChange.ChangeType?) async throws {
+        let entityId = change.entityId
+        let descriptor = FetchDescriptor<LocalRecipe>(
+            predicate: #Predicate { $0.id == entityId }
+        )
+
+        guard let local = try modelContext.fetch(descriptor).first else { return }
+
+        switch type {
+        case .create:
+            let insert = RecipeInsert(
+                id: local.id,
+                accountId: local.accountId,
+                name: local.name,
+                websiteUrl: local.websiteUrl,
+                imageUrl: local.imageUrl,
+                mealType: local.mealType.flatMap { MealType(rawValue: $0) }
+            )
+            _ = try await mealPlannerRepository.createRecipe(insert)
+        case .update:
+            _ = try await mealPlannerRepository.updateRecipe(local.toRemote())
+        case .delete:
+            try await mealPlannerRepository.deleteRecipe(id: change.entityId)
+        default:
+            break
+        }
+
+        local.isSynced = true
+    }
+
+    private func pushPlannedMealChange(_ change: PendingChange, type: PendingChange.ChangeType?) async throws {
+        let entityId = change.entityId
+        let descriptor = FetchDescriptor<LocalPlannedMeal>(
+            predicate: #Predicate { $0.id == entityId }
+        )
+
+        guard let local = try modelContext.fetch(descriptor).first else { return }
+
+        switch type {
+        case .create:
+            let insert = PlannedMealInsert(
+                id: local.id,
+                accountId: local.accountId,
+                recipeId: local.recipeId,
+                date: local.date,
+                mealType: local.mealTypeEnum,
+                notes: local.notes
+            )
+            _ = try await mealPlannerRepository.createPlannedMeal(insert)
+        case .update:
+            _ = try await mealPlannerRepository.updatePlannedMeal(local.toRemote())
+        case .delete:
+            try await mealPlannerRepository.deletePlannedMeal(id: change.entityId)
+        default:
+            break
+        }
+
+        local.isSynced = true
+    }
+
+    private func pushImportantAccountChange(_ change: PendingChange, type: PendingChange.ChangeType?) async throws {
+        let entityId = change.entityId
+        let descriptor = FetchDescriptor<LocalImportantAccount>(
+            predicate: #Predicate { $0.id == entityId }
+        )
+
+        guard let local = try modelContext.fetch(descriptor).first else { return }
+
+        switch type {
+        case .create:
+            let insert = ImportantAccountInsert(
+                id: local.id,
+                profileId: local.profileId,
+                accountName: local.accountName,
+                websiteURL: local.websiteURL,
+                username: local.username,
+                emailAddress: local.emailAddress,
+                phoneNumber: local.phoneNumber,
+                securityQuestionHint: local.securityQuestionHint,
+                recoveryHint: local.recoveryHint,
+                notes: local.notes,
+                category: local.accountCategory,
+                imageUrl: local.imageUrl
+            )
+            _ = try await importantAccountRepository.createAccount(insert)
+        case .update:
+            _ = try await importantAccountRepository.updateAccount(local.toRemote())
+        case .delete:
+            try await importantAccountRepository.deleteAccount(id: change.entityId)
+        default:
+            break
+        }
+
+        local.isSynced = true
+    }
+
+    // MARK: - Recipe Sync
+    private func syncRecipes(accountId: UUID) async throws -> Int {
+        let remoteRecipes = try await mealPlannerRepository.getRecipes(accountId: accountId)
+        var changesCount = 0
+
+        for remote in remoteRecipes {
+            let descriptor = FetchDescriptor<LocalRecipe>(
+                predicate: #Predicate { $0.id == remote.id }
+            )
+
+            let localRecipes = try modelContext.fetch(descriptor)
+
+            if let local = localRecipes.first {
+                if remote.updatedAt > local.updatedAt {
+                    local.update(from: remote)
+                    changesCount += 1
+                }
+            } else {
+                let newLocal = LocalRecipe(from: remote)
+                modelContext.insert(newLocal)
+                changesCount += 1
+            }
+        }
+
+        try modelContext.save()
+        return changesCount
+    }
+
+    // MARK: - Planned Meal Sync
+    private func syncPlannedMeals(accountId: UUID) async throws -> Int {
+        let remoteMeals = try await mealPlannerRepository.getPlannedMeals(accountId: accountId)
+        var changesCount = 0
+
+        for remote in remoteMeals {
+            let descriptor = FetchDescriptor<LocalPlannedMeal>(
+                predicate: #Predicate { $0.id == remote.id }
+            )
+
+            let localMeals = try modelContext.fetch(descriptor)
+
+            if let local = localMeals.first {
+                if remote.updatedAt > local.updatedAt {
+                    local.update(from: remote)
+                    changesCount += 1
+                }
+            } else {
+                let newLocal = LocalPlannedMeal(from: remote)
+                modelContext.insert(newLocal)
+                changesCount += 1
+            }
+        }
+
+        try modelContext.save()
+        return changesCount
+    }
+
+    // MARK: - Important Accounts Sync
+    private func syncImportantAccounts(accountId: UUID) async throws -> Int {
+        // Get all profiles for this account to know which important accounts to sync
+        let localProfileDescriptor = FetchDescriptor<LocalProfile>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted }
+        )
+        let localProfiles = try modelContext.fetch(localProfileDescriptor)
+        var changesCount = 0
+
+        for profile in localProfiles {
+            let remoteAccounts = try await importantAccountRepository.getAccounts(profileId: profile.id)
+
+            for remote in remoteAccounts {
+                let descriptor = FetchDescriptor<LocalImportantAccount>(
+                    predicate: #Predicate { $0.id == remote.id }
+                )
+
+                let localAccounts = try modelContext.fetch(descriptor)
+
+                if let local = localAccounts.first {
+                    if remote.updatedAt > local.updatedAt {
+                        local.update(from: remote)
+                        changesCount += 1
+                    }
+                } else {
+                    let newLocal = LocalImportantAccount(from: remote)
+                    modelContext.insert(newLocal)
+                    changesCount += 1
+                }
+            }
+
+            // Remove locally cached accounts that no longer exist on server
+            let profileId = profile.id
+            let allLocalDescriptor = FetchDescriptor<LocalImportantAccount>(
+                predicate: #Predicate { $0.profileId == profileId && !$0.locallyDeleted }
+            )
+            let allLocal = try modelContext.fetch(allLocalDescriptor)
+            let remoteIds = Set(remoteAccounts.map { $0.id })
+            for local in allLocal where !remoteIds.contains(local.id) && local.isSynced {
+                modelContext.delete(local)
+                changesCount += 1
+            }
+        }
+
+        try modelContext.save()
+        return changesCount
+    }
+
     // MARK: - Local Medication Log Generation
     /// Generate medication logs locally for today
     func generateLocalMedicationLogs(accountId: UUID) async throws {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let dayOfWeek = calendar.component(.weekday, from: today) - 1  // 0-6
+        try await generateLocalMedicationLogs(accountId: accountId, for: Date())
+    }
 
-        // Fetch all active medications
+    /// Generate medication logs locally for a specific date
+    func generateLocalMedicationLogs(accountId: UUID, for date: Date) async throws {
+        let calendar = Calendar.current
+        let targetDay = calendar.startOfDay(for: date)
+        let dayOfWeek = calendar.component(.weekday, from: targetDay) - 1  // 0-6
+
+        // Fetch all active medications (not paused, not deleted)
         let medDescriptor = FetchDescriptor<LocalMedication>(
             predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted && !$0.isPaused }
         )
@@ -904,8 +1236,14 @@ final class SyncEngine: ObservableObject {
                 guard schedule.schedule == .scheduled else { continue }
                 guard let entries = schedule.decodedScheduleEntries else { continue }
 
+                // Check if schedule has started by this date
+                guard calendar.startOfDay(for: schedule.startDate) <= targetDay else { continue }
+
+                // Check if schedule has ended before this date
+                if let endDate = schedule.endDate, calendar.startOfDay(for: endDate) < targetDay { continue }
+
                 for entry in entries {
-                    // Check if this entry is active for today
+                    // Check if this entry is active for the target day
                     guard entry.daysOfWeek.contains(dayOfWeek) else { continue }
 
                     // Parse time and create scheduled datetime
@@ -914,7 +1252,7 @@ final class SyncEngine: ObservableObject {
                           let hour = Int(timeComponents[0]),
                           let minute = Int(timeComponents[1]) else { continue }
 
-                    var components = calendar.dateComponents([.year, .month, .day], from: today)
+                    var components = calendar.dateComponents([.year, .month, .day], from: targetDay)
                     components.hour = hour
                     components.minute = minute
 

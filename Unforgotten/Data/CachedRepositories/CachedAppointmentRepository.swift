@@ -170,6 +170,17 @@ final class CachedAppointmentRepository {
         return try modelContext.fetch(descriptor).map { (local: LocalAppointment) in local.toRemote() }
     }
 
+    // MARK: - Get Appointments By IDs (for shared events from other accounts)
+    func getAppointmentsByIds(_ ids: [UUID]) async throws -> [Appointment] {
+        guard !ids.isEmpty else { return [] }
+        return try await remoteRepository.getAppointmentsByIds(ids)
+    }
+
+    // MARK: - Get Shared Appointments (via RPC, bypasses RLS)
+    func getSharedAppointments() async throws -> [Appointment] {
+        return try await remoteRepository.getSharedAppointments()
+    }
+
     // MARK: - Write Operations
 
     /// Create a new appointment from an AppointmentInsert struct
@@ -183,7 +194,9 @@ final class CachedAppointmentRepository {
             time: insert.time,
             location: insert.location,
             notes: insert.notes,
-            reminderOffsetMinutes: insert.reminderOffsetMinutes
+            reminderOffsetMinutes: insert.reminderOffsetMinutes,
+            repeatInterval: insert.repeatInterval,
+            repeatUnit: insert.repeatUnit
         )
     }
 
@@ -197,8 +210,37 @@ final class CachedAppointmentRepository {
         time: Date? = nil,
         location: String? = nil,
         notes: String? = nil,
-        reminderOffsetMinutes: Int? = nil
+        reminderOffsetMinutes: Int? = nil,
+        repeatInterval: Int? = nil,
+        repeatUnit: String? = nil
     ) async throws -> Appointment {
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let insert = AppointmentInsert(
+                    accountId: accountId,
+                    profileId: profileId,
+                    title: title,
+                    date: date,
+                    type: type,
+                    time: time,
+                    location: location,
+                    notes: notes,
+                    reminderOffsetMinutes: reminderOffsetMinutes,
+                    repeatInterval: repeatInterval,
+                    repeatUnit: repeatUnit
+                )
+                let remote = try await remoteRepository.createAppointment(insert)
+                let local = LocalAppointment(from: remote)
+                modelContext.insert(local)
+                try? modelContext.save()
+                return remote
+            } catch {
+                print("[CachedAppointmentRepo] Remote createAppointment failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: create locally and queue for sync
         let local = LocalAppointment(
             id: UUID(),
             accountId: accountId,
@@ -210,6 +252,8 @@ final class CachedAppointmentRepository {
             location: location,
             notes: notes,
             reminderOffsetMinutes: reminderOffsetMinutes,
+            repeatInterval: repeatInterval,
+            repeatUnit: repeatUnit,
             isSynced: false
         )
         modelContext.insert(local)
@@ -225,6 +269,19 @@ final class CachedAppointmentRepository {
         return local.toRemote()
     }
 
+    /// Create an appointment on Supabase first, then cache locally.
+    /// Use this when the appointment will be shared immediately after creation,
+    /// since the share references the event_id which must exist in Supabase.
+    func createAppointmentRemoteFirst(_ insert: AppointmentInsert) async throws -> Appointment {
+        let remote = try await remoteRepository.createAppointment(insert)
+
+        let local = LocalAppointment(from: remote)
+        modelContext.insert(local)
+        try? modelContext.save()
+
+        return remote
+    }
+
     /// Update an appointment
     func updateAppointment(_ appointment: Appointment) async throws -> Appointment {
         let appointmentId = appointment.id
@@ -232,30 +289,46 @@ final class CachedAppointmentRepository {
             predicate: #Predicate { $0.id == appointmentId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.type = appointment.type.rawValue
-            local.title = appointment.title
-            local.date = appointment.date
-            local.time = appointment.time
-            local.location = appointment.location
-            local.notes = appointment.notes
-            local.reminderOffsetMinutes = appointment.reminderOffsetMinutes
-            local.isCompleted = appointment.isCompleted
-            local.withProfileId = appointment.withProfileId
-            local.markAsModified()
-
-            syncEngine.queueChange(
-                entityType: "appointment",
-                entityId: appointment.id,
-                accountId: appointment.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.type = appointment.type.rawValue
+        local.title = appointment.title
+        local.date = appointment.date
+        local.time = appointment.time
+        local.location = appointment.location
+        local.notes = appointment.notes
+        local.imageUrl = appointment.imageUrl
+        local.reminderOffsetMinutes = appointment.reminderOffsetMinutes
+        local.repeatInterval = appointment.repeatInterval
+        local.repeatUnit = appointment.repeatUnit
+        local.isCompleted = appointment.isCompleted
+        local.withProfileId = appointment.withProfileId
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                let updated = try await remoteRepository.updateAppointment(appointment)
+                local.isSynced = true
+                try modelContext.save()
+                return updated
+            } catch {
+                print("[CachedAppointmentRepo] Remote updateAppointment failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "appointment",
+            entityId: appointment.id,
+            accountId: appointment.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Toggle appointment completion
@@ -264,22 +337,36 @@ final class CachedAppointmentRepository {
             predicate: #Predicate { $0.id == id }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.isCompleted = isCompleted
-            local.markAsModified()
-
-            syncEngine.queueChange(
-                entityType: "appointment",
-                entityId: id,
-                accountId: local.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        local.isCompleted = isCompleted
+        local.markAsModified()
+
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                var updated = local.toRemote()
+                updated = try await remoteRepository.updateAppointment(updated)
+                local.isSynced = true
+                try modelContext.save()
+                return updated
+            } catch {
+                print("[CachedAppointmentRepo] Remote toggleCompletion failed: \(error). Saving locally.")
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "appointment",
+            entityId: id,
+            accountId: local.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Delete an appointment
@@ -288,18 +375,31 @@ final class CachedAppointmentRepository {
             predicate: #Predicate { $0.id == id }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.locallyDeleted = true
-            local.markAsModified()
+        guard let local = try modelContext.fetch(descriptor).first else { return }
 
-            syncEngine.queueChange(
-                entityType: "appointment",
-                entityId: id,
-                accountId: local.accountId,
-                changeType: .delete
-            )
+        local.locallyDeleted = true
+        local.markAsModified()
 
-            try modelContext.save()
+        // When online, try remote first with local fallback
+        if networkMonitor.isConnected {
+            do {
+                try await remoteRepository.deleteAppointment(id: id)
+                local.isSynced = true
+                try modelContext.save()
+                return
+            } catch {
+                print("[CachedAppointmentRepo] Remote deleteAppointment failed: \(error). Saving locally.")
+            }
         }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "appointment",
+            entityId: id,
+            accountId: local.accountId,
+            changeType: .delete
+        )
+
+        try modelContext.save()
     }
 }

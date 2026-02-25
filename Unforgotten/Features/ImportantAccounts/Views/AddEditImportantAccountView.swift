@@ -33,6 +33,8 @@ struct AddEditImportantAccountView: View {
     @State private var recoveryHint: String = ""
     @State private var notes: String = ""
     @State private var selectedCategory: AccountCategory? = nil
+    @State private var selectedImage: UIImage?
+    @State private var removePhoto = false
 
     @State private var isSaving = false
     @State private var showError = false
@@ -104,8 +106,8 @@ struct AddEditImportantAccountView: View {
 
                             AccountFormTextField(
                                 placeholder: "e.g., Netflix, Gmail, Chase Bank",
-                                text: $accountName,
-                                icon: "textformat"
+                                text: $accountName
+                                //icon: "textformat"
                             )
                         }
 
@@ -183,6 +185,33 @@ struct AddEditImportantAccountView: View {
                             )
                         }
 
+                        // Photo Section
+                        VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
+                            AccountFormSectionHeader(title: "PHOTO")
+
+                            Text("Add a photo or screenshot of the account for quick reference.")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                                .padding(.horizontal, AppDimensions.screenPadding)
+
+                            ImageSourcePicker(
+                                selectedImage: $selectedImage,
+                                currentImageUrl: {
+                                    if removePhoto { return nil }
+                                    if case .edit(let account) = mode { return account.imageUrl }
+                                    return nil
+                                }(),
+                                onImageSelected: { _ in
+                                    removePhoto = false
+                                },
+                                onRemove: {
+                                    selectedImage = nil
+                                    removePhoto = true
+                                }
+                            )
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                        }
+
                         Spacer()
                             .frame(height: 50)
                     }
@@ -219,11 +248,17 @@ struct AddEditImportantAccountView: View {
         isSaving = true
 
         do {
-            let savedAccount: ImportantAccount
+            var savedAccount: ImportantAccount
 
             if case .edit(let existingAccount) = mode {
+                // Determine image URL
+                var imageUrl: String? = existingAccount.imageUrl
+                if removePhoto {
+                    imageUrl = nil
+                }
+
                 // Update existing account
-                let updatedAccount = ImportantAccount(
+                var updatedAccount = ImportantAccount(
                     id: existingAccount.id,
                     profileId: profile.id,
                     accountName: accountName.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -235,9 +270,17 @@ struct AddEditImportantAccountView: View {
                     recoveryHint: recoveryHint.isEmpty ? nil : recoveryHint,
                     notes: notes.isEmpty ? nil : notes,
                     category: selectedCategory,
+                    imageUrl: imageUrl,
                     createdAt: existingAccount.createdAt,
                     updatedAt: Date()
                 )
+
+                // Upload new photo if selected
+                if let image = selectedImage {
+                    let photoURL = try await ImageUploadService.shared.uploadAccountPhoto(image: image, accountId: existingAccount.id)
+                    updatedAccount.imageUrl = photoURL
+                }
+
                 savedAccount = try await appState.importantAccountRepository.updateAccount(updatedAccount)
             } else {
                 // Create new account
@@ -254,6 +297,14 @@ struct AddEditImportantAccountView: View {
                     category: selectedCategory
                 )
                 savedAccount = try await appState.importantAccountRepository.createAccount(insert)
+
+                // Upload photo if selected
+                if let image = selectedImage {
+                    let photoURL = try await ImageUploadService.shared.uploadAccountPhoto(image: image, accountId: savedAccount.id)
+                    savedAccount.imageUrl = photoURL
+                    // Update the account with the photo URL
+                    savedAccount = try await appState.importantAccountRepository.updateAccount(savedAccount)
+                }
             }
 
             await MainActor.run {

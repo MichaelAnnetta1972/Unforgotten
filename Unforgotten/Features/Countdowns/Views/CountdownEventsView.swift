@@ -14,25 +14,40 @@ struct CountdownEventsView: View {
     @Environment(\.navigateToRoot) var navigateToRoot
     @Environment(\.iPadHomeAction) private var iPadHomeAction
     @Environment(\.iPadAddCountdownAction) private var iPadAddCountdownAction
-    @Environment(\.iPadEditCountdownAction) private var iPadEditCountdownAction
     @Environment(\.appAccentColor) private var appAccentColor
     @StateObject private var viewModel = CountdownEventsViewModel()
     @State private var showSettings = false
     @State private var showAddCountdown = false
-    @State private var showEditCountdown = false
     @State private var showUpgradeSheet = false
-    @State private var countdownToEdit: Countdown?
     @State private var countdownToDelete: Countdown?
-    @State private var showDeleteConfirmation = false
+    @State private var groupToDelete: Countdown?
+    @State private var sharedCountdownToRemove: Countdown?
+    @State private var searchText = ""
+    @State private var selectedType: CountdownType?
+    @State private var selectedCustomTypeName: String?
 
     /// Whether the current user can add/edit items
     private var canEdit: Bool {
         appState.canEdit
     }
 
+    /// Count distinct events (grouped multi-day events count as 1)
+    private var distinctCountdownCount: Int {
+        var seenGroups: Set<UUID> = []
+        var count = 0
+        for cd in viewModel.countdowns {
+            if let groupId = cd.groupId {
+                if seenGroups.insert(groupId).inserted { count += 1 }
+            } else {
+                count += 1
+            }
+        }
+        return count
+    }
+
     /// Check if user can create another countdown
     private var canCreateCountdown: Bool {
-        PremiumLimitsManager.shared.canCreateCountdown(appState: appState, currentCount: viewModel.countdowns.count)
+        PremiumLimitsManager.shared.canCreateCountdown(appState: appState, currentCount: distinctCountdownCount)
     }
 
     /// Check if user has premium access
@@ -42,12 +57,48 @@ struct CountdownEventsView: View {
 
     /// Check if user has reached the free tier countdown limit
     private var hasReachedCountdownLimit: Bool {
-        !hasPremiumAccess && viewModel.countdowns.count >= PremiumLimitsManager.FreeTierLimits.countdowns
+        !hasPremiumAccess && distinctCountdownCount >= PremiumLimitsManager.FreeTierLimits.countdowns
     }
 
     /// Whether we're on iPad (using full-screen overlay)
     private var isiPad: Bool {
         iPadAddCountdownAction != nil
+    }
+
+    /// Types that are actually used by existing countdowns (excluding .custom which is shown by name)
+    private var availableTypes: [CountdownType] {
+        let usedTypes = Set(viewModel.countdowns.map { $0.type })
+        return CountdownType.allCases.filter { usedTypes.contains($0) && $0 != .custom }
+    }
+
+    /// Unique custom type names used by existing countdowns
+    private var availableCustomTypeNames: [String] {
+        let names = viewModel.countdowns
+            .filter { $0.type == .custom }
+            .compactMap { $0.customType }
+        return Array(Set(names)).sorted()
+    }
+
+    /// Whether a filter is active
+    private var isFilterActive: Bool {
+        selectedType != nil || selectedCustomTypeName != nil
+    }
+
+    /// Countdowns filtered by search text and selected type
+    private var filteredCountdowns: [Countdown] {
+        var results = viewModel.countdowns
+
+        if let customName = selectedCustomTypeName {
+            results = results.filter { $0.type == .custom && $0.customType == customName }
+        } else if let type = selectedType {
+            results = results.filter { $0.type == type }
+        }
+
+        if !searchText.isEmpty {
+            results = results.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        }
+
+        return results
     }
 
     /// Open the add countdown modal (uses iPad overlay or local sheet)
@@ -63,6 +114,13 @@ struct CountdownEventsView: View {
         } else {
             showAddCountdown = true
         }
+    }
+
+    /// Estimated height for the embedded List (scroll-disabled inside outer ScrollView)
+    private var estimatedListHeight: CGFloat {
+        let rowHeight: CGFloat = 100
+        let spacing: CGFloat = AppDimensions.cardSpacing
+        return CGFloat(filteredCountdowns.count) * (rowHeight + spacing)
     }
 
     var body: some View {
@@ -85,7 +143,71 @@ struct CountdownEventsView: View {
 
                     // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
-                        // Premium limit reached card - show at top when countdown limit reached
+                        // Search and filter row
+                        if !viewModel.countdowns.isEmpty {
+                            HStack(spacing: 12) {
+                                HStack {
+                                    Image(systemName: "magnifyingglass")
+                                        .foregroundColor(.textSecondary)
+
+                                    TextField("Search events", text: $searchText)
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+                                }
+                                .padding(AppDimensions.cardPadding)
+                                .background(Color.cardBackground)
+                                .cornerRadius(AppDimensions.cardCornerRadius)
+
+                                Menu {
+                                    Button {
+                                        selectedType = nil
+                                        selectedCustomTypeName = nil
+                                    } label: {
+                                        if !isFilterActive {
+                                            Label("All", systemImage: "checkmark")
+                                        } else {
+                                            Text("All")
+                                        }
+                                    }
+
+                                    ForEach(availableTypes) { type in
+                                        Button {
+                                            selectedType = type
+                                            selectedCustomTypeName = nil
+                                        } label: {
+                                            if selectedType == type && selectedCustomTypeName == nil {
+                                                Label(type.displayName, systemImage: "checkmark")
+                                            } else {
+                                                Label(type.displayName, systemImage: type.icon)
+                                            }
+                                        }
+                                    }
+
+                                    ForEach(availableCustomTypeNames, id: \.self) { name in
+                                        Button {
+                                            selectedType = nil
+                                            selectedCustomTypeName = name
+                                        } label: {
+                                            if selectedCustomTypeName == name {
+                                                Label(name, systemImage: "checkmark")
+                                            } else {
+                                                Label(name, systemImage: CountdownType.custom.icon)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(isFilterActive ? appAccentColor : .textSecondary)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color.cardBackground)
+                                        .cornerRadius(AppDimensions.cardCornerRadius)
+                                }
+                                .tint(appAccentColor)
+                            }
+                        }
+
+                        // Premium limit reached card
                         if hasReachedCountdownLimit {
                             PremiumFeatureLockBanner(
                                 feature: .countdowns,
@@ -93,26 +215,54 @@ struct CountdownEventsView: View {
                             )
                         }
 
-                        // Countdown list
-                        LazyVStack(spacing: AppDimensions.cardSpacing) {
-                            ForEach(viewModel.countdowns) { countdown in
-                                CountdownEventCard(
-                                    countdown: countdown,
-                                    onEdit: {
-                                        // Use iPad side panel if available
-                                        if let iPadEditAction = iPadEditCountdownAction {
-                                            iPadEditAction(countdown)
-                                        } else {
-                                            countdownToEdit = countdown
-                                            showEditCountdown = true
+                        // Countdown list with swipe-to-delete
+                        if !filteredCountdowns.isEmpty {
+                            List {
+                                ForEach(filteredCountdowns) { countdown in
+                                    ZStack {
+                                        NavigationLink(value: countdown) {
+                                            EmptyView()
                                         }
-                                    },
-                                    onDelete: {
-                                        countdownToDelete = countdown
-                                        showDeleteConfirmation = true
+                                        .opacity(0)
+
+                                        CountdownEventCard(
+                                            countdown: countdown,
+                                            isShared: countdown.accountId != appState.currentAccount?.id
+                                        )
                                     }
-                                )
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        if canEdit && countdown.accountId == appState.currentAccount?.id {
+                                            Button(role: .destructive) {
+                                                countdownToDelete = countdown
+                                            } label: {
+                                                Label(countdown.groupId != nil ? "Delete Day" : "Delete", systemImage: "trash")
+                                            }
+                                            if countdown.groupId != nil {
+                                                Button(role: .destructive) {
+                                                    groupToDelete = countdown
+                                                } label: {
+                                                    Label("Delete All", systemImage: "trash.fill")
+                                                }
+                                                .tint(.orange)
+                                            }
+                                        } else if countdown.accountId != appState.currentAccount?.id {
+                                            // Shared countdown - allow removing from user's view
+                                            Button(role: .destructive) {
+                                                sharedCountdownToRemove = countdown
+                                            } label: {
+                                                Label("Remove", systemImage: "eye.slash")
+                                            }
+                                        }
+                                    }
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
+                                }
                             }
+                            .listStyle(.plain)
+                            .scrollDisabled(true)
+                            .scrollContentBackground(.hidden)
+                            .frame(height: estimatedListHeight)
                         }
 
                         // Loading state
@@ -121,7 +271,25 @@ struct CountdownEventsView: View {
                                 .padding(.top, 40)
                         }
 
-                        // Empty state
+                        // Empty state - no results from search/filter
+                        if !viewModel.countdowns.isEmpty && filteredCountdowns.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.textSecondary)
+
+                                Text("No matching events")
+                                    .font(.appCardTitle)
+                                    .foregroundColor(.textPrimary)
+
+                                Text("Try adjusting your search or filter")
+                                    .font(.appBody)
+                                    .foregroundColor(.textSecondary)
+                            }
+                            .padding(.top, 40)
+                        }
+
+                        // Empty state - no countdowns at all
                         if viewModel.countdowns.isEmpty && !viewModel.isLoading {
                             VStack(spacing: 16) {
                                 Image(systemName: "timer")
@@ -162,6 +330,9 @@ struct CountdownEventsView: View {
             .ignoresSafeArea(edges: .top)
         }
         .navigationBarHidden(true)
+        .navigationDestination(for: Countdown.self) { countdown in
+            CountdownDetailView(countdown: countdown)
+        }
         .sidePanel(isPresented: $showSettings) {
             SettingsPanelView(onDismiss: { showSettings = false })
         }
@@ -171,23 +342,6 @@ struct CountdownEventsView: View {
             ) { _ in
                 Task {
                     await viewModel.loadData(appState: appState)
-                }
-            }
-        }
-        .conditionalSidePanel(isPresented: $showEditCountdown, showPanel: !isiPad) {
-            if let countdown = countdownToEdit {
-                EditCountdownView(
-                    countdown: countdown,
-                    onDismiss: {
-                        showEditCountdown = false
-                        countdownToEdit = nil
-                    }
-                ) { _ in
-                    Task {
-                        await viewModel.loadData(appState: appState)
-                    }
-                    showEditCountdown = false
-                    countdownToEdit = nil
                 }
             }
         }
@@ -218,21 +372,64 @@ struct CountdownEventsView: View {
                 Text(error)
             }
         }
-        .alert("Delete Countdown", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {
-                countdownToDelete = nil
-            }
+        .alert("Delete Event", isPresented: .init(
+            get: { countdownToDelete != nil },
+            set: { if !$0 { countdownToDelete = nil } }
+        )) {
             Button("Delete", role: .destructive) {
                 if let countdown = countdownToDelete {
                     Task {
                         await viewModel.deleteCountdown(id: countdown.id, appState: appState)
-                        countdownToDelete = nil
                     }
+                    countdownToDelete = nil
                 }
+            }
+            Button("Cancel", role: .cancel) {
+                countdownToDelete = nil
             }
         } message: {
             if let countdown = countdownToDelete {
-                Text("Are you sure you want to delete \"\(countdown.title)\"? This action cannot be undone.")
+                Text("Are you sure you want to delete \"\(countdown.title)\"?")
+            }
+        }
+        .alert("Delete All Days", isPresented: .init(
+            get: { groupToDelete != nil },
+            set: { if !$0 { groupToDelete = nil } }
+        )) {
+            Button("Delete All Days", role: .destructive) {
+                if let countdown = groupToDelete, let groupId = countdown.groupId {
+                    Task {
+                        await viewModel.deleteCountdownGroup(groupId: groupId, appState: appState)
+                    }
+                    groupToDelete = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                groupToDelete = nil
+            }
+        } message: {
+            if let countdown = groupToDelete {
+                Text("This will delete all days of \"\(countdown.title)\". This action cannot be undone.")
+            }
+        }
+        .alert("Remove Shared Event", isPresented: .init(
+            get: { sharedCountdownToRemove != nil },
+            set: { if !$0 { sharedCountdownToRemove = nil } }
+        )) {
+            Button("Remove", role: .destructive) {
+                if let countdown = sharedCountdownToRemove {
+                    Task {
+                        await viewModel.removeSharedCountdown(id: countdown.id, appState: appState)
+                    }
+                    sharedCountdownToRemove = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                sharedCountdownToRemove = nil
+            }
+        } message: {
+            if let countdown = sharedCountdownToRemove {
+                Text("Remove \"\(countdown.title)\" from your events? The original owner will still have this event.")
             }
         }
         .sheet(isPresented: $showUpgradeSheet) {
@@ -244,10 +441,10 @@ struct CountdownEventsView: View {
 // MARK: - Countdown Event Card
 struct CountdownEventCard: View {
     let countdown: Countdown
-    let onEdit: () -> Void
-    let onDelete: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
+    var isShared: Bool = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.appAccentColor) private var appAccentColor
+
 
     private var countdownText: String {
         let days = countdown.daysUntilNextOccurrence
@@ -260,27 +457,15 @@ struct CountdownEventCard: View {
         }
     }
 
-    /// Adaptive button size for iPad
-    private var buttonSize: CGFloat {
-        horizontalSizeClass == .regular ? 52 : 44
-    }
-
-    /// Whether to show the type icon (iPad only)
-    private var showIcon: Bool {
-        horizontalSizeClass == .regular
-    }
-
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            // Left side - Type icon (iPad only)
-            if showIcon {
-                Image(systemName: countdown.type.icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(countdown.type.color)
-                    .frame(width: 40, height: 40)
-                    .background(countdown.type.color.opacity(0.15))
-                    .cornerRadius(8)
-            }
+            // Left side - Type icon
+            Image(systemName: countdown.type.icon)
+                .font(.system(size: 20))
+                .foregroundColor(appAccentColor)
+                .frame(width: 40, height: 40)
+                .background(appAccentColor.opacity(0.15))
+                .cornerRadius(8)
 
             // Middle - Title and type/date info
             VStack(alignment: .leading, spacing: 6) {
@@ -291,6 +476,13 @@ struct CountdownEventCard: View {
                         .foregroundColor(.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    // Shared indicator
+                    if isShared {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.textMuted)
+                    }
+
                     // Recurring indicator
                     if countdown.isRecurring {
                         Image(systemName: "arrow.trianglehead.2.counterclockwise.rotate.90")
@@ -299,58 +491,32 @@ struct CountdownEventCard: View {
                     }
                 }
 
-
+                // Subtitle (if present)
+                if let subtitle = countdown.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                        .lineLimit(1)
+                }
 
                 // Type and date info
                 HStack(spacing: 8) {
-                //    Text(countdown.displayTypeName)
-                //        .font(.appCaption)
-                //        .foregroundColor(.textSecondary)
-                
-                // Days countdown pill
-                Text(countdownText)
-                    .font(.appCaption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.cardBackgroundLight)
-                    .cornerRadius(16)                    
-                Text(countdown.date.formattedBirthdayWithOrdinal())
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
+                    // Days countdown pill
+                    Text(countdownText)
+                        .font(.appCaption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.cardBackgroundLight)
+                        .cornerRadius(16)
+                    Text(countdown.formattedDateShort)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 8)
-
-            // Action buttons (side by side)
-            HStack(spacing: 4) {
-                // Edit button
-                Button {
-                    onEdit()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: horizontalSizeClass == .regular ? 18 : 16))
-                        .foregroundColor(.textMuted)
-                        .frame(width: buttonSize, height: buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                // Delete button
-                Button {
-                    onDelete()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: horizontalSizeClass == .regular ? 18 : 16))
-                        .foregroundColor(.medicalRed)
-                        .frame(width: buttonSize, height: buttonSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -372,8 +538,20 @@ class CountdownEventsViewModel: ObservableObject {
         isLoading = true
 
         do {
-            // Load all countdowns sorted by days until next occurrence
-            countdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: account.id, days: 365)
+            // Load own countdowns sorted by days until next occurrence
+            var allCountdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: account.id, days: 365)
+
+            // Also load shared countdowns from other accounts (via RPC to bypass RLS)
+            let ownIds = Set(allCountdowns.map { $0.id })
+            if let shared = try? await appState.countdownRepository.getSharedCountdowns() {
+                let newShared = shared.filter { !ownIds.contains($0.id) }
+                if !newShared.isEmpty {
+                    allCountdowns.append(contentsOf: newShared)
+                    allCountdowns.sort { $0.daysUntilNextOccurrence < $1.daysUntilNextOccurrence }
+                }
+            }
+
+            countdowns = allCountdowns
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription
@@ -390,8 +568,8 @@ class CountdownEventsViewModel: ObservableObject {
         do {
             // Force refresh from server to get latest changes
             _ = try await appState.countdownRepository.refreshFromRemote(accountId: account.id)
-            // Then load the updated data
-            countdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: account.id, days: 365)
+            // Then load the updated data including shared countdowns
+            await loadData(appState: appState)
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription
@@ -401,6 +579,14 @@ class CountdownEventsViewModel: ObservableObject {
 
     func deleteCountdown(id: UUID, appState: AppState) async {
         do {
+            // Clean up photo from storage if exists
+            if let countdown = countdowns.first(where: { $0.id == id }), countdown.imageUrl != nil {
+                try? await ImageUploadService.shared.deleteImage(
+                    bucket: SupabaseConfig.countdownPhotosBucket,
+                    path: "countdowns/\(id.uuidString)/photo.jpg"
+                )
+            }
+
             try await appState.countdownRepository.deleteCountdown(id: id)
             // Cancel any scheduled notification
             await NotificationService.shared.cancelCountdownReminder(countdownId: id)
@@ -410,6 +596,43 @@ class CountdownEventsViewModel: ObservableObject {
             self.error = "Failed to delete countdown: \(error.localizedDescription)"
         }
     }
+
+    /// Delete all countdowns in a group
+    func deleteCountdownGroup(groupId: UUID, appState: AppState) async {
+        do {
+            let groupCountdowns = try await appState.countdownRepository.getCountdownsByGroupId(groupId)
+            for cd in groupCountdowns {
+                if cd.imageUrl != nil {
+                    try? await ImageUploadService.shared.deleteImage(
+                        bucket: SupabaseConfig.countdownPhotosBucket,
+                        path: "countdowns/\(cd.id.uuidString)/photo.jpg"
+                    )
+                }
+                await NotificationService.shared.cancelCountdownReminder(countdownId: cd.id)
+                try? await appState.familyCalendarRepository.deleteShareForEvent(
+                    eventType: .countdown,
+                    eventId: cd.id
+                )
+            }
+            try await appState.countdownRepository.deleteCountdownsByGroupId(groupId)
+            countdowns.removeAll { $0.groupId == groupId }
+        } catch {
+            self.error = "Failed to delete group: \(error.localizedDescription)"
+        }
+    }
+
+    /// Remove a shared countdown from the current user's view by unsubscribing from the share
+    func removeSharedCountdown(id: UUID, appState: AppState) async {
+        do {
+            try await appState.familyCalendarRepository.removeSelfFromShare(
+                eventType: .countdown, eventId: id
+            )
+            countdowns.removeAll { $0.id == id }
+        } catch {
+            self.error = "Failed to remove shared event: \(error.localizedDescription)"
+        }
+    }
+
 }
 
 // MARK: - Preview

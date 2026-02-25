@@ -427,9 +427,9 @@ final class NotesSyncService: ObservableObject, NotesSyncServiceProtocol {
                 // Create new local note from remote
                 let newNote = LocalNote(
                     title: remote.title,
-                    theme: NoteTheme(rawValue: remote.theme) ?? .standard,
                     accountId: remote.accountId
                 )
+                newNote.theme = remote.theme
                 newNote.id = remote.localId
                 newNote.content = remote.contentData ?? Data()
                 newNote.contentPlainText = remote.contentPlainText

@@ -3,7 +3,14 @@ import SwiftUI
 // MARK: - Calendar Filter View (Event Type Filter Only)
 struct CalendarFilterView: View {
     @Binding var selectedFilters: Set<CalendarEventFilter>
+    @Binding var selectedCountdownTypes: Set<CountdownType>
+    @Binding var selectedCustomTypeNames: Set<String>
     @Binding var isPresented: Bool
+
+    /// Standard countdown types that are in use
+    var availableCountdownTypes: [CountdownType]
+    /// Custom type names that are in use
+    var availableCustomTypeNames: [String]
 
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -14,6 +21,10 @@ struct CalendarFilterView: View {
     /// Panel width - slightly wider on iPad
     private var panelWidth: CGFloat {
         horizontalSizeClass == .regular ? 320 : 280
+    }
+
+    private var hasCountdownSubTypes: Bool {
+        !availableCountdownTypes.isEmpty || !availableCustomTypeNames.isEmpty
     }
 
     var body: some View {
@@ -29,66 +40,107 @@ struct CalendarFilterView: View {
             HStack {
                 Spacer()
 
-                VStack(spacing: 16) {
-                    // Header
-                    HStack {
-                        Text("Event Type")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Header
+                        HStack {
+                            Text("Event Type")
+                                .font(.appTitle)
+                                .foregroundColor(.textPrimary)
 
-                        Spacer()
-
-                        Button {
-                            dismissPanel()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.textSecondary)
-                        }
-                    }
-
-                    // Event Type Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(CalendarEventFilter.allCases) { filter in
-                            FilterOptionRow(
-                                filter: filter,
-                                isSelected: selectedFilters.contains(filter),
-                                accentColor: appAccentColor
-                            ) {
-                                toggleFilter(filter)
-                            }
-                        }
-
-                        // Quick actions for event types
-                        HStack(spacing: 12) {
-                            Button {
-                                selectedFilters = Set(CalendarEventFilter.allCases)
-                            } label: {
-                                Text("Select All")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textPrimary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.cardBackgroundSoft)
-                                    .cornerRadius(AppDimensions.cardCornerRadius)
-                            }
+                            Spacer()
 
                             Button {
-                                selectedFilters = []
+                                dismissPanel()
                             } label: {
-                                Text("Clear")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textPrimary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.cardBackgroundSoft)
-                                    .cornerRadius(AppDimensions.cardCornerRadius)
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+
+                        // Event Type Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(CalendarEventFilter.allCases) { filter in
+                                FilterOptionRow(
+                                    filter: filter,
+                                    isSelected: selectedFilters.contains(filter),
+                                    accentColor: appAccentColor
+                                ) {
+                                    toggleFilter(filter)
+                                }
+                            }
+
+                            // Quick actions for event types
+                            HStack(spacing: 12) {
+                                Button {
+                                    selectedFilters = Set(CalendarEventFilter.allCases)
+                                    selectAllCountdownSubTypes()
+                                } label: {
+                                    Text("Select All")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textPrimary)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(Color.cardBackgroundSoft)
+                                        .cornerRadius(AppDimensions.cardCornerRadius)
+                                }
+
+                                Button {
+                                    selectedFilters = []
+                                    clearAllCountdownSubTypes()
+                                } label: {
+                                    Text("Clear")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textPrimary)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(Color.cardBackgroundSoft)
+                                        .cornerRadius(AppDimensions.cardCornerRadius)
+                                }
+                            }
+                        }
+
+                        // Countdown Sub-Type Section
+                        if selectedFilters.contains(.countdowns), hasCountdownSubTypes {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Event Types")
+                                    .font(.appCardTitle)
+                                    .foregroundColor(.textSecondary)
+                                    .padding(.top, 4)
+
+                                // Standard countdown types in use
+                                ForEach(availableCountdownTypes) { type in
+                                    CountdownTypeFilterRow(
+                                        icon: type.icon,
+                                        color: type.color,
+                                        name: type.displayName,
+                                        isSelected: selectedCountdownTypes.contains(type),
+                                        accentColor: appAccentColor
+                                    ) {
+                                        toggleCountdownType(type)
+                                    }
+                                }
+
+                                // Custom type names in use
+                                ForEach(availableCustomTypeNames, id: \.self) { name in
+                                    CountdownTypeFilterRow(
+                                        icon: CountdownType.custom.icon,
+                                        color: CountdownType.custom.color,
+                                        name: name,
+                                        isSelected: selectedCustomTypeNames.contains(name),
+                                        accentColor: appAccentColor
+                                    ) {
+                                        toggleCustomTypeName(name)
+                                    }
+                                }
                             }
                         }
                     }
+                    .padding(AppDimensions.cardPadding)
                 }
-                .padding(AppDimensions.cardPadding)
                 .frame(width: panelWidth)
+                .frame(maxHeight: UIScreen.main.bounds.height * 0.75)
                 .background(Color.cardBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
                 .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
@@ -96,7 +148,8 @@ struct CalendarFilterView: View {
                 .opacity(opacity)
                 .padding(.trailing, 20)
             }
-            .frame(maxHeight: .infinity, alignment: .center)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.top, 80)
         }
         .transition(.opacity)
         .onAppear {
@@ -125,6 +178,75 @@ struct CalendarFilterView: View {
             selectedFilters.insert(filter)
         }
     }
+
+    private func toggleCountdownType(_ type: CountdownType) {
+        if selectedCountdownTypes.contains(type) {
+            selectedCountdownTypes.remove(type)
+        } else {
+            selectedCountdownTypes.insert(type)
+        }
+    }
+
+    private func toggleCustomTypeName(_ name: String) {
+        if selectedCustomTypeNames.contains(name) {
+            selectedCustomTypeNames.remove(name)
+        } else {
+            selectedCustomTypeNames.insert(name)
+        }
+    }
+
+    private func selectAllCountdownSubTypes() {
+        selectedCountdownTypes = Set(CountdownType.allCases)
+        selectedCustomTypeNames = Set(availableCustomTypeNames)
+    }
+
+    private func clearAllCountdownSubTypes() {
+        selectedCountdownTypes = []
+        selectedCustomTypeNames = []
+    }
+}
+
+// MARK: - Countdown Type Filter Row
+struct CountdownTypeFilterRow: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    let icon: String
+    let color: Color
+    let name: String
+    let isSelected: Bool
+    let accentColor: Color
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Color indicator
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(color)
+                    .frame(width: 28, height: 28)
+                    .background(color.opacity(0.2))
+                    .cornerRadius(6)
+
+                // Label
+                Text(name)
+                    .font(.appBody)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                // Checkbox
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? appAccentColor : .textSecondary)
+            }
+            .padding(.horizontal, AppDimensions.cardPadding)
+            .padding(.vertical, 10)
+            .background(Color.cardBackgroundSoft.opacity(0.3))
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
 }
 
 // MARK: - Filter Option Row Style
@@ -135,6 +257,8 @@ enum FilterOptionRowStyle {
 
 // MARK: - Filter Option Row (Event Types)
 struct FilterOptionRow: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let filter: CalendarEventFilter
     let isSelected: Bool
     let accentColor: Color
@@ -162,7 +286,7 @@ struct FilterOptionRow: View {
                 // Checkbox
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 24))
-                    .foregroundColor(isSelected ? accentColor : .textSecondary)
+                    .foregroundColor(isSelected ? appAccentColor : .textSecondary)
             }
             .padding(AppDimensions.cardPadding)
             .background(style == .filled ? Color.cardBackgroundSoft.opacity(0.4) : Color.clear)
@@ -183,7 +307,11 @@ struct FilterOptionRow: View {
 
         CalendarFilterView(
             selectedFilters: .constant(Set(CalendarEventFilter.allCases)),
-            isPresented: .constant(true)
+            selectedCountdownTypes: .constant(Set(CountdownType.allCases)),
+            selectedCustomTypeNames: .constant(["Wedding", "Reunion"]),
+            isPresented: .constant(true),
+            availableCountdownTypes: [.anniversary, .holiday, .event, .countdown],
+            availableCustomTypeNames: ["Wedding", "Reunion"]
         )
     }
 }

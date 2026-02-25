@@ -32,7 +32,7 @@ struct ExpandedFeatureView: View {
                         Spacer()
                         closeButton
                     }
-                    .padding(.top, geometry.safeAreaInsets.top + 16)
+                    .padding(.top, geometry.safeAreaInsets.top + 56)
                     .padding(.trailing, 20)
                     Spacer()
                 }

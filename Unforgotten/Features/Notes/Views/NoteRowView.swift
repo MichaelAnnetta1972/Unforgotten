@@ -9,13 +9,14 @@ struct NoteRowView: View {
     var onDelete: () -> Void = {}
     var onTogglePin: () -> Void = {}
     var onDuplicate: (() -> Void)?
-    var onChangeTheme: ((NoteTheme) -> Void)?
+
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .top, spacing: 12) {
-                // Theme icon
-                themeIcon
+                // Note icon
+                noteIcon
 
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
@@ -24,12 +25,12 @@ struct NoteRowView: View {
                         if note.isPinned {
                             Image(systemName: "pin.fill")
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(note.noteTheme.accentColor)
+                                .foregroundColor(appAccentColor)
                         }
 
                         Text(note.displayTitle)
-                            .font(NoteTypography.listRowTitle)
-                            .foregroundColor(.notePrimaryText)
+                            .font(.appCardTitle)
+                            .foregroundColor(.textPrimary)
                             .lineLimit(1)
 
                         Spacer()
@@ -40,22 +41,22 @@ struct NoteRowView: View {
                     // Preview text
                     if !note.contentPlainText.isEmpty {
                         Text(note.previewContent)
-                            .font(NoteTypography.listRowPreview)
-                            .foregroundColor(.noteSecondaryText)
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                     }
 
                     // Date
                     Text(note.formattedDate)
-                        .font(NoteTypography.listRowDate)
-                        .foregroundColor(.noteTertiaryText)
+                        .font(.appCaption)
+                        .foregroundColor(.textMuted)
                 }
 
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, NoteSpacing.listRowVertical)
-            .padding(.horizontal, NoteSpacing.listRowPadding)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -75,24 +76,24 @@ struct NoteRowView: View {
                     systemImage: note.isPinned ? "pin.slash" : "pin"
                 )
             }
-            .tint(note.noteTheme.accentColor)
+            .tint(appAccentColor)
         }
         .contextMenu {
             contextMenuContent
         }
     }
 
-    // MARK: - Theme Icon
+    // MARK: - Note Icon
 
-    private var themeIcon: some View {
+    private var noteIcon: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14)
-                .fill(note.noteTheme.accentColor.opacity(0.15))
+                .fill(appAccentColor.opacity(0.15))
                 .frame(width: 48, height: 48)
 
-            Image(systemName: note.noteTheme.icon)
-                .font(.system(size: NoteSpacing.themeIconSize, weight: .medium))
-                .foregroundColor(note.noteTheme.accentColor)
+            Image(systemName: "note.text")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(appAccentColor)
         }
     }
 
@@ -117,20 +118,6 @@ struct NoteRowView: View {
             }
         }
 
-        if let onChangeTheme = onChangeTheme {
-            Menu {
-                ForEach(NoteTheme.allCases) { theme in
-                    Button {
-                        onChangeTheme(theme)
-                    } label: {
-                        Label(theme.displayName, systemImage: theme.icon)
-                    }
-                }
-            } label: {
-                Label("Change Theme", systemImage: "paintpalette")
-            }
-        }
-
         Divider()
 
         Button(role: .destructive) {
@@ -146,23 +133,25 @@ struct CompactNoteRowView: View {
     let note: LocalNote
     var onTap: () -> Void = {}
 
+    @Environment(\.appAccentColor) private var appAccentColor
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                Image(systemName: note.noteTheme.icon)
+                Image(systemName: "note.text")
                     .font(.system(size: 14))
-                    .foregroundColor(note.noteTheme.accentColor)
+                    .foregroundColor(appAccentColor)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(note.displayTitle)
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.notePrimaryText)
+                        .foregroundColor(.textPrimary)
                         .lineLimit(1)
 
                     Text(note.firstLine)
                         .font(.system(size: 13))
-                        .foregroundColor(.noteSecondaryText)
+                        .foregroundColor(.textSecondary)
                         .lineLimit(1)
                 }
 
@@ -170,7 +159,7 @@ struct CompactNoteRowView: View {
 
                 Text(note.formattedDate)
                     .font(.system(size: 12))
-                    .foregroundColor(.noteTertiaryText)
+                    .foregroundColor(.textMuted)
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
@@ -185,7 +174,7 @@ struct CompactNoteRowView: View {
     List {
         NoteRowView(
             note: {
-                let note = LocalNote(title: "Gift Ideas for Mom", theme: .festive)
+                let note = LocalNote(title: "Gift Ideas for Mom")
                 note.isPinned = true
                 note.setPlainTextContent("Thinking about getting her a nice scarf this year. Maybe also a cookbook she mentioned.")
                 return note
@@ -194,7 +183,7 @@ struct CompactNoteRowView: View {
 
         NoteRowView(
             note: {
-                let note = LocalNote(title: "Grocery List", theme: .shopping)
+                let note = LocalNote(title: "Grocery List")
                 note.setPlainTextContent("☐ Milk\n☐ Eggs\n☐ Bread")
                 return note
             }()
@@ -202,7 +191,7 @@ struct CompactNoteRowView: View {
 
         NoteRowView(
             note: {
-                let note = LocalNote(title: "", theme: .standard)
+                let note = LocalNote(title: "")
                 note.setPlainTextContent("Quick note without a title")
                 return note
             }()

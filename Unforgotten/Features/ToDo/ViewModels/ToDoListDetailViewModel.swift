@@ -12,6 +12,7 @@ class ToDoListDetailViewModel: ObservableObject {
     @Published var list: ToDoList
     @Published var listTitle: String
     @Published var selectedType: String?
+    @Published var dueDate: Date?
     @Published var items: [ToDoItem] = []
     @Published var availableTypes: [ToDoListType] = []
     @Published var isLoading = false
@@ -38,6 +39,7 @@ class ToDoListDetailViewModel: ObservableObject {
         self.list = list
         self.listTitle = list.title
         self.selectedType = list.listType
+        self.dueDate = list.dueDate
         self.items = list.items
     }
 
@@ -106,6 +108,19 @@ class ToDoListDetailViewModel: ObservableObject {
     func saveType() {
         guard let repository = repository else { return }
         list.listType = selectedType
+
+        Task {
+            do {
+                try await repository.updateList(list)
+            } catch {
+                self.error = error
+            }
+        }
+    }
+
+    func saveDueDate() {
+        guard let repository = repository else { return }
+        list.dueDate = dueDate
 
         Task {
             do {

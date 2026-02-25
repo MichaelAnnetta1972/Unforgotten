@@ -1,0 +1,21 @@
+{
+  "images" : [
+    {
+      "filename" : "blank-notebook-sketch-pencil-delicate-pink-cherry-blossom-adorning-table-all-bathed-beautiful-light-shadow-from-top-angle-perfect-desktop-background.jpg",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

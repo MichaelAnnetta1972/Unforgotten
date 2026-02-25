@@ -46,7 +46,7 @@ class ToDoListsViewModel: ObservableObject {
         }
     }
 
-    func createList(title: String, type: String?) {
+    func createList(title: String, type: String?, dueDate: Date? = nil) {
         guard let accountId = accountId, let repository = repository else { return }
 
         Task {
@@ -54,7 +54,8 @@ class ToDoListsViewModel: ObservableObject {
                 let newList = try await repository.createList(
                     accountId: accountId,
                     title: title,
-                    listType: type
+                    listType: type,
+                    dueDate: dueDate
                 )
                 lists.append(newList)
             } catch {
@@ -63,14 +64,15 @@ class ToDoListsViewModel: ObservableObject {
         }
     }
 
-    func createListAsync(title: String, type: String?) async -> ToDoList? {
+    func createListAsync(title: String, type: String?, dueDate: Date? = nil) async -> ToDoList? {
         guard let accountId = accountId, let repository = repository else { return nil }
 
         do {
             let newList = try await repository.createList(
                 accountId: accountId,
                 title: title,
-                listType: type
+                listType: type,
+                dueDate: dueDate
             )
             lists.append(newList)
             return newList

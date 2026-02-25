@@ -16,6 +16,7 @@ struct iPadHomeSidebar: View {
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(FeatureVisibilityManager.self) private var featureVisibility
     @State private var showAccountSwitcher = false
+    @State private var isReordering = false
 
     /// Helper/Viewer roles only see limited features
     private var isLimitedAccess: Bool {
@@ -45,6 +46,44 @@ struct iPadHomeSidebar: View {
         return true
     }
 
+    /// Map a Feature to its iPad content selection
+    private func contentSelection(for feature: Feature) -> iPadContentSelection? {
+        switch feature {
+        case .calendar:         return .calendar
+        case .aboutMe:          return .myCard
+        case .familyAndFriends: return .profiles
+        case .medications:      return .medications
+        case .appointments:     return .appointments
+        case .countdownEvents:  return .countdownEvents
+        case .stickyReminders:  return .stickyReminders
+        case .todoLists:        return .todoLists
+        case .notes:            return .notes
+        case .usefulContacts:   return .contacts
+        case .birthdays:        return .birthdays
+        case .moodTracker:      return .mood
+        case .mealPlanner:      return .mealPlanner
+        }
+    }
+
+    /// Get the card display info for a feature
+    private func cardInfo(for feature: Feature) -> (title: String, icon: String) {
+        switch feature {
+        case .calendar:         return ("Calendar", "calendar.badge.clock")
+        case .aboutMe:          return ("About Me", "person.crop.circle")
+        case .familyAndFriends: return ("Family and Friends", "person.2")
+        case .medications:      return ("Medications", "pill")
+        case .appointments:     return ("Appointments", "calendar")
+        case .countdownEvents:  return ("Events", "timer")
+        case .stickyReminders:  return ("Sticky Reminders", "pin.fill")
+        case .todoLists:        return ("To Do Lists", "checklist")
+        case .notes:            return ("Notes", "note.text")
+        case .usefulContacts:   return ("Useful Contacts", "phone")
+        case .birthdays:        return ("Birthdays", "gift")
+        case .moodTracker:      return ("Mood Tracker", "face.smiling")
+        case .mealPlanner:      return ("Meal Planner", "fork.knife")
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
@@ -57,6 +96,13 @@ struct iPadHomeSidebar: View {
                         accountSwitcherAction: { showAccountSwitcher = true },
                         showSettingsButton: true,
                         settingsAction: { selectedContent = .settings },
+                        showReorderButton: true,
+                        isReordering: isReordering,
+                        reorderAction: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                isReordering.toggle()
+                            }
+                        },
                         roundedTopRightCorner: true,
                         useLogo: true,
                         logoImageName: "unforgotten-logo"
@@ -74,125 +120,38 @@ struct iPadHomeSidebar: View {
 
                         // Navigation Items
                         VStack(spacing: AppDimensions.cardSpacing) {
-
-                            if shouldShowFeature(.calendar) {
-                                iPadSidebarNavItem(
-                                    title: "Calendar",
-                                    icon: "calendar.badge.clock",
-                                    isSelected: selectedContent == .calendar
-                                ) {
-                                    selectedContent = .calendar
+                            if isReordering {
+                                // REORDER MODE: draggable cards
+                                let visibleFeatures = featureVisibility.orderedVisibleFeatures.filter { shouldShowFeature($0) }
+                                ForEach(visibleFeatures) { feature in
+                                    let info = cardInfo(for: feature)
+                                    DraggableHomeCard(
+                                        title: info.title,
+                                        icon: info.icon,
+                                        feature: feature,
+                                        onDrop: { droppedFeature in
+                                            guard let fromIndex = visibleFeatures.firstIndex(of: droppedFeature),
+                                                  let toIndex = visibleFeatures.firstIndex(of: feature),
+                                                  fromIndex != toIndex else { return }
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                featureVisibility.moveFeature(fromIndex: fromIndex, toIndex: toIndex)
+                                            }
+                                        }
+                                    )
                                 }
-                            }
-                            
-                            if shouldShowFeature(.aboutMe) {
-                                iPadSidebarNavItem(
-                                    title: "About Me",
-                                    icon: "person.crop.circle",
-                                    isSelected: selectedContent == .myCard
-                                ) {
-                                    selectedContent = .myCard
-                                }
-                            }
-
-                            if shouldShowFeature(.familyAndFriends) {
-                                iPadSidebarNavItem(
-                                    title: "Family and Friends",
-                                    icon: "person.2",
-                                    isSelected: selectedContent == .profiles
-                                ) {
-                                    selectedContent = .profiles
-                                }
-                            }
-
-                            if shouldShowFeature(.medications) {
-                                iPadSidebarNavItem(
-                                    title: "Medications",
-                                    icon: "pill",
-                                    isSelected: selectedContent == .medications
-                                ) {
-                                    selectedContent = .medications
-                                }
-                            }
-
-                            if shouldShowFeature(.appointments) {
-                                iPadSidebarNavItem(
-                                    title: "Appointments",
-                                    icon: "calendar",
-                                    isSelected: selectedContent == .appointments
-                                ) {
-                                    selectedContent = .appointments
-                                }
-                            }
-
-                            if shouldShowFeature(.countdownEvents) {
-                                iPadSidebarNavItem(
-                                    title: "Events",
-                                    icon: "timer",
-                                    isSelected: selectedContent == .countdownEvents
-                                ) {
-                                    selectedContent = .countdownEvents
-                                }
-                            }
-
-                            if shouldShowFeature(.stickyReminders) {
-                                iPadSidebarNavItem(
-                                    title: "Sticky Reminders",
-                                    icon: "pin.fill",
-                                    isSelected: selectedContent == .stickyReminders
-                                ) {
-                                    selectedContent = .stickyReminders
-                                }
-                            }
-
-                            if shouldShowFeature(.todoLists) {
-                                iPadSidebarNavItem(
-                                    title: "To Do Lists",
-                                    icon: "checklist",
-                                    isSelected: selectedContent == .todoLists
-                                ) {
-                                    selectedContent = .todoLists
-                                }
-                            }
-
-                            if shouldShowFeature(.notes) {
-                                iPadSidebarNavItem(
-                                    title: "Notes",
-                                    icon: "note.text",
-                                    isSelected: selectedContent == .notes
-                                ) {
-                                    selectedContent = .notes
-                                }
-                            }
-
-
-                            if shouldShowFeature(.birthdays) {
-                                iPadSidebarNavItem(
-                                    title: "Birthdays",
-                                    icon: "gift",
-                                    isSelected: selectedContent == .birthdays
-                                ) {
-                                    selectedContent = .birthdays
-                                }
-                            }
-
-                            if shouldShowFeature(.usefulContacts) {
-                                iPadSidebarNavItem(
-                                    title: "Useful Contacts",
-                                    icon: "phone",
-                                    isSelected: selectedContent == .contacts
-                                ) {
-                                    selectedContent = .contacts
-                                }
-                            }
-
-                            if shouldShowFeature(.moodTracker) {
-                                iPadSidebarNavItem(
-                                    title: "Mood Tracker",
-                                    icon: "face.smiling",
-                                    isSelected: selectedContent == .mood
-                                ) {
-                                    selectedContent = .mood
+                            } else {
+                                // NORMAL MODE: navigation items
+                                ForEach(featureVisibility.orderedVisibleFeatures.filter { shouldShowFeature($0) }) { feature in
+                                    let info = cardInfo(for: feature)
+                                    if let selection = contentSelection(for: feature) {
+                                        iPadSidebarNavItem(
+                                            title: info.title,
+                                            icon: info.icon,
+                                            isSelected: selectedContent == selection
+                                        ) {
+                                            selectedContent = selection
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -655,7 +614,7 @@ struct iPadSidebarMedicationRow: View {
                 HStack(spacing: 12) {
                     Image(systemName: "pill.fill")
                         .font(.system(size: 18))
-                        .foregroundColor(.medicalRed)
+                        .foregroundColor(appAccentColor)
                         .frame(width: 32, height: 32)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -720,7 +679,7 @@ struct iPadSidebarAppointmentRow: View {
                 HStack(spacing: 12) {
                     Image(systemName: "calendar")
                         .font(.system(size: 18))
-                        .foregroundColor(.calendarBlue)
+                        .foregroundColor(appAccentColor)
                         .frame(width: 32, height: 32)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -765,6 +724,7 @@ struct iPadSidebarAppointmentRow: View {
 struct iPadSidebarBirthdayRow: View {
     let profile: Profile
     @Environment(\.iPadTodayProfileAction) private var iPadTodayProfileAction
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button {
@@ -773,7 +733,7 @@ struct iPadSidebarBirthdayRow: View {
             HStack(spacing: 12) {
                 Image(systemName: "gift.fill")
                     .font(.system(size: 18))
-                    .foregroundColor(.calendarPink)
+                    .foregroundColor(appAccentColor)
                     .frame(width: 32, height: 32)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -807,6 +767,7 @@ struct iPadSidebarBirthdayRow: View {
 struct iPadSidebarCountdownRow: View {
     let countdown: Countdown
     @Environment(\.iPadTodayCountdownAction) private var iPadTodayCountdownAction
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         Button {
@@ -815,7 +776,7 @@ struct iPadSidebarCountdownRow: View {
             HStack(spacing: 12) {
                 Image(systemName: countdown.type.icon)
                     .font(.system(size: 18))
-                    .foregroundColor(countdown.type.color)
+                    .foregroundColor(appAccentColor)
                     .frame(width: 32, height: 32)
 
                 VStack(alignment: .leading, spacing: 2) {

@@ -128,9 +128,9 @@ final class PremiumLimitsManager: ObservableObject {
         return currentCount < FreeTierLimits.countdowns
     }
 
-    /// Check if user can invite family members (Family Plus only)
+    /// Check if user can invite family members (available to all tiers)
     func canInviteMembers(appState: AppState) -> Bool {
-        return hasFamilyAccess(appState: appState)
+        return true
     }
 
     /// Check if user can join another account (available to all tiers)

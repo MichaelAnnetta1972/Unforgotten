@@ -37,7 +37,7 @@ struct SectionPresets {
     // Preset items for each section type
     static let presetItems: [String: [String]] = [
         // Hobbies
-        "Favourite TV Shows": ["Antiques Roadshow", "Gardeners' World", "Strictly Come Dancing", "The Chase", "Coronation Street", "EastEnders", "Emmerdale", "Countdown", "Pointless", "Only Fools and Horses"],
+        "Favourite TV Shows": ["Antiques Roadshow", "NCIS", "The Simpsonos", "The Chase", "MAFS", "EastEnders", "Emmerdale", "Countdown", "Pointless", "Only Fools and Horses"],
         "Favourite Movies": ["The Sound of Music", "Mary Poppins", "Casablanca", "Gone with the Wind", "It's a Wonderful Life", "Brief Encounter", "The Great Escape", "Singin' in the Rain"],
         "Favourite Music": ["Frank Sinatra", "Elvis Presley", "The Beatles", "Vera Lynn", "Dean Martin", "Nat King Cole", "Cliff Richard", "Tom Jones", "Classical Music", "Jazz", "Big Band"],
         "Favourite Books": ["Agatha Christie", "Dick Francis", "Catherine Cookson", "Maeve Binchy", "Roald Dahl", "Newspapers", "Magazines", "Crossword Books"],
@@ -77,6 +77,7 @@ struct SectionBasedCategoryView: View {
     let profile: Profile
     let category: ProfileCategoryType
     let details: [ProfileDetail]
+    let isOwnProfile: Bool
 
     @State private var currentDetails: [ProfileDetail]
     @State private var showAddSection = false
@@ -84,6 +85,9 @@ struct SectionBasedCategoryView: View {
     @State private var selectedSection: String?
     @State private var showSettings = false
     @State private var syncedDetailIds: Set<UUID> = []
+    @State private var hasActiveSyncConnections = false
+    @State private var isCategoryShared = true
+    @State private var isSharingLoading = false
 
     /// Check if iPad environment actions are available
     private var hasiPadSectionAction: Bool {
@@ -102,10 +106,11 @@ struct SectionBasedCategoryView: View {
         }
     }
 
-    init(profile: Profile, category: ProfileCategoryType, details: [ProfileDetail]) {
+    init(profile: Profile, category: ProfileCategoryType, details: [ProfileDetail], isOwnProfile: Bool = false) {
         self.profile = profile
         self.category = category
         self.details = details
+        self.isOwnProfile = isOwnProfile
         self._currentDetails = State(initialValue: details)
     }
 
@@ -152,6 +157,19 @@ struct SectionBasedCategoryView: View {
 
                     // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
+                        // Share toggle (own profile with active connections only)
+                        // if isOwnProfile && hasActiveSyncConnections,
+                        //    let sharingKey = SharingCategoryKey.from(categoryType: category) {
+                        //     ShareCategoryToggle(
+                        //         category: sharingKey,
+                        //         isShared: $isCategoryShared,
+                        //         isLoading: isSharingLoading,
+                        //         onToggle: { newValue in
+                        //             toggleSharingPreference(newValue: newValue)
+                        //         }
+                        //     )
+                        // }
+
                         if groupedDetails.isEmpty {
                             // Empty state
                             VStack(spacing: 12) {
@@ -287,6 +305,62 @@ struct SectionBasedCategoryView: View {
         .task {
             // Always refresh from network on appear to ensure data is current
             await reloadDetails(forceRefresh: true)
+
+            // Load sharing preferences if viewing own profile
+            if isOwnProfile {
+                await loadSharingPreferences()
+            }
+        }
+    }
+
+    private func loadSharingPreferences() async {
+        guard let sharingKey = SharingCategoryKey.from(categoryType: category) else { return }
+
+        do {
+            isCategoryShared = try await appState.profileSharingPreferencesRepository.isShared(
+                profileId: profile.id,
+                category: sharingKey
+            )
+
+            // Check if user has active sync connections
+            if let userId = await SupabaseManager.shared.currentUserId {
+                let syncs = try await appState.profileSyncRepository.getSyncsForUser(userId: userId)
+                hasActiveSyncConnections = !syncs.isEmpty
+            }
+        } catch {
+            #if DEBUG
+            print("Error loading sharing preferences: \(error)")
+            #endif
+        }
+    }
+
+    private func toggleSharingPreference(newValue: Bool) {
+        guard let sharingKey = SharingCategoryKey.from(categoryType: category) else { return }
+
+        // Optimistic update
+        isCategoryShared = newValue
+        isSharingLoading = true
+
+        Task {
+            do {
+                try await appState.profileSharingPreferencesRepository.updatePreference(
+                    profileId: profile.id,
+                    category: sharingKey,
+                    isShared: newValue
+                )
+                NotificationCenter.default.post(
+                    name: .profileSharingPreferencesDidChange,
+                    object: nil,
+                    userInfo: ["profileId": profile.id, "category": sharingKey.rawValue]
+                )
+            } catch {
+                // Revert on failure
+                isCategoryShared = !newValue
+                #if DEBUG
+                print("Error updating sharing preference: \(error)")
+                #endif
+            }
+            isSharingLoading = false
         }
     }
 

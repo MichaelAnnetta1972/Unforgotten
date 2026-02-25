@@ -580,6 +580,12 @@ struct BottomNavBar: View {
 
     @Environment(\.appAccentColor) private var appAccentColor
     @State private var showAddMenu = false
+    @Namespace private var navBarNamespace
+
+    /// Only show the + button when on the home screen (home tab at root)
+    private var showAddButton: Bool {
+        currentPage == .home && isAtHomeRoot
+    }
 
     init(
         currentPage: NavDestination = .home,
@@ -725,56 +731,41 @@ struct BottomNavBar: View {
                     // Nav bar
                     HStack(spacing: 12) {
                         // Container for 4 nav icons with glass effect
-                        GeometryReader { geometry in
-                            let buttonWidth = geometry.size.width / 4
-                            let activeIndex = activeButtonIndex(for: currentPage, isAtHomeRoot: isAtHomeRoot)
-                            let indicatorPadding: CGFloat = 8
-                            let indicatorWidth = buttonWidth - indicatorPadding
-                            // Calculate offset from leading edge
-                            let indicatorOffset = CGFloat(activeIndex) * buttonWidth + (indicatorPadding / 2)
+                        HStack(spacing: 0) {
+                            // Home button - active only when on home tab AND at root
+                            NavBarButton(
+                                icon: "house.fill",
+                                isActive: currentPage == .home && isAtHomeRoot,
+                                navNamespace: navBarNamespace
+                            ) {
+                                onNavigate(.home)
+                            }
 
-                            ZStack(alignment: .leading) {
-                                // Sliding indicator background
-                                Capsule()
-                                    .fill(appAccentColor.opacity(0.25))
-                                    .frame(width: indicatorWidth, height: 52)
-                                    .offset(x: indicatorOffset)
-                                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: activeIndex)
+                            // About Me (My Card) button
+                            NavBarButton(
+                                icon: "person.crop.circle.fill",
+                                isActive: currentPage == .myCard,
+                                navNamespace: navBarNamespace
+                            ) {
+                                onNavigate(.myCard)
+                            }
 
-                                // Nav buttons
-                                HStack(spacing: 0) {
-                                    // Home button - active only when on home tab AND at root
-                                    NavBarButton(
-                                        icon: "house.fill",
-                                        isActive: currentPage == .home && isAtHomeRoot
-                                    ) {
-                                        onNavigate(.home)
-                                    }
+                            // Calendar button
+                            NavBarButton(
+                                icon: "calendar",
+                                isActive: currentPage == .calendar,
+                                navNamespace: navBarNamespace
+                            ) {
+                                onNavigate(.calendar)
+                            }
 
-                                    // About Me (My Card) button
-                                    NavBarButton(
-                                        icon: "person.crop.circle.fill",
-                                        isActive: currentPage == .myCard
-                                    ) {
-                                        onNavigate(.myCard)
-                                    }
-
-                                    // Calendar button
-                                    NavBarButton(
-                                        icon: "calendar",
-                                        isActive: currentPage == .calendar
-                                    ) {
-                                        onNavigate(.calendar)
-                                    }
-
-                                    // Settings button
-                                    NavBarButton(
-                                        icon: "gearshape.fill",
-                                        isActive: currentPage == .settings
-                                    ) {
-                                        onNavigate(.settings)
-                                    }
-                                }
+                            // Settings button
+                            NavBarButton(
+                                icon: "gearshape.fill",
+                                isActive: currentPage == .settings,
+                                navNamespace: navBarNamespace
+                            ) {
+                                onNavigate(.settings)
                             }
                         }
                         .frame(height: 60)
@@ -798,38 +789,35 @@ struct BottomNavBar: View {
                         )
                         .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
 
-                        // Add button with press animation
-                        AddNavButton(showAddMenu: $showAddMenu)
+                        // Add button - only shown on home screen
+                        if showAddButton {
+                            AddNavButton(showAddMenu: $showAddMenu)
+                                .transition(.scale.combined(with: .opacity))
+                        }
                     }
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showAddButton)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
                 }
             }
             .ignoresSafeArea(.container, edges: .bottom)
+            .onChange(of: showAddButton) { _, newValue in
+                if !newValue && showAddMenu {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showAddMenu = false
+                    }
+                }
+            }
         }
     }
 
-    // Helper function to get the index of the active button
-    private func activeButtonIndex(for page: NavDestination, isAtHomeRoot: Bool) -> Int {
-        switch page {
-        case .home:
-            return 0
-        case .myCard:
-            return 1
-        case .calendar:
-            return 2
-        case .settings:
-            return 3
-        case .profiles, .medications, .appointments, .other:
-            return 0 // Default to home for pages not in bottom nav
-        }
-    }
 }
 
 // MARK: - Nav Bar Button
 struct NavBarButton: View {
     let icon: String
     let isActive: Bool
+    var navNamespace: Namespace.ID
     let action: () -> Void
 
     @Environment(\.appAccentColor) private var appAccentColor
@@ -846,11 +834,21 @@ struct NavBarButton: View {
                 .foregroundColor(isActive ? appAccentColor : .white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
+                .background {
+                    if isActive {
+                        Capsule()
+                            .fill(appAccentColor.opacity(0.25))
+                            .frame(height: 52)
+                            .padding(.horizontal, 4)
+                            .matchedGeometryEffect(id: "navIndicator", in: navNamespace)
+                    }
+                }
+                .contentShape(Rectangle())
                 .scaleEffect(isPressed ? 0.85 : 1.0)
                 .opacity(isPressed ? 0.7 : 1.0)
                 .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
         }
-        .disabled(isActive)
+        .buttonStyle(.plain)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
@@ -862,6 +860,7 @@ struct NavBarButton: View {
                     isPressed = false
                 }
         )
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isActive)
     }
 }
 
@@ -1181,7 +1180,10 @@ struct HeaderBottomActionButton: View {
     let label: String?
     let action: () -> Void
 
+    @Environment(\.appAccentColor) private var appAccentColor
     @State private var isPressed = false
+
+    private var isAddButton: Bool { icon == "plus" }
 
     init(icon: String, label: String? = nil, action: @escaping () -> Void) {
         self.icon = icon
@@ -1199,10 +1201,10 @@ struct HeaderBottomActionButton: View {
                         .font(.system(size: 16, weight: .semibold))
                 }
             }
-            .foregroundColor(.white)
+            .foregroundColor(isAddButton ? .black : .white)
             .padding(.horizontal, label != nil ? 16 : 14)
             .padding(.vertical, 14)
-            .background(Color.white.opacity(0.25))
+            .background(isAddButton ? appAccentColor : Color.white.opacity(0.25))
             .clipShape(Capsule())
             .scaleEffect(isPressed ? 0.9 : 1.0)
             .opacity(isPressed ? 0.8 : 1.0)
@@ -1318,7 +1320,7 @@ struct HeaderImageView: View {
                                 image
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
-                                    .frame(width: geometry.size.width, height: geometry.size.height)
+                                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottom)
                                     .clipped()
                             case .failure, .empty:
                                 fallbackImage(imageName: imageName, width: geometry.size.width, height: geometry.size.height)
@@ -1330,7 +1332,7 @@ struct HeaderImageView: View {
                         Image(imageName)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottom)
                             .clipped()
                     } else {
                         LinearGradient.headerGradient
@@ -1457,7 +1459,7 @@ struct HeaderImageView: View {
             Image(imageName)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: width, height: height)
+                .frame(width: width, height: height, alignment: .bottom)
                 .clipped()
         } else {
             LinearGradient.headerGradient
@@ -1679,14 +1681,105 @@ struct LoadingView: View {
             )
             
             PrimaryButton(title: "Continue") {}
-            
+
             SecondaryButton(title: "Skip") {}
-            
+
             AppTextField(placeholder: "Email", text: .constant(""))
-            
+
             FloatingAddButton {}
         }
         .padding()
     }
     .background(Color.appBackground)
+}
+
+// MARK: - Locked Field Wrapper
+
+/// Wraps a form field (e.g. AppTextField) to show a lock icon and disable editing
+/// when the field value comes from a synced profile.
+struct LockedFieldWrapper<Content: View>: View {
+    let isLocked: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        if isLocked {
+            HStack(spacing: 0) {
+                content
+                    .disabled(true)
+                    .opacity(0.6)
+
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.textSecondary)
+                    .padding(.trailing, 16)
+                    .offset(x: -40)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+// MARK: - Share Category Toggle
+
+/// A sharing toggle that appears at the top of a category page on the user's own profile.
+/// Only visible when the user has active sync connections.
+struct ShareCategoryToggle: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    let category: SharingCategoryKey
+    @Binding var isShared: Bool
+    let isLoading: Bool
+    let onToggle: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 16))
+                .foregroundColor(appAccentColor)
+                .frame(width: 32, height: 32)
+                .background(appAccentColor.opacity(0.15))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Share")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+
+                Text(category.description)
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+            }
+
+            Spacer()
+
+            if isLoading {
+                ProgressView()
+                    .tint(.textSecondary)
+            } else {
+                Toggle("", isOn: Binding(
+                    get: { isShared },
+                    set: { newValue in
+                        onToggle(newValue)
+                    }
+                ))
+                .tint(appAccentColor)
+                .labelsHidden()
+            }
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+    }
+}
+
+// MARK: - Share Sheet (UIActivityViewController wrapper)
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

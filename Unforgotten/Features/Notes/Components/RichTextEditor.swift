@@ -13,6 +13,9 @@ class RichTextFormattingActions: ObservableObject {
     func numberedList() { coordinator?.numberedTapped() }
     func heading() { coordinator?.headingTapped() }
     func dismissKeyboard() { coordinator?.doneTapped() }
+
+    /// Insert an image attachment into the text view at the current cursor position
+    func insertImage(_ image: UIImage) { coordinator?.insertImage(image) }
 }
 
 // MARK: - Rich Text Editor
@@ -24,6 +27,7 @@ struct RichTextEditor: UIViewRepresentable {
     var onTextChange: (() -> Void)?
     var hideKeyboardToolbar: Bool = false  // When true, don't show keyboard accessory (for iPad inline toolbar)
     var formattingActions: RichTextFormattingActions?  // Optional reference to expose formatting actions
+    var onAttachImageTapped: (() -> Void)?  // Callback when attach image button is tapped from keyboard toolbar
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -40,9 +44,13 @@ struct RichTextEditor: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.keyboardDismissMode = .interactive
 
-        // Set initial attributed text
+        // Set initial attributed text, resizing any image attachments to fit
         if attributedText.length > 0 {
             textView.attributedText = attributedText
+            // Defer image resizing until layout is complete so textContainer has correct width
+            DispatchQueue.main.async {
+                Self.resizeImageAttachments(in: textView)
+            }
         }
 
         // Create input accessory view (formatting toolbar) - only if not hidden
@@ -56,6 +64,41 @@ struct RichTextEditor: UIViewRepresentable {
         return textView
     }
 
+    /// Resize all image attachments in the text view to fit the available width
+    static func resizeImageAttachments(in textView: UITextView) {
+        let maxWidth = textView.textContainer.size.width - textView.textContainerInset.left - textView.textContainerInset.right - textView.textContainer.lineFragmentPadding * 2
+        guard maxWidth > 0 else { return }
+
+        let mutable = NSMutableAttributedString(attributedString: textView.attributedText)
+        var didChange = false
+
+        mutable.enumerateAttribute(.attachment, in: NSRange(location: 0, length: mutable.length), options: []) { value, _, _ in
+            guard let attachment = value as? NSTextAttachment,
+                  let image = attachment.image ?? attachment.image(forBounds: attachment.bounds, textContainer: nil, characterIndex: 0) else { return }
+
+            let imageWidth = image.size.width
+            let imageHeight = image.size.height
+            guard imageWidth > 0, imageHeight > 0 else { return }
+
+            let targetWidth = min(imageWidth, maxWidth)
+            let scale = targetWidth / imageWidth
+            let newBounds = CGRect(x: 0, y: 0, width: targetWidth, height: imageHeight * scale)
+
+            if abs(attachment.bounds.width - newBounds.width) > 1 {
+                attachment.bounds = newBounds
+                didChange = true
+            }
+        }
+
+        if didChange {
+            let selectedRange = textView.selectedRange
+            textView.attributedText = mutable
+            if selectedRange.location + selectedRange.length <= mutable.length {
+                textView.selectedRange = selectedRange
+            }
+        }
+    }
+
     func updateUIView(_ textView: UITextView, context: Context) {
         // Only update if the text actually changed and we're not currently editing
         if !context.coordinator.isEditing {
@@ -66,6 +109,8 @@ struct RichTextEditor: UIViewRepresentable {
                 if selectedRange.location + selectedRange.length <= textView.attributedText.length {
                     textView.selectedRange = selectedRange
                 }
+                // Resize image attachments to fit text view width
+                Self.resizeImageAttachments(in: textView)
             }
         }
 
@@ -163,11 +208,12 @@ struct RichTextEditor: UIViewRepresentable {
             let bulletButton = makeButton(systemName: "list.bullet", action: #selector(bulletTapped))
             let numberedButton = makeButton(systemName: "list.number", action: #selector(numberedTapped))
             let headingButton = makeButton(systemName: "textformat.size.larger", action: #selector(headingTapped))
+            let attachButton = makeButton(systemName: "paperclip", action: #selector(attachImageTapped))
 
             let flexSpace = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
 
             let doneButton = UIBarButtonItem(
-                title: "Done",
+                image: UIImage(systemName: "checkmark"),
                 style: .done,
                 target: self,
                 action: #selector(doneTapped)
@@ -178,6 +224,7 @@ struct RichTextEditor: UIViewRepresentable {
             toolbar.items = [
                 boldButton, italicButton, underlineButton,
                 bulletButton, numberedButton, headingButton,
+                attachButton,
                 flexSpace,
                 doneButton
             ]
@@ -344,8 +391,63 @@ struct RichTextEditor: UIViewRepresentable {
             applyHeadingStyle()
         }
 
+        @objc func attachImageTapped() {
+            parent.onAttachImageTapped?()
+        }
+
         @objc func doneTapped() {
             textView?.resignFirstResponder()
+        }
+
+        /// Insert an image as a text attachment at the current cursor position
+        func insertImage(_ image: UIImage) {
+            guard let textView = textView else { return }
+
+            // Calculate max width for the image within the text view
+            let maxWidth = textView.textContainer.size.width - textView.textContainerInset.left - textView.textContainerInset.right - textView.textContainer.lineFragmentPadding * 2
+
+            let attachment = NSTextAttachment()
+            attachment.image = image
+
+            // Set bounds to scale the image to fit the text view width while preserving aspect ratio
+            if image.size.width > maxWidth && maxWidth > 0 {
+                let scale = maxWidth / image.size.width
+                attachment.bounds = CGRect(x: 0, y: 0, width: maxWidth, height: image.size.height * scale)
+            } else {
+                attachment.bounds = CGRect(x: 0, y: 0, width: image.size.width, height: image.size.height)
+            }
+
+            let attachmentString = NSAttributedString(attachment: attachment)
+
+            // Build the insertion: newline before (if not at start of line), attachment, newline after
+            let mutableAttr = NSMutableAttributedString(attributedString: textView.attributedText)
+            let insertionPoint = textView.selectedRange.location
+
+            let insertionString = NSMutableAttributedString()
+
+            // Add leading newline if we're not at the start or after a newline
+            if insertionPoint > 0 {
+                let previousChar = (textView.text as NSString).character(at: insertionPoint - 1)
+                if previousChar != unichar(10) {
+                    insertionString.append(NSAttributedString(string: "\n", attributes: defaultAttributes))
+                }
+            }
+
+            insertionString.append(attachmentString)
+            insertionString.append(NSAttributedString(string: "\n", attributes: defaultAttributes))
+
+            mutableAttr.replaceCharacters(in: textView.selectedRange, with: insertionString)
+            textView.attributedText = mutableAttr
+
+            // Move cursor after the inserted image
+            let newPosition = insertionPoint + insertionString.length
+            textView.selectedRange = NSRange(location: newPosition, length: 0)
+
+            DispatchQueue.main.async { [weak self] in
+                self?.parent.attributedText = textView.attributedText
+                self?.parent.onTextChange?()
+                self?.updatePlaceholder(isEmpty: textView.attributedText.length == 0)
+            }
         }
 
         // MARK: - Formatting Helpers

@@ -24,6 +24,7 @@ enum iPadContentSelection: Hashable {
     case birthdays
     case contacts
     case mood
+    case mealPlanner
     case settings
 }
 
@@ -99,7 +100,6 @@ struct iPadRootView: View {
     // Settings panel overlays
     @State private var showSettingsInviteMember = false
     @State private var showSettingsManageMembers = false
-    @State private var showSettingsJoinAccount = false
     @State private var showSettingsMoodHistory = false
     @State private var showSettingsAppearance = false
     @State private var showSettingsFeatureVisibility = false
@@ -112,23 +112,16 @@ struct iPadRootView: View {
     @State private var hasHandledOnboardingAction = false
 
     // Appointment filter state (shared with AppointmentListView on iPad)
-    @State private var showAppointmentFilter = false
     @State private var selectedAppointmentTypeFilter: AppointmentType? = nil
 
     // ToDo List filter state (shared with ToDoListsContent on iPad)
-    @State private var showToDoListFilter = false
     @State private var selectedToDoListTypeFilter: String? = nil
 
-    // ToDo Detail type selector state (for full-screen overlay)
-    @State private var showToDoDetailTypeSelector = false
-    @State private var toDoDetailTypeSelectorViewModel: ToDoListDetailViewModel? = nil
-    @State private var toDoDetailTypeSelectorBinding: Binding<String?>? = nil
-    @State private var toDoDetailTypeSelectorAddAction: (() -> Void)? = nil
 
     // Calendar filter state (shared with CalendarView on iPad)
-    @State private var showCalendarFilter = false
-    @State private var showCalendarMemberFilter = false
     @State private var selectedCalendarFilters: Set<CalendarEventFilter> = Set(CalendarEventFilter.allCases)
+    @State private var selectedCalendarCountdownTypes: Set<CountdownType> = Set(CountdownType.allCases)
+    @State private var selectedCalendarCustomTypeNames: Set<String> = []
     @State private var selectedCalendarMemberFilters: Set<UUID> = []
     @State private var calendarMembersWithEvents: [AccountMemberWithUser] = []
 
@@ -243,11 +236,6 @@ struct iPadRootView: View {
                     showUpgradePrompt = true
                 }
             })
-            .environment(\.iPadAppointmentFilterAction, {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showAppointmentFilter = true
-                }
-            })
             .environment(\.iPadAppointmentFilterBinding, $selectedAppointmentTypeFilter)
             .environment(\.iPadAddToDoListAction, {
                 if PremiumLimitsManager.shared.canCreateToDoList(appState: appState, currentCount: toDoListCount) {
@@ -256,23 +244,10 @@ struct iPadRootView: View {
                     showUpgradePrompt = true
                 }
             })
-            .environment(\.iPadToDoListFilterAction, {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showToDoListFilter = true
-                }
-            })
             .environment(\.iPadToDoListFilterBinding, $selectedToDoListTypeFilter)
-            .environment(\.iPadCalendarFilterAction, {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showCalendarFilter = true
-                }
-            })
-            .environment(\.iPadCalendarMemberFilterAction, {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showCalendarMemberFilter = true
-                }
-            })
             .environment(\.iPadCalendarFilterBinding, $selectedCalendarFilters)
+            .environment(\.iPadCalendarCountdownTypeFilterBinding, $selectedCalendarCountdownTypes)
+            .environment(\.iPadCalendarCustomTypeNameFilterBinding, $selectedCalendarCustomTypeNames)
             .environment(\.iPadCalendarMemberFilterBinding, $selectedCalendarMemberFilters)
             .environment(\.iPadCalendarMembersWithEventsBinding, $calendarMembersWithEvents)
             .environment(\.iPadCalendarDayDetailAction, { date, events, onDismiss in
@@ -294,16 +269,10 @@ struct iPadRootView: View {
                     showCalendarDayDetail = false
                 }
                 // Navigate to the appropriate detail view
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(200))
+                    guard !Task.isCancelled else { return }
                     handleCalendarEventNavigation(event)
-                }
-            })
-            .environment(\.iPadToDoDetailTypeSelectorAction, { viewModel, selectedTypeBinding, addAction in
-                toDoDetailTypeSelectorViewModel = viewModel
-                toDoDetailTypeSelectorBinding = selectedTypeBinding
-                toDoDetailTypeSelectorAddAction = addAction
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showToDoDetailTypeSelector = true
                 }
             })
             .environment(\.iPadAddStickyReminderAction, {
@@ -398,7 +367,6 @@ struct iPadRootView: View {
             // Settings panel actions
             .environment(\.iPadShowInviteMemberAction, { showSettingsInviteMember = true })
             .environment(\.iPadShowManageMembersAction, { showSettingsManageMembers = true })
-            .environment(\.iPadShowJoinAccountAction, { showSettingsJoinAccount = true })
             .environment(\.iPadShowMoodHistoryAction, { showSettingsMoodHistory = true })
             .environment(\.iPadShowAppearanceSettingsAction, { showSettingsAppearance = true })
             .environment(\.iPadShowFeatureVisibilityAction, { showSettingsFeatureVisibility = true })
@@ -406,36 +374,6 @@ struct iPadRootView: View {
             .environment(\.iPadShowEditAccountNameAction, { showSettingsEditAccountName = true })
             .environment(\.iPadShowAdminPanelAction, { showSettingsAdminPanel = true })
             .environment(\.iPadShowUpgradeAction, { showSettingsUpgrade = true })
-    }
-
-    /// Type selector overlay for ToDo Detail
-    @ViewBuilder
-    private var toDoDetailTypeSelectorOverlay: some View {
-        if showToDoDetailTypeSelector, let viewModel = toDoDetailTypeSelectorViewModel, let binding = toDoDetailTypeSelectorBinding {
-            ZStack {
-                Color.appBackgroundLight.opacity(0.8)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showToDoDetailTypeSelector = false
-                        }
-                    }
-
-                iPadToDoDetailTypeSelectorOverlay(
-                    viewModel: viewModel,
-                    selectedType: binding,
-                    onAddNewType: {
-                        toDoDetailTypeSelectorAddAction?()
-                    },
-                    onDismiss: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showToDoDetailTypeSelector = false
-                        }
-                    }
-                )
-            }
-            .transition(.opacity)
-        }
     }
 
     /// Main layout ZStack
@@ -448,25 +386,33 @@ struct iPadRootView: View {
                 )
                 .environment(\.iPadTodayMedicationAction, { medication in
                     selectedContent = .medications
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(100))
+                        guard !Task.isCancelled else { return }
                         navigationPath.append(medication)
                     }
                 })
                 .environment(\.iPadTodayAppointmentAction, { appointment in
                     selectedContent = .appointments
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(100))
+                        guard !Task.isCancelled else { return }
                         navigationPath.append(appointment)
                     }
                 })
                 .environment(\.iPadTodayProfileAction, { profile in
                     selectedContent = .profiles
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(100))
+                        guard !Task.isCancelled else { return }
                         navigationPath.append(profile)
                     }
                 })
                 .environment(\.iPadTodayCountdownAction, { countdown in
                     selectedContent = .countdownEvents
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(100))
+                        guard !Task.isCancelled else { return }
                         navigationPath.append(countdown)
                     }
                 })
@@ -495,25 +441,6 @@ struct iPadRootView: View {
                 addMenuOverlay
             }
 
-            // Appointment type filter overlay (covers entire screen when open)
-            if showAppointmentFilter {
-                appointmentFilterOverlay
-            }
-
-            // ToDo List type filter overlay (covers entire screen when open)
-            if showToDoListFilter {
-                toDoListFilterOverlay
-            }
-
-            // Calendar event type filter overlay (covers entire screen when open)
-            if showCalendarFilter {
-                calendarFilterOverlay
-            }
-
-            // Calendar member filter overlay (covers entire screen when open)
-            if showCalendarMemberFilter {
-                calendarMemberFilterOverlay
-            }
 
             // Calendar day detail overlay (covers entire screen when open)
             if showCalendarDayDetail {
@@ -587,76 +514,6 @@ struct iPadRootView: View {
         )
     }
 
-    /// Appointment filter overlay
-    private var appointmentFilterOverlay: some View {
-        ZStack {
-            Color.cardBackground.opacity(0.8)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showAppointmentFilter = false
-                    }
-                }
-
-            AppointmentTypeFilterOverlay(
-                selectedType: $selectedAppointmentTypeFilter,
-                isShowing: showAppointmentFilter,
-                onDismiss: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showAppointmentFilter = false
-                    }
-                }
-            )
-        }
-        .zIndex(10)
-        .transition(.opacity)
-    }
-
-    /// ToDo List filter overlay
-    private var toDoListFilterOverlay: some View {
-        ZStack {
-            Color.appBackgroundLight.opacity(0.8)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showToDoListFilter = false
-                    }
-                }
-
-            iPadToDoListFilterOverlay(
-                types: toDoListsViewModel.availableFilterTypes,
-                selectedType: $selectedToDoListTypeFilter,
-                onDismiss: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showToDoListFilter = false
-                    }
-                }
-            )
-        }
-        .zIndex(10)
-        .transition(.opacity)
-    }
-
-    /// Calendar event type filter overlay
-    private var calendarFilterOverlay: some View {
-        CalendarFilterView(
-            selectedFilters: $selectedCalendarFilters,
-            isPresented: $showCalendarFilter
-        )
-        .zIndex(10)
-        .transition(.opacity)
-    }
-
-    /// Calendar member filter overlay
-    private var calendarMemberFilterOverlay: some View {
-        CalendarMemberFilterView(
-            selectedMemberFilters: $selectedCalendarMemberFilters,
-            isPresented: $showCalendarMemberFilter,
-            membersWithEvents: calendarMembersWithEvents
-        )
-        .zIndex(10)
-        .transition(.opacity)
-    }
 
     /// Calendar day detail overlay
     private var calendarDayDetailOverlay: some View {
@@ -669,7 +526,9 @@ struct iPadRootView: View {
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                     showCalendarDayDetail = false
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(200))
+                    guard !Task.isCancelled else { return }
                     handleCalendarEventNavigation(event)
                 }
             }
@@ -691,7 +550,7 @@ struct iPadRootView: View {
         case .appointment(let appointment, _):
             // Navigate using the direct type (Appointment) which is registered in contentArea
             navigationPath.append(appointment)
-        case .countdown(let countdown, _):
+        case .countdown(let countdown, _, _):
             // Countdowns need a navigation destination - append the countdown directly
             navigationPath.append(countdown)
         case .birthday(let upcomingBirthday):
@@ -700,6 +559,9 @@ struct iPadRootView: View {
         case .medication(let medication, _, _):
             // Navigate using the direct type (Medication) which is registered in contentArea
             navigationPath.append(medication)
+        case .todoList(let list):
+            // Navigate using the direct type (ToDoList) which is registered in contentArea
+            navigationPath.append(list)
         }
     }
 
@@ -756,7 +618,6 @@ struct iPadRootView: View {
             addActivityItemSection: $addActivityItemSection,
             showSettingsInviteMember: $showSettingsInviteMember,
             showSettingsManageMembers: $showSettingsManageMembers,
-            showSettingsJoinAccount: $showSettingsJoinAccount,
             showSettingsMoodHistory: $showSettingsMoodHistory,
             showSettingsAppearance: $showSettingsAppearance,
             showSettingsFeatureVisibility: $showSettingsFeatureVisibility,
@@ -768,15 +629,7 @@ struct iPadRootView: View {
             showEditCountdown: $showEditCountdown,
             countdownToEdit: $countdownToEdit,
             toDoListsViewModel: toDoListsViewModel,
-            appState: appState,
-            toDoDetailTypeSelectorAction: { viewModel, selectedTypeBinding, addAction in
-                toDoDetailTypeSelectorViewModel = viewModel
-                toDoDetailTypeSelectorBinding = selectedTypeBinding
-                toDoDetailTypeSelectorAddAction = addAction
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showToDoDetailTypeSelector = true
-                }
-            }
+            appState: appState
         )
     }
 
@@ -784,8 +637,6 @@ struct iPadRootView: View {
     private var mainLayoutWithOverlays: some View {
         mainLayoutZStack
             .overlay { sidePanelOverlay }
-            .overlay { toDoDetailTypeSelectorOverlay }
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showToDoDetailTypeSelector)
     }
 
     /// Body with change handlers
@@ -853,7 +704,9 @@ struct iPadRootView: View {
     private func checkPendingNotifications() {
         guard appState.isAuthenticated, appState.hasCompletedOnboarding else { return }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
             if appState.pendingAppointmentId != nil {
                 handlePendingAppointmentNavigation()
             } else if appState.pendingProfileId != nil {
@@ -921,25 +774,28 @@ struct iPadRootView: View {
         hasHandledOnboardingAction = true
         appState.pendingOnboardingAction = nil
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+
             switch action {
             case .addFriend:
                 selectedContent = .profiles
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showAddProfile = true
-                }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                showAddProfile = true
 
             case .createReminder:
                 selectedContent = .stickyReminders
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showAddStickyReminder = true
-                }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                showAddStickyReminder = true
 
             case .updateDetails:
                 selectedContent = .myCard
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    NotificationCenter.default.post(name: .editPrimaryProfileRequested, object: nil)
-                }
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                NotificationCenter.default.post(name: .editPrimaryProfileRequested, object: nil)
 
             case .exploreApp:
                 break
@@ -1031,6 +887,8 @@ struct iPadRootView: View {
                     UsefulContactsListView()
                 case .mood:
                     MoodDashboardView()
+                case .mealPlanner:
+                    MealPlannerView()
                 case .settings:
                     iPadSettingsContentView(onClose: { selectedContent = .none })
                 }
@@ -1046,6 +904,9 @@ struct iPadRootView: View {
             }
             .navigationDestination(for: Countdown.self) { countdown in
                 CountdownDetailView(countdown: countdown)
+            }
+            .navigationDestination(for: ToDoList.self) { list in
+                ToDoListDetailView(list: list)
             }
         }
         .id(selectedContent)

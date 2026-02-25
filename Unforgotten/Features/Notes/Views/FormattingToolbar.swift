@@ -90,7 +90,7 @@ struct FormattingToolbar: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: NoteSpacing.toolbarHeight)
+        .frame(height: 44)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
@@ -171,7 +171,7 @@ struct ToolbarButton: View {
                         .font(.system(size: 15, weight: .medium))
                 } else {
                     Image(systemName: icon)
-                        .font(.system(size: NoteSpacing.toolbarIconSize, weight: .medium))
+                        .font(.system(size: 20, weight: .medium))
                 }
             }
             .foregroundColor(isActive ? accentColor : .notePrimaryText)
@@ -308,10 +308,10 @@ enum TextStyle: String, CaseIterable, Identifiable {
 
     var previewFont: Font {
         switch self {
-        case .title: return NoteTypography.noteTitle
-        case .heading: return NoteTypography.heading
-        case .body: return NoteTypography.body
-        case .monospace: return NoteTypography.monospace
+        case .title: return .system(size: 28, weight: .bold)
+        case .heading: return .system(size: 22, weight: .bold)
+        case .body: return .system(size: 17, weight: .regular)
+        case .monospace: return .system(size: 15, weight: .regular, design: .monospaced)
         }
     }
 }
@@ -358,7 +358,7 @@ struct KeyboardToolbar: View {
 
                 FormattingToolbar(
                     content: $content,
-                    accentColor: NoteTheme.festive.accentColor
+                    accentColor: .blue
                 )
                 .padding(.bottom, 20)
             }

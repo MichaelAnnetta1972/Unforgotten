@@ -18,9 +18,7 @@ struct SettingsPanelView: View {
         case appearance
         case features
         case editAccountName
-        case inviteMember
         case manageMembers
-        case joinAccount
         case switchAccount
         case moodHistory
         case upgrade
@@ -33,9 +31,7 @@ struct SettingsPanelView: View {
             case .appearance: return "appearance"
             case .features: return "features"
             case .editAccountName: return "editAccountName"
-            case .inviteMember: return "inviteMember"
             case .manageMembers: return "manageMembers"
-            case .joinAccount: return "joinAccount"
             case .switchAccount: return "switchAccount"
             case .moodHistory: return "moodHistory"
             case .upgrade: return "upgrade"
@@ -50,9 +46,7 @@ struct SettingsPanelView: View {
             case .appearance: return "Colors & Headers"
             case .features: return "Show/Hide Features"
             case .editAccountName: return "Edit Account Name"
-            case .inviteMember: return "Invite Family Member"
             case .manageMembers: return "Manage Members"
-            case .joinAccount: return "Join Another Account"
             case .switchAccount: return "Switch Account"
             case .moodHistory: return "Mood History"
             case .upgrade: return "Upgrade to Premium"
@@ -67,21 +61,15 @@ struct SettingsPanelView: View {
     @State private var showSignOutConfirm = false
     @State private var showUpgradePrompt = false
     @State private var userEmail: String = ""
+    @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
+    @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
+
 
     /// Whether to show split view (side-by-side) on iPad
     private var showSplitLayout: Bool {
         horizontalSizeClass == .regular
     }
 
-    /// Check if user can invite members (premium feature)
-    private var canInviteMembers: Bool {
-        PremiumLimitsManager.shared.canInviteMembers(appState: appState)
-    }
-
-    /// Check if user can join other accounts (premium feature)
-    private var canJoinOtherAccounts: Bool {
-        PremiumLimitsManager.shared.canJoinOtherAccounts(appState: appState)
-    }
 
     var body: some View {
         Group {
@@ -221,6 +209,36 @@ struct SettingsPanelView: View {
                         }
                     }
 
+                    // Notifications section
+                    SettingsPanelSection(title: "NOTIFICATIONS") {
+                        SettingsPanelToggleRow(
+                            icon: "bell.fill",
+                            title: "Allow Notifications",
+                            isOn: $allowNotifications
+                        )
+                        .onChange(of: allowNotifications) { _, newValue in
+                            NotificationService.shared.allowNotifications = newValue
+                            if newValue {
+                                Task {
+                                    _ = await NotificationService.shared.requestPermission()
+                                    await NotificationService.shared.scheduleMorningBriefingTrigger()
+                                }
+                            }
+                        }
+
+                        if allowNotifications {
+                            SettingsPanelToggleRow(
+                                icon: "eye.slash.fill",
+                                title: "Hide Previews",
+                                isOn: $hideNotificationPreviews
+                            )
+                            .onChange(of: hideNotificationPreviews) { _, newValue in
+                                NotificationService.shared.hideNotificationPreviews = newValue
+                            }
+
+                        }
+                    }
+
                     // Account section
                     SettingsPanelSection(title: "ACCOUNT") {
                         if let account = appState.currentAccount {
@@ -259,40 +277,14 @@ struct SettingsPanelView: View {
                             }
                         }
 
-                        // Only show invite/manage if user can manage members
+                        // Only show manage members if user can manage members
                         if appState.currentUserRole?.canManageMembers == true {
-                            SettingsPanelButtonRow(
-                                icon: canInviteMembers ? "person.badge.plus" : "crown.fill",
-                                title: "Invite Family Member",
-                                value: canInviteMembers ? nil : "Premium",
-                                isSelected: selectedSubMenu == .inviteMember
-                            ) {
-                                if canInviteMembers {
-                                    selectSubMenu(.inviteMember)
-                                } else {
-                                    showUpgradePrompt = true
-                                }
-                            }
-
                             SettingsPanelButtonRow(
                                 icon: "person.2",
                                 title: "Manage Members",
                                 isSelected: selectedSubMenu == .manageMembers
                             ) {
                                 selectSubMenu(.manageMembers)
-                            }
-                        }
-
-                        SettingsPanelButtonRow(
-                            icon: canJoinOtherAccounts ? "envelope.badge" : "crown.fill",
-                            title: "Join Another Account",
-                            value: canJoinOtherAccounts ? nil : "Premium",
-                            isSelected: selectedSubMenu == .joinAccount
-                        ) {
-                            if canJoinOtherAccounts {
-                                selectSubMenu(.joinAccount)
-                            } else {
-                                showUpgradePrompt = true
                             }
                         }
 
@@ -449,12 +441,8 @@ struct SettingsPanelView: View {
                         selectedSubMenu = nil
                     }
                 })
-            case .inviteMember:
-                InviteMemberPanelContent()
             case .manageMembers:
                 ManageMembersPanelContent()
-            case .joinAccount:
-                JoinAccountPanelContent()
             case .switchAccount:
                 SwitchAccountPanelContent()
             case .moodHistory:
@@ -525,12 +513,8 @@ struct SettingsPanelView: View {
                         selectedSubMenu = nil
                     }
                 })
-            case .inviteMember:
-                InviteMemberPanelContent()
             case .manageMembers:
                 ManageMembersPanelContent()
-            case .joinAccount:
-                JoinAccountPanelContent()
             case .switchAccount:
                 SwitchAccountPanelContent()
             case .moodHistory:
@@ -648,6 +632,34 @@ struct SettingsPanelInfoRow: View {
     }
 }
 
+// MARK: - Settings Panel Toggle Row
+struct SettingsPanelToggleRow: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+    let icon: String
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundColor(appAccentColor)
+                .frame(width: 30)
+
+            Text(title)
+                .font(.appBody)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            Toggle("", isOn: $isOn)
+                .tint(appAccentColor)
+                .labelsHidden()
+        }
+        .padding()
+        .background(Color.cardBackground)
+    }
+}
+
 // MARK: - Settings Panel Account Row
 /// Account switching row for the iPad settings panel
 struct SettingsPanelAccountRow: View {
@@ -749,122 +761,6 @@ struct AppearanceSettingsPanelContent: View {
             }
         }
         .background(Color.appBackground)
-    }
-}
-
-// MARK: - Invite Member Panel Content
-struct InviteMemberPanelContent: View {
-    @EnvironmentObject var appState: AppState
-    @Environment(\.appAccentColor) private var appAccentColor
-
-    @State private var email: String
-    @State private var selectedRole: MemberRole = .helper
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var showSuccess = false
-    @State private var inviteCode: String = ""
-
-    private let availableRoles: [MemberRole] = [.admin, .helper, .viewer]
-
-    init(prefilledEmail: String? = nil) {
-        _email = State(initialValue: prefilledEmail ?? "")
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 12) {
-                    Image(systemName: "person.badge.plus")
-                        .font(.system(size: 40))
-                        .foregroundColor(appAccentColor)
-
-                    Text("Share access to this account with a family member or carer.")
-                        .font(.appBody)
-                        .foregroundColor(.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 16)
-
-                // Email input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Email Address")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-
-                    AppTextField(placeholder: "Enter email", text: $email, keyboardType: .emailAddress)
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
-
-                // Role picker
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Role")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-
-                    ForEach(availableRoles, id: \.self) { role in
-                        RoleOption(
-                            role: role,
-                            isSelected: selectedRole == role,
-                            action: { selectedRole = role }
-                        )
-                    }
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
-
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.appCaption)
-                        .foregroundColor(.medicalRed)
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                }
-
-                PrimaryButton(title: "Send Invitation", isLoading: isLoading) {
-                    Task { await sendInvite() }
-                }
-                .disabled(email.isBlank || !email.isValidEmail)
-                .padding(.horizontal, AppDimensions.screenPadding)
-
-                Spacer()
-                    .frame(height: 40)
-            }
-        }
-        .background(Color.appBackground)
-        .alert("Invitation Created", isPresented: $showSuccess) {
-            Button("Copy Code") {
-                UIPasteboard.general.string = inviteCode
-            }
-            Button("Done", role: .cancel) { }
-        } message: {
-            Text("Share this code with \(email):\n\n\(inviteCode)\n\nThe code expires in 7 days.")
-        }
-    }
-
-    private func sendInvite() async {
-        guard let account = appState.currentAccount,
-              let userId = await SupabaseManager.shared.currentUserId else {
-            errorMessage = "Unable to send invitation. Please try again."
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let invitation = try await appState.invitationRepository.createInvitation(
-                accountId: account.id,
-                email: email,
-                role: selectedRole,
-                invitedBy: userId
-            )
-
-            inviteCode = invitation.inviteCode
-            isLoading = false
-            showSuccess = true
-        } catch {
-            isLoading = false
-            errorMessage = "Failed to create invitation: \(error.localizedDescription)"
-        }
     }
 }
 
@@ -1107,181 +1003,6 @@ struct SwitchAccountRow: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
-    }
-}
-
-// MARK: - Join Account Panel Content
-struct JoinAccountPanelContent: View {
-    @EnvironmentObject var appState: AppState
-    @Environment(\.appAccentColor) private var appAccentColor
-
-    @State private var inviteCode = ""
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var showSuccess = false
-    @State private var joinedAccountName: String = ""
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 12) {
-                    Image(systemName: "envelope.badge")
-                        .font(.system(size: 40))
-                        .foregroundColor(appAccentColor)
-
-                    Text("Enter the invitation code you received to join a family account.")
-                        .font(.appBody)
-                        .foregroundColor(.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 16)
-
-                // Code input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Invitation Code")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-
-                    TextField("", text: $inviteCode)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                        .multilineTextAlignment(.center)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .padding()
-                        .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                                .stroke(appAccentColor.opacity(0.3), lineWidth: 1)
-                        )
-                        .onChange(of: inviteCode) { _, newValue in
-                            inviteCode = String(newValue.uppercased().prefix(6))
-                        }
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
-
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.appCaption)
-                        .foregroundColor(.medicalRed)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                }
-
-                PrimaryButton(title: "Join Account", isLoading: isLoading) {
-                    Task { await joinAccount() }
-                }
-                .disabled(inviteCode.count != 6)
-                .padding(.horizontal, AppDimensions.screenPadding)
-
-                Spacer()
-                    .frame(height: 40)
-            }
-        }
-        .background(Color.appBackground)
-        .alert("Account Joined!", isPresented: $showSuccess) {
-            Button("OK") { }
-        } message: {
-            Text("You have successfully joined \"\(joinedAccountName)\".")
-        }
-    }
-
-    private func joinAccount() async {
-        guard let userId = await SupabaseManager.shared.currentUserId else {
-            errorMessage = "You must be signed in to join an account."
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            guard let invitation = try await appState.invitationRepository.getInvitationByCode(inviteCode) else {
-                errorMessage = "Invalid invitation code. Please check and try again."
-                isLoading = false
-                return
-            }
-
-            guard invitation.isActive else {
-                if invitation.status == .expired || !invitation.isActive {
-                    errorMessage = "This invitation has expired."
-                } else if invitation.status == .revoked {
-                    errorMessage = "This invitation has been revoked."
-                } else if invitation.status == .accepted {
-                    errorMessage = "This invitation has already been used."
-                } else {
-                    errorMessage = "This invitation is no longer valid."
-                }
-                isLoading = false
-                return
-            }
-
-            // Get the acceptor's account ID and primary profile ID for profile sync
-            let acceptorAccountId = appState.currentAccount?.id
-            var acceptorProfileId: UUID? = nil
-            if let account = appState.currentAccount {
-                if let primaryProfile = try? await appState.profileRepository.getPrimaryProfile(accountId: account.id) {
-                    if primaryProfile.linkedUserId == userId {
-                        acceptorProfileId = primaryProfile.id
-                    }
-                }
-            }
-
-            #if DEBUG
-            print("🔗 Panel Join: Accepting invitation with sync...")
-            print("🔗 Panel Join: Invitation ID: \(invitation.id)")
-            print("🔗 Panel Join: User ID: \(userId)")
-            print("🔗 Panel Join: Acceptor Account ID: \(acceptorAccountId?.uuidString ?? "nil")")
-            print("🔗 Panel Join: Acceptor Profile ID: \(acceptorProfileId?.uuidString ?? "nil")")
-            #endif
-
-            // Accept invitation with profile sync
-            do {
-                let syncResult = try await appState.invitationRepository.acceptInvitationWithSync(
-                    invitation: invitation,
-                    userId: userId,
-                    acceptorProfileId: acceptorProfileId,
-                    acceptorAccountId: acceptorAccountId
-                )
-
-                #if DEBUG
-                print("🔗 Panel Join: Sync completed!")
-                print("🔗 Panel Join: syncId = \(syncResult.syncId?.uuidString ?? "nil")")
-                print("🔗 Panel Join: acceptorSyncedProfileId = \(syncResult.acceptorSyncedProfileId?.uuidString ?? "nil")")
-                #endif
-
-                // Post notification about the new sync
-                if let syncId = syncResult.syncId {
-                    NotificationCenter.default.post(
-                        name: .profileSyncDidChange,
-                        object: nil,
-                        userInfo: ["syncId": syncId, "action": "created"]
-                    )
-                }
-            } catch {
-                // Fall back to regular invitation acceptance if sync RPC isn't available
-                #if DEBUG
-                print("🔗 Panel Join: Sync RPC failed: \(error)")
-                print("🔗 Panel Join: Falling back to regular acceptance...")
-                #endif
-                try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
-            }
-
-            // Now fetch the account name (user has RLS permission after being added as member)
-            let account = try await appState.accountRepository.getAccount(id: invitation.accountId)
-            joinedAccountName = account.displayName
-
-            // Reload account data
-            await appState.loadAccountData()
-
-            isLoading = false
-            showSuccess = true
-        } catch {
-            isLoading = false
-            errorMessage = "Failed to join account: \(error.localizedDescription)"
-        }
     }
 }
 

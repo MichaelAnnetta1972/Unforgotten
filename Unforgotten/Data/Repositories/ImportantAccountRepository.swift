@@ -4,6 +4,7 @@ import Supabase
 // MARK: - Important Account Repository Protocol
 protocol ImportantAccountRepositoryProtocol {
     func getAccounts(profileId: UUID) async throws -> [ImportantAccount]
+    func getSharedAccounts(syncedProfileId: UUID) async throws -> [ImportantAccount]
     func getAccount(id: UUID) async throws -> ImportantAccount?
     func createAccount(_ account: ImportantAccountInsert) async throws -> ImportantAccount
     func updateAccount(_ account: ImportantAccount) async throws -> ImportantAccount
@@ -21,6 +22,18 @@ final class ImportantAccountRepository: ImportantAccountRepositoryProtocol {
             .select()
             .eq("profile_id", value: profileId)
             .order("account_name")
+            .execute()
+            .value
+
+        return accounts
+    }
+
+    // MARK: - Get Shared Accounts (for synced profiles)
+    /// Fetches important accounts from the source profile via RPC,
+    /// respecting sharing preferences for the current user.
+    func getSharedAccounts(syncedProfileId: UUID) async throws -> [ImportantAccount] {
+        let accounts: [ImportantAccount] = try await supabase
+            .rpc("get_shared_important_accounts", params: ["p_synced_profile_id": syncedProfileId.uuidString])
             .execute()
             .value
 
@@ -64,7 +77,8 @@ final class ImportantAccountRepository: ImportantAccountRepositoryProtocol {
             securityQuestionHint: account.securityQuestionHint,
             recoveryHint: account.recoveryHint,
             notes: account.notes,
-            category: account.category
+            category: account.category,
+            imageUrl: account.imageUrl
         )
 
         let updated: ImportantAccount = try await supabase
@@ -91,6 +105,7 @@ final class ImportantAccountRepository: ImportantAccountRepositoryProtocol {
 
 // MARK: - Insert Type
 struct ImportantAccountInsert: Encodable {
+    let id: UUID?
     let profileId: UUID
     let accountName: String
     let websiteURL: String?
@@ -101,8 +116,10 @@ struct ImportantAccountInsert: Encodable {
     let recoveryHint: String?
     let notes: String?
     let category: AccountCategory?
+    let imageUrl: String?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case profileId = "profile_id"
         case accountName = "account_name"
         case websiteURL = "website_url"
@@ -113,9 +130,11 @@ struct ImportantAccountInsert: Encodable {
         case recoveryHint = "recovery_hint"
         case notes
         case category
+        case imageUrl = "image_url"
     }
 
     init(
+        id: UUID? = nil,
         profileId: UUID,
         accountName: String,
         websiteURL: String? = nil,
@@ -125,8 +144,10 @@ struct ImportantAccountInsert: Encodable {
         securityQuestionHint: String? = nil,
         recoveryHint: String? = nil,
         notes: String? = nil,
-        category: AccountCategory? = nil
+        category: AccountCategory? = nil,
+        imageUrl: String? = nil
     ) {
+        self.id = id
         self.profileId = profileId
         self.accountName = accountName
         self.websiteURL = websiteURL
@@ -137,6 +158,7 @@ struct ImportantAccountInsert: Encodable {
         self.recoveryHint = recoveryHint
         self.notes = notes
         self.category = category
+        self.imageUrl = imageUrl
     }
 }
 
@@ -151,6 +173,7 @@ private struct ImportantAccountUpdate: Encodable {
     let recoveryHint: String?
     let notes: String?
     let category: AccountCategory?
+    let imageUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case accountName = "account_name"
@@ -162,5 +185,6 @@ private struct ImportantAccountUpdate: Encodable {
         case recoveryHint = "recovery_hint"
         case notes
         case category
+        case imageUrl = "image_url"
     }
 }

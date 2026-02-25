@@ -36,6 +36,9 @@ struct CalendarListView: View {
                 .id(eventId(for: event))
             }
         }
+        .onAppear {
+            scrollToToday()
+        }
         .onChange(of: scrollToTodayTrigger) { _, _ in
             scrollToToday()
         }

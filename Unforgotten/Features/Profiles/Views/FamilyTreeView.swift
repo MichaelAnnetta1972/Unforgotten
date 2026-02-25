@@ -133,6 +133,10 @@ struct FamilyTreeView: View {
                         containerSize = newSize
                     }
                 }
+                .background(Color.appBackgroundSoft)
+                .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                .padding(AppDimensions.screenPadding)
+                .padding(.bottom, 40)
             }
 
             // Selected profile detail card with high z-index
@@ -291,7 +295,8 @@ struct FamilyTreeView: View {
                         }
                     }
                 )
-                .padding()
+                .padding(.horizontal)
+                .padding(.bottom, 60)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -643,7 +648,15 @@ struct FamilyTreeView: View {
         guard let primary = primaryProfile else { return nil }
 
         // Use the existing infer logic relative to primary
-        return inferConnection(for: profile, primaryId: primary.id, allProfiles: allProfiles)
+        let result = inferConnection(for: profile, primaryId: primary.id, allProfiles: allProfiles)
+
+        // If no connection was inferred (e.g. synced/connected profiles with no relationship set),
+        // default to connecting to the primary profile so they still appear in the tree
+        if result == nil {
+            return primary.id
+        }
+
+        return result
     }
 
     // MARK: - Build Family Tree (Legacy)

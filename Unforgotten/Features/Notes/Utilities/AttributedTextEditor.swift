@@ -6,7 +6,7 @@ import UIKit
 struct AttributedTextEditor: UIViewRepresentable {
     @Binding var text: String
     @Binding var attributedText: NSAttributedString
-    let theme: NoteTheme
+    let accentColor: Color
     var placeholder: String = "Start writing..."
     var onTextChange: ((String) -> Void)?
 
@@ -18,15 +18,15 @@ struct AttributedTextEditor: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.font = UIFont.systemFont(ofSize: 17)
         textView.textColor = UIColor.label
-        textView.tintColor = UIColor(theme.accentColor)
+        textView.tintColor = UIColor(accentColor)
         textView.isScrollEnabled = true
         textView.isEditable = true
         textView.isSelectable = true
         textView.textContainerInset = UIEdgeInsets(
-            top: NoteSpacing.editorTopPadding,
-            left: NoteSpacing.editorHorizontalPadding - 5,
+            top: 16,
+            left: 15,
             bottom: 100,
-            right: NoteSpacing.editorHorizontalPadding - 5
+            right: 15
         )
 
         // Accessibility
@@ -46,7 +46,7 @@ struct AttributedTextEditor: UIViewRepresentable {
         }
 
         // Update tint color
-        textView.tintColor = UIColor(theme.accentColor)
+        textView.tintColor = UIColor(accentColor)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -111,7 +111,7 @@ struct AttributedTextEditor: UIViewRepresentable {
 /// Simplified text editor for basic plain text
 struct SimpleNoteEditor: View {
     @Binding var text: String
-    let theme: NoteTheme
+    let accentColor: Color
     var placeholder: String = "Start writing..."
     @FocusState.Binding var isFocused: Bool
 
@@ -120,23 +120,23 @@ struct SimpleNoteEditor: View {
             // Placeholder
             if text.isEmpty {
                 Text(placeholder)
-                    .font(NoteTypography.body)
+                    .font(.system(size: 17))
                     .foregroundColor(.noteTertiaryText)
-                    .padding(.horizontal, NoteSpacing.editorHorizontalPadding)
-                    .padding(.top, NoteSpacing.editorTopPadding)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
                     .allowsHitTesting(false)
             }
 
             // Text editor
             TextEditor(text: $text)
-                .font(NoteTypography.body)
+                .font(.system(size: 17))
                 .foregroundColor(.notePrimaryText)
                 .scrollContentBackground(.hidden)
                 .background(.clear)
-                .padding(.horizontal, NoteSpacing.editorHorizontalPadding - 5)
-                .padding(.top, NoteSpacing.editorTopPadding - 8)
+                .padding(.horizontal, 15)
+                .padding(.top, 8)
                 .focused($isFocused)
-                .tint(theme.accentColor)
+                .tint(accentColor)
         }
     }
 }
@@ -203,7 +203,7 @@ struct CheckboxListHelper {
             VStack {
                 SimpleNoteEditor(
                     text: $text,
-                    theme: .festive,
+                    accentColor: .blue,
                     isFocused: $isFocused
                 )
                 .frame(height: 300)

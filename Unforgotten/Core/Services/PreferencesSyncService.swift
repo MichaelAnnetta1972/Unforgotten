@@ -83,6 +83,9 @@ final class PreferencesSyncService: ObservableObject {
                 featureManager.setVisibility(feature, isVisible: isVisible)
             }
         }
+
+        // Apply feature order
+        featureManager.applyRemoteOrder(remote.featureOrder)
     }
 
     // MARK: - Save Preferences to Remote
@@ -116,7 +119,8 @@ final class PreferencesSyncService: ObservableObject {
                 headerStyleId: headerManager.currentStyle.id,
                 accentColorIndex: userPrefs.selectedAccentColorIndex,
                 hasCustomAccentColor: userPrefs.hasCustomAccentColor,
-                featureVisibility: featureVisibility
+                featureVisibility: featureVisibility,
+                featureOrder: featureManager.featureOrder
             )
             #if DEBUG
             print("✅ Saved preferences to Supabase")

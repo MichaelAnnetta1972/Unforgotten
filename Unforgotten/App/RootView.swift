@@ -9,12 +9,11 @@ struct RootView: View {
         Group {
             if appState.isLoading || !minimumSplashTimeElapsed {
                 LoadingScreen()
-                    .onAppear {
-                        // Ensure splash screen shows for at least 3 seconds
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                minimumSplashTimeElapsed = true
-                            }
+                    .task {
+                        try? await Task.sleep(for: .seconds(3))
+                        guard !Task.isCancelled else { return }
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            minimumSplashTimeElapsed = true
                         }
                     }
             } else if !appState.isAuthenticated {
@@ -25,6 +24,9 @@ struct RootView: View {
                 MainAppView()
                     .sheet(isPresented: $appState.showMoodPrompt) {
                         MoodPromptView()
+                    }
+                    .sheet(isPresented: $appState.showInviteAcceptModal) {
+                        InviteAcceptModal()
                     }
             }
         }
@@ -117,6 +119,7 @@ enum iPadSidebarItem: String, CaseIterable, Identifiable {
     case contacts
     case mood
     case stickyReminders
+    case mealPlanner
 
     var id: String { rawValue }
 
@@ -132,6 +135,7 @@ enum iPadSidebarItem: String, CaseIterable, Identifiable {
         case .contacts: return "Useful Contacts"
         case .mood: return "Mood Tracker"
         case .stickyReminders: return "Sticky Reminders"
+        case .mealPlanner: return "Meal Planner"
         }
     }
 
@@ -147,6 +151,7 @@ enum iPadSidebarItem: String, CaseIterable, Identifiable {
         case .contacts: return "phone.fill"
         case .mood: return "face.smiling.fill"
         case .stickyReminders: return "pin.fill"
+        case .mealPlanner: return "fork.knife"
         }
     }
 }
@@ -271,6 +276,8 @@ struct iPadMainView: View {
                         MoodDashboardView()
                     case .stickyReminders:
                         StickyReminderListView()
+                    case .mealPlanner:
+                        MealPlannerView()
                     case .none:
                         ContentUnavailableView(
                             "Select an Item",
@@ -362,6 +369,8 @@ struct iPadMainView: View {
             StickyReminderListView()
         case .stickyReminderDetail(let reminder):
             StickyReminderDetailView(reminder: reminder)
+        case .mealPlanner:
+            MealPlannerView()
         }
     }
 }
@@ -568,6 +577,7 @@ extension iPadSidebarItem {
         case .contacts: return .contacts
         case .mood: return .mood
         case .stickyReminders: return .stickyReminders
+        case .mealPlanner: return .mealPlanner
         }
     }
 }
@@ -778,6 +788,9 @@ struct IPhoneMainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .stickyRemindersDidChange)) { _ in
             Task { await loadFeatureCounts() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .moodEntriesDidChange)) { _ in
+            Task { await appState.checkMoodPrompt() }
+        }
         .onChange(of: navigateToToDoLists) { _, shouldNavigate in
             if shouldNavigate {
                 // Set flag to show add sheet
@@ -788,7 +801,9 @@ struct IPhoneMainView: View {
                 // Reset the navigation flag
                 navigateToToDoLists = false
                 // Reset the add sheet flag after navigation
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled else { return }
                     shouldShowToDoAddSheet = false
                 }
             }
@@ -816,6 +831,14 @@ struct IPhoneMainView: View {
                   appState.hasCompletedOnboarding else { return }
             handlePendingStickyReminderNavigation()
         }
+        .onChange(of: appState.pendingNavigateToHome) { _, shouldNavigate in
+            guard shouldNavigate,
+                  appState.isAuthenticated,
+                  appState.hasCompletedOnboarding else { return }
+            appState.pendingNavigateToHome = false
+            selectedTab = .home
+            homePath = NavigationPath()
+        }
     }
 
     // MARK: - Check Pending Notifications on Appear
@@ -823,7 +846,9 @@ struct IPhoneMainView: View {
         guard appState.isAuthenticated, appState.hasCompletedOnboarding else { return }
 
         // Small delay to ensure view is fully ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
             if appState.pendingAppointmentId != nil {
                 handlePendingAppointmentNavigation()
             } else if appState.pendingProfileId != nil {
@@ -893,15 +918,18 @@ struct IPhoneMainView: View {
         appState.pendingOnboardingAction = nil
 
         // Delay slightly to ensure view is fully loaded
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+
             switch action {
             case .addFriend:
                 // Navigate to Profiles and show Add Profile sheet
                 selectedTab = .home
                 homePath.append(HomeDestination.profiles)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showAddProfile = true
-                }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                showAddProfile = true
 
             case .createReminder:
                 // Show Add Sticky Reminder sheet
@@ -911,9 +939,9 @@ struct IPhoneMainView: View {
                 // Navigate to My Card and trigger edit sheet
                 selectedTab = .home
                 homePath.append(HomeDestination.myCard)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    NotificationCenter.default.post(name: .editPrimaryProfileRequested, object: nil)
-                }
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                NotificationCenter.default.post(name: .editPrimaryProfileRequested, object: nil)
 
             case .exploreApp:
                 // Just stay on home - no action needed
@@ -1197,6 +1225,9 @@ struct TabContentView: View {
                 .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
         case .stickyReminderDetail(let reminder):
             StickyReminderDetailView(reminder: reminder)
+        case .mealPlanner:
+            MealPlannerView()
+                .navigationTransition(.zoom(sourceID: destination, in: navNamespace))
         }
     }
 }

@@ -26,7 +26,6 @@ struct iPadNotesView: View {
 
     @State private var selectedNote: LocalNote?
     @State private var searchText = ""
-    @State private var filterTheme: NoteTheme?
 
     private var displayedNotes: [LocalNote] {
         var notes = allNotes
@@ -34,11 +33,6 @@ struct iPadNotesView: View {
         // Filter by account
         if let accountId = appState.currentAccount?.id {
             notes = notes.filter { $0.accountId == accountId }
-        }
-
-        // Filter by theme
-        if let theme = filterTheme {
-            notes = notes.filter { $0.theme == theme.rawValue }
         }
 
         // Filter by search
@@ -62,7 +56,7 @@ struct iPadNotesView: View {
         HStack(spacing: 0) {
             // Left pane - Notes list
             VStack(spacing: 0) {
-                // Search and filter bar
+                // Search and action bar
                 HStack(spacing: 12) {
                     HStack {
                         Image(systemName: "magnifyingglass")
@@ -83,31 +77,6 @@ struct iPadNotesView: View {
                     .padding(12)
                     .background(Color.cardBackground)
                     .cornerRadius(10)
-
-                    Menu {
-                        Button {
-                            filterTheme = nil
-                        } label: {
-                            Label("All Themes", systemImage: filterTheme == nil ? "checkmark" : "")
-                        }
-
-                        Divider()
-
-                        ForEach(NoteTheme.allCases, id: \.self) { theme in
-                            Button {
-                                filterTheme = theme
-                            } label: {
-                                Label(theme.displayName, systemImage: filterTheme == theme ? "checkmark" : "")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: filterTheme != nil ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            .font(.system(size: 20))
-                            .foregroundColor(filterTheme != nil ? appAccentColor : .textSecondary)
-                            .frame(width: 44, height: 44)
-                            .background(Color.cardBackground)
-                            .cornerRadius(10)
-                    }
 
                     Button {
                         createNewNote()
@@ -200,13 +169,10 @@ struct iPadNotesView: View {
     private func createNewNote() {
         let note = LocalNote(
             title: "",
-            theme: .standard,
             accountId: appState.currentAccount?.id
         )
         modelContext.insert(note)
         selectedNote = note
-        // Don't sync immediately - the NoteEditorView will sync when the user
-        // makes changes and navigates away or explicitly saves
     }
 
     private func deleteNote(_ note: LocalNote) {
@@ -269,11 +235,6 @@ struct iPadNoteRowView: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 12) {
-                // Theme color indicator
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(note.noteTheme.accentColor)
-                    .frame(width: 4)
-
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         if note.isPinned {
@@ -294,10 +255,6 @@ struct iPadNoteRowView: View {
                         .lineLimit(2)
 
                     HStack {
-                        Text(note.noteTheme.displayName)
-                            .font(.appCaptionSmall)
-                            .foregroundColor(note.noteTheme.accentColor)
-
                         Spacer()
 
                         Text(note.updatedAt.formatted(date: .abbreviated, time: .shortened))
@@ -415,7 +372,7 @@ struct AddNoteSheet: View {
                 ProgressView()
                     .onAppear {
                         // Create a new note (not inserted into context yet)
-                        note = LocalNote(title: "", theme: .standard, accountId: accountId)
+                        note = LocalNote(title: "", accountId: accountId)
                     }
             }
         }

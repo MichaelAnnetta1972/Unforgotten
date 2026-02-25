@@ -63,9 +63,8 @@ struct iPadProfileListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showAddProfile) {
             AddProfileView { _ in
-                Task {
-                    await viewModel.loadProfiles(appState: appState)
-                }
+                // Profile was saved - post notification to trigger a single authoritative reload
+                NotificationCenter.default.post(name: .profilesDidChange, object: nil)
             }
         }
         .sheet(isPresented: $showUpgradePrompt) {

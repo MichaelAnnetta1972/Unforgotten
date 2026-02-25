@@ -4,12 +4,17 @@ import SwiftUI
 struct MoodPromptView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) var dismiss
-    
+
+    /// Pass an existing entry to enable edit mode
+    var existingEntry: MoodEntry? = nil
+
     @State private var selectedRating: Int? = nil
     @State private var note = ""
     @State private var showNoteField = false
     @State private var isSubmitting = false
-    
+
+    private var isEditing: Bool { existingEntry != nil }
+
     private let moods: [(emoji: String, label: String, rating: Int)] = [
         ("😢", "Sad", 1),
         ("😕", "Not Great", 2),
@@ -17,23 +22,23 @@ struct MoodPromptView: View {
         ("🙂", "Good", 4),
         ("😊", "Great", 5)
     ]
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.appBackground.ignoresSafeArea()
-                
+
                 VStack(spacing: 32) {
                     Spacer()
-                    
+
                     // Question
                     VStack(spacing: 12) {
-                        Text("How are you feeling today?")
+                        Text(isEditing ? "Update your mood" : "How are you feeling today?")
                             .font(.appTitle)
                             .foregroundColor(.textPrimary)
                             .multilineTextAlignment(.center)
-                        
-                        Text("Track your mood to see patterns over time")
+
+                        Text(isEditing ? "Change your mood or note below" : "Track your mood to see patterns over time")
                             .font(.appBody)
                             .foregroundColor(.textSecondary)
                             .multilineTextAlignment(.center)
@@ -84,24 +89,24 @@ struct MoodPromptView: View {
                                     showNoteField = true
                                 }
                             } label: {
-                                Text("Add a note")
+                                Text(isEditing ? "Edit note" : "Add a note")
                                     .font(.appBody)
                                     .foregroundColor(.accentYellow)
                             }
                         }
-                        
+
                         PrimaryButton(
-                            title: "Save",
+                            title: isEditing ? "Update" : "Save",
                             isLoading: isSubmitting
                         ) {
                             Task { await saveMood() }
                         }
                         .disabled(selectedRating == nil)
-                        
+
                         Button {
                             dismiss()
                         } label: {
-                            Text("Skip for now")
+                            Text(isEditing ? "Cancel" : "Skip for now")
                                 .font(.appBody)
                                 .foregroundColor(.textSecondary)
                         }
@@ -118,6 +123,15 @@ struct MoodPromptView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.textSecondary)
+                    }
+                }
+            }
+            .onAppear {
+                if let entry = existingEntry {
+                    selectedRating = entry.rating
+                    if let existingNote = entry.note, !existingNote.isEmpty {
+                        note = existingNote
+                        showNoteField = true
                     }
                 }
             }

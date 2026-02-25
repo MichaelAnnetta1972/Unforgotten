@@ -7,9 +7,11 @@ final class LocalImageService {
 
     private let fileManager = FileManager.default
     private let medicationPhotosFolder = "MedicationPhotos"
+    private let appointmentPhotosFolder = "AppointmentPhotos"
 
     private init() {
         createMedicationPhotosFolderIfNeeded()
+        createAppointmentPhotosFolderIfNeeded()
     }
 
     private var medicationPhotosURL: URL? {
@@ -17,8 +19,20 @@ final class LocalImageService {
             .appendingPathComponent(medicationPhotosFolder)
     }
 
+    private var appointmentPhotosURL: URL? {
+        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent(appointmentPhotosFolder)
+    }
+
     private func createMedicationPhotosFolderIfNeeded() {
         guard let url = medicationPhotosURL else { return }
+        if !fileManager.fileExists(atPath: url.path) {
+            try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+    }
+
+    private func createAppointmentPhotosFolderIfNeeded() {
+        guard let url = appointmentPhotosURL else { return }
         if !fileManager.fileExists(atPath: url.path) {
             try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         }
@@ -60,6 +74,46 @@ final class LocalImageService {
     /// Delete medication photo from local storage
     func deleteMedicationPhoto(fileName: String) {
         guard let url = medicationPhotosURL else { return }
+
+        let fileURL = url.appendingPathComponent(fileName)
+        try? fileManager.removeItem(at: fileURL)
+    }
+
+    /// Save appointment photo locally and return the path
+    func saveAppointmentPhoto(_ image: UIImage, appointmentId: UUID) -> String? {
+        guard let url = appointmentPhotosURL else { return nil }
+
+        let fileName = "\(appointmentId.uuidString).jpg"
+        let fileURL = url.appendingPathComponent(fileName)
+
+        let resizedImage = resizeImage(image, maxDimension: 800)
+
+        guard let data = resizedImage.jpegData(compressionQuality: 0.8) else { return nil }
+
+        do {
+            try data.write(to: fileURL)
+            return fileName
+        } catch {
+            #if DEBUG
+            print("Failed to save appointment photo: \(error)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Load appointment photo from local storage
+    func loadAppointmentPhoto(fileName: String) -> UIImage? {
+        guard let url = appointmentPhotosURL else { return nil }
+
+        let fileURL = url.appendingPathComponent(fileName)
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+
+        return UIImage(data: data)
+    }
+
+    /// Delete appointment photo from local storage
+    func deleteAppointmentPhoto(fileName: String) {
+        guard let url = appointmentPhotosURL else { return }
 
         let fileURL = url.appendingPathComponent(fileName)
         try? fileManager.removeItem(at: fileURL)
@@ -224,16 +278,95 @@ struct FullscreenImageView: View {
     }
 }
 
+// MARK: - Remote Fullscreen Image View
+struct RemoteFullscreenImageView: View {
+    @Environment(\.dismiss) var dismiss
+
+    let imageUrl: String
+    let title: String
+
+    @State private var loadedImage: UIImage?
+    @State private var isLoading = true
+
+    var body: some View {
+        Group {
+            if let image = loadedImage {
+                FullscreenImageView(image: image, title: title)
+            } else {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Text("Failed to load image")
+                            .foregroundColor(.white)
+                    }
+
+                    VStack {
+                        HStack {
+                            Button {
+                                dismiss()
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .padding(12)
+                                    .background(Color.black.opacity(0.5))
+                                    .clipShape(Circle())
+                            }
+                            Spacer()
+                        }
+                        .padding()
+                        .padding(.top, 44)
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .task {
+            await downloadImage()
+        }
+    }
+
+    private func downloadImage() async {
+        guard let url = URL(string: imageUrl) else {
+            isLoading = false
+            return
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                loadedImage = image
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to download image: \(error)")
+            #endif
+        }
+        isLoading = false
+    }
+}
+
 // MARK: - Image Source Picker
 struct ImageSourcePicker: View {
     @Binding var selectedImage: UIImage?
-    let currentImagePath: String?
+    var currentImagePath: String? = nil
+    var currentImageUrl: String? = nil
     let onImageSelected: (UIImage) -> Void
+    var onRemove: (() -> Void)? = nil
+    var imageLoader: ((String) -> UIImage?)? = nil
 
     @State private var showActionSheet = false
     @State private var showCamera = false
     @State private var showPhotoLibrary = false
     @State private var pickedImage: UIImage?
+
+    private var hasExistingPhoto: Bool {
+        selectedImage != nil || currentImageUrl != nil || currentImagePath != nil
+    }
 
     var body: some View {
         Button {
@@ -246,29 +379,38 @@ struct ImageSourcePicker: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 100, height: 100)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else if let urlString = currentImageUrl, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 100, height: 100)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        case .failure:
+                            photoPlaceholder
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 100, height: 100)
+                        @unknown default:
+                            photoPlaceholder
+                        }
+                    }
                 } else if let path = currentImagePath,
-                          let localImage = LocalImageService.shared.loadMedicationPhoto(fileName: path) {
+                          let loader = imageLoader,
+                          let localImage = loader(path) {
                     Image(uiImage: localImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 100, height: 100)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else {
-                    VStack(spacing: 8) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.textSecondary)
-                        Text("Add Photo")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-                    }
-                    .frame(width: 100, height: 100)
-                    .background(Color.cardBackgroundSoft)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    photoPlaceholder
                 }
 
                 // Edit badge
-                if selectedImage != nil || currentImagePath != nil {
+                if hasExistingPhoto {
                     Image(systemName: "pencil.circle.fill")
                         .font(.system(size: 24))
                         .foregroundColor(.accentYellow)
@@ -285,9 +427,10 @@ struct ImageSourcePicker: View {
             Button("Choose from Library") {
                 showPhotoLibrary = true
             }
-            if selectedImage != nil || currentImagePath != nil {
+            if hasExistingPhoto {
                 Button("Remove Photo", role: .destructive) {
                     selectedImage = nil
+                    onRemove?()
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -305,5 +448,19 @@ struct ImageSourcePicker: View {
                 pickedImage = nil
             }
         }
+    }
+
+    private var photoPlaceholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 24))
+                .foregroundColor(.textSecondary)
+            Text("Add Photo")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+        }
+        .frame(width: 100, height: 100)
+        .background(Color.cardBackgroundSoft)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

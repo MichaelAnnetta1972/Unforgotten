@@ -44,8 +44,9 @@ extension Color {
 extension Color {
     // Background colors
     static let appBackground = Color(hex: "000000")
-    static let cardBackground = Color(hex: "1E1A1A")
+    static let cardBackground = Color(hex: "222222")
     static let appBackgroundLight = Color(hex: "131313")
+    static let appBackgroundSoft = Color(hex: "0D0D0D")
     static let cardBackgroundLight = Color(hex: "383838")
     static let cardBackgroundSoft = Color(hex: "2A2424")
     static let cardBackgroundDark = Color(hex: "1A1A1A")

@@ -327,13 +327,24 @@ struct iPadMedicationRowView: View {
 
     @ViewBuilder
     private var medicationImage: some View {
-        if let localPath = medication.localImagePath,
-           let image = LocalImageService.shared.loadMedicationPhoto(fileName: localPath) {
-            Image(uiImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 50, height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+        if let urlString = medication.imageUrl, let url = URL(string: urlString) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 50, height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                default:
+                    Image(systemName: "pills.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.medicalRed)
+                        .frame(width: 50, height: 50)
+                        .background(Color.cardBackgroundSoft)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
         } else {
             Image(systemName: "pills.fill")
                 .font(.system(size: 24))
