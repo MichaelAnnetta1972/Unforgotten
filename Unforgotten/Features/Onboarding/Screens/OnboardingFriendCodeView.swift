@@ -43,7 +43,7 @@ struct OnboardingFriendCodeView: View {
                         VStack(spacing: isRegularWidth ? 32 : 24) {
                             // Header
                             VStack(spacing: 12) {
-                                Text("Were you invited by a \nfamily or friend?")
+                                Text("Were you invited by a \nfamily member or friend?")
                                     .font(.appLargeTitle)
                                     .foregroundColor(.textPrimary)
                                     .multilineTextAlignment(.center)
@@ -319,13 +319,10 @@ struct OnboardingFriendCodeView: View {
                 if let invitation = try await appState.invitationRepository.getInvitationByCode(trimmedCode) {
                     // Check if invitation is still active
                     if invitation.isActive {
-                        // Get the account name for display
+                        // Use RPC to get account name (bypasses RLS for non-members)
                         var accountName = "their account"
-                        do {
-                            let account = try await appState.accountRepository.getAccount(id: invitation.accountId)
-                            accountName = account.displayName
-                        } catch {
-                            // Use default name if account lookup fails
+                        if let rpcName = try? await appState.invitationRepository.getAccountNameForInvitation(code: trimmedCode) {
+                            accountName = rpcName
                         }
 
                         await MainActor.run {
@@ -369,9 +366,9 @@ struct InviteCodeInfoSheet: View {
         VStack(spacing: 24) {
             // Header
             VStack(spacing: 16) {
-                Image(systemName: "ticket.fill")
-                    .font(.system(size: 50))
-                    .foregroundColor(accentColor)
+                // Image(systemName: "ticket.fill")
+                //     .font(.system(size: 50))
+                //     .foregroundColor(accentColor)
 
                 Text("What's an invite code?")
                     .font(.appTitle)
@@ -407,19 +404,19 @@ struct InviteCodeInfoSheet: View {
             Spacer()
 
             // Got it button
-            Button {
-                dismiss()
-            } label: {
-                Text("Got it")
-                    .font(.appBodyMedium)
-                    .foregroundColor(.textPrimary)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.bottom, 24)
+            // Button {
+            //     dismiss()
+            // } label: {
+            //     Text("Got it")
+            //         .font(.appBodyMedium)
+            //         .foregroundColor(.textPrimary)
+            //         .frame(maxWidth: .infinity)
+            //         .padding()
+            //         .background(Color.cardBackgroundSoft)
+            //         .cornerRadius(AppDimensions.buttonCornerRadius)
+            // }
+            // .padding(.horizontal, AppDimensions.screenPadding)
+            // .padding(.bottom, 24)
         }
         .background(Color.appBackground)
     }

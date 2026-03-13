@@ -222,9 +222,9 @@ struct iPadStickyRemindersListView: View {
     // MARK: - Empty State
     private var emptyStateView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "bell.badge")
-                .font(.system(size: 60))
-                .foregroundColor(.textSecondary)
+            // Image(systemName: "bell.badge")
+            //     .font(.system(size: 60))
+            //     .foregroundColor(.textSecondary)
 
             Text("No Sticky Reminders")
                 .font(.appTitle)
@@ -523,7 +523,7 @@ struct iPadStickyReminderDetailView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.textPrimary)
                     .frame(width: 36, height: 36)
-                    .background(Color.cardBackgroundSoft)
+                    .background(Color.cardBackground)
                     .clipShape(Circle())
             }
 
@@ -591,7 +591,7 @@ struct iPadStickyReminderDetailView: View {
                             .foregroundColor(.textPrimary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(Color.cardBackgroundSoft)
+                            .background(Color.cardBackground)
                             .cornerRadius(8)
                     }
                 }

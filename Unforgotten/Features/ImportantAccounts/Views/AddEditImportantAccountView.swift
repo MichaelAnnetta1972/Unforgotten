@@ -86,7 +86,7 @@ struct AddEditImportantAccountView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(!isValid || isSaving ? Color.gray.opacity(0.3) : appAccentColor)
+                                .fill(!isValid || isSaving ? Color.white.opacity(0.5) : appAccentColor)
                         )
                 }
                 .disabled(!isValid || isSaving)
@@ -211,6 +211,7 @@ struct AddEditImportantAccountView: View {
                             )
                             .padding(.horizontal, AppDimensions.screenPadding)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         Spacer()
                             .frame(height: 50)
@@ -325,6 +326,8 @@ struct AddEditImportantAccountView: View {
 // MARK: - Supporting Components
 
 struct AccountFormSectionHeader: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let title: String
     var required: Bool = false
 
@@ -332,7 +335,7 @@ struct AccountFormSectionHeader: View {
         HStack(spacing: 4) {
             Text(title)
                 .font(.appCaption)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(appAccentColor)
 
             if required {
                 Text("*")
@@ -366,7 +369,11 @@ struct AccountFormTextField: View {
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
+        .cornerRadius(AppDimensions.buttonCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+        )
         .padding(.horizontal, AppDimensions.screenPadding)
     }
 }
@@ -393,7 +400,11 @@ struct AccountFormTextEditor: View {
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
+        .cornerRadius(AppDimensions.buttonCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+        )
         .padding(.horizontal, AppDimensions.screenPadding)
     }
 }

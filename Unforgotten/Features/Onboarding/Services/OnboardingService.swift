@@ -122,19 +122,27 @@ final class OnboardingService {
             photoURL = try await uploadProfilePhoto(photo)
         }
 
-        // 2. Apply theme settings
-        await MainActor.run {
-            headerStyleManager.selectStyle(data.selectedHeaderStyle)
-            userPreferences.resetToStyleDefault()
-        }
-
-        // 3. ALWAYS create the user's own account and profile first
+        // 2. ALWAYS create the user's own account and profile first
         // This ensures they have their own account for profile sync to work
         try await appState.completeOnboarding(
             accountName: data.accountName,
             primaryProfileName: data.fullName,
             birthday: nil
         )
+
+        // 3. Apply theme settings AFTER account is created so sync IDs are available
+        let account = await MainActor.run { appState.currentAccount }
+        let userId = await supabase.currentUserId
+        await MainActor.run {
+            if let userId = userId, let accountId = account?.id {
+                headerStyleManager.currentUserId = userId
+                headerStyleManager.currentAccountId = accountId
+                userPreferences.currentUserId = userId
+                userPreferences.currentAccountId = accountId
+            }
+            headerStyleManager.selectStyle(data.selectedHeaderStyle)
+            userPreferences.resetToStyleDefault()
+        }
 
         // Update profile with photo URL if we uploaded one
         if let url = photoURL {
@@ -181,13 +189,12 @@ final class OnboardingService {
                 if let profileId = acceptorProfileId, let acceptorProfile = try? await appState.profileRepository.getProfile(id: profileId) {
                     let matches = try await appState.profileRepository.findMatchingProfiles(
                         accountId: invitation.accountId,
-                        name: acceptorProfile.fullName,
                         email: acceptorProfile.email
                     )
                     if let match = matches.first {
                         existingProfileId = match.id
                         #if DEBUG
-                        print("🔗 Profile Sync: Found existing matching profile: \(match.fullName) (\(match.id))")
+                        print("🔗 Profile Sync: Found existing matching profile: \(match.id)")
                         #endif
                     }
                 }

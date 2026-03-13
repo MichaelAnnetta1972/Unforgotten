@@ -78,9 +78,9 @@ struct AddUsefulContactView: View {
 
                         // Category picker
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Category")
+                            Text("CATEGORY")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                                .foregroundColor(appAccentColor)
 
                             FlowLayout(spacing: 8) {
                                 ForEach(ContactCategory.allCases, id: \.self) { cat in
@@ -92,7 +92,7 @@ struct AddUsefulContactView: View {
                                             .foregroundColor(category == cat ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(category == cat ? appAccentColor : Color.cardBackgroundSoft)
+                                            .background(category == cat ? appAccentColor : Color.cardBackground)
                                             .cornerRadius(20)
                                     }
                                 }

@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ToDoListCard: View {
+
     let list: ToDoList
     var isSelected: Bool = false
     @Environment(\.appAccentColor) private var appAccentColor
@@ -43,11 +44,11 @@ struct ToDoListCard: View {
                             Text(dueDate.formatted(.dateTime.day().month(.abbreviated).year()))
                                 .font(.appCaption)
                         }
-                        .foregroundColor(dueDate < Calendar.current.startOfDay(for: Date()) ? .red : appAccentColor)
+                        .foregroundColor(dueDate < Calendar.current.startOfDay(for: Date()) ? appAccentColor : appAccentColor)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
-                            (dueDate < Calendar.current.startOfDay(for: Date()) ? Color.red : appAccentColor)
+                            (dueDate < Calendar.current.startOfDay(for: Date()) ? appAccentColor : appAccentColor)
                                 .opacity(0.15)
                         )
                         .cornerRadius(6)

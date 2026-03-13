@@ -1,17 +1,26 @@
 {
   "images" : [
     {
-      "filename" : "fire-pit-with-fireplace-fire-place-with-sky-background.jpg",
-      "idiom" : "universal",
+      "filename" : "140900.jpg",
+      "idiom" : "iphone",
       "scale" : "1x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "2x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "3x"
+    },
+    {
+      "filename" : "140900 copy.jpg",
+      "idiom" : "ipad",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "ipad",
+      "scale" : "2x"
     }
   ],
   "info" : {

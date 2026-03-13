@@ -104,7 +104,7 @@ struct OnboardingPremiumView: View {
     // MARK: - Feature Descriptions
     private let premiumDescription = "Unlock unlimited medications with reminders, profiles for your loved ones, to-do lists, notes, and useful contacts. Everything you need to stay organised and never forget what matters most."
 
-    private let familyPlusDescription = "Everything in Premium, plus the ability to invite family members to help manage care together. Share access with different permission levels including Owner, Admin, Helper, and Viewer roles."
+    private let familyPlusDescription = "Everything in Premium, plus the ability to invite family members to help manage your app and create a Family Calendar. Give people you trust access to your profile as a Helper or Admin to help keep your app up to date."
 
     // MARK: - Premium Content
     private var premiumContent: some View {
@@ -206,7 +206,7 @@ struct OnboardingPremiumView: View {
                 // Monthly option
                 pricingOptionRow(
                     title: "Monthly",
-                    price: selectedTier == .premium ? "$4.99/month" : "$9.99/month",
+                    price: selectedTier == .premium ? "$5.99/month" : "$9.99/month",
                     isSelected: selectedBillingPeriod == .monthly,
                     onSelect: { selectedBillingPeriod = .monthly; updateSelectedProduct() }
                 )

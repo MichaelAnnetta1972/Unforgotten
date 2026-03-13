@@ -21,24 +21,14 @@ enum AppConfiguration {
     static var supabaseURL: URL {
         guard let urlString = configValue(for: "SUPABASE_URL"),
               let url = URL(string: urlString) else {
-            // Fallback for development only
-            #if DEBUG
-            return URL(string: "https://qjnthlgkqjqrtbkromjx.supabase.co")!
-            #else
-            fatalError("SUPABASE_URL not configured. Ensure Secrets.xcconfig is set for Release builds.")
-            #endif
+            fatalError("SUPABASE_URL not configured. Create a Secrets.xcconfig file with your Supabase URL. See Secrets.xcconfig.template for format.")
         }
         return url
     }
 
     static var supabaseAnonKey: String {
         guard let key = configValue(for: "SUPABASE_ANON_KEY"), !key.isEmpty else {
-            // Fallback for development only
-            #if DEBUG
-            return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqbnRobGdrcWpxcnRia3JvbWp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ1MDIxMjQsImV4cCI6MjA4MDA3ODEyNH0.WAW-_mb-C5DSXVx0Iwvo5_eXp3b0bFJ5-CSAr5cZOjo"
-            #else
-            fatalError("SUPABASE_ANON_KEY not configured. Ensure Secrets.xcconfig is set for Release builds.")
-            #endif
+            fatalError("SUPABASE_ANON_KEY not configured. Create a Secrets.xcconfig file with your Supabase anon key. See Secrets.xcconfig.template for format.")
         }
         return key
     }

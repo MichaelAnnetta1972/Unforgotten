@@ -1,6 +1,38 @@
 import SwiftUI
 import PhotosUI
 import Supabase
+import ImageIO
+
+// MARK: - UIImage EXIF Stripping Extension
+extension UIImage {
+    /// Converts to JPEG data with all EXIF metadata (GPS, camera info, etc.) stripped
+    func jpegDataStrippingMetadata(compressionQuality: CGFloat) -> Data? {
+        guard let cgImage = self.cgImage else {
+            return self.jpegData(compressionQuality: compressionQuality)
+        }
+
+        let mutableData = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(mutableData, "public.jpeg" as CFString, 1, nil) else {
+            return self.jpegData(compressionQuality: compressionQuality)
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: compressionQuality,
+            kCGImagePropertyExifDictionary: [:],
+            kCGImagePropertyGPSDictionary: [:],
+            kCGImagePropertyTIFFDictionary: [:],
+            kCGImagePropertyIPTCDictionary: [:]
+        ]
+
+        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+
+        guard CGImageDestinationFinalize(destination) else {
+            return self.jpegData(compressionQuality: compressionQuality)
+        }
+
+        return mutableData as Data
+    }
+}
 
 // MARK: - Image Picker
 struct ImagePicker: UIViewControllerRepresentable {
@@ -114,8 +146,8 @@ final class ImageUploadService {
         // Resize image if needed
         let resizedImage = resizeImage(image, maxDimension: SupabaseConfig.maxImageDimension)
 
-        // Convert to JPEG data
-        guard let imageData = resizedImage.jpegData(compressionQuality: 0.8) else {
+        // Convert to JPEG data with EXIF metadata stripped
+        guard let imageData = resizedImage.jpegDataStrippingMetadata(compressionQuality: 0.8) else {
             throw SupabaseError.invalidData
         }
 

@@ -16,6 +16,9 @@ struct ProfileListView: View {
     @State private var showDeleteConfirmation = false
     @State private var searchText = ""
     @State private var listContentHeight: CGFloat = 0
+    @State private var showInviteEmailPrompt = false
+    @State private var inviteEmail = ""
+    @State private var showInviteMember = false
 
     /// Check if user can add more friend profiles
     private var canAddProfile: Bool {
@@ -70,27 +73,52 @@ struct ProfileListView: View {
 
                     // Content
                     VStack(spacing: AppDimensions.cardSpacing) {
-                        // Search field
-                        HStack(spacing: 12) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(.textSecondary)
+                        // Search field and Invite button
+                        HStack(spacing: 10) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(.textSecondary)
 
-                            TextField("Search family and friends...", text: $searchText)
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
+                                TextField("Search family and friends...", text: $searchText)
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
 
-                            if !searchText.isEmpty {
+                                if !searchText.isEmpty {
+                                    Button {
+                                        searchText = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.textSecondary)
+                                    }
+                                }
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+
+                            if appState.currentUserRole?.canManageMembers == true {
                                 Button {
-                                    searchText = ""
+                                    if PremiumLimitsManager.shared.canInviteMembers(appState: appState) {
+                                        inviteEmail = ""
+                                        showInviteEmailPrompt = true
+                                    } else {
+                                        showUpgradePrompt = true
+                                    }
                                 } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.textSecondary)
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "person.badge.plus")
+                                            .font(.system(size: 14, weight: .semibold))
+                                        Text("Invite")
+                                            .font(.appBodyMedium)
+                                    }
+                                    .foregroundColor(appAccentColor)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, AppDimensions.cardPadding)
+                                    .background(Color.cardBackground)
+                                    .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
                             }
                         }
-                        .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
                         .padding(.horizontal, AppDimensions.screenPadding)
 
                         // Profile list with swipe-to-delete
@@ -117,6 +145,7 @@ struct ProfileListView: View {
                                             } label: {
                                                 Label("Delete", systemImage: "trash")
                                             }
+                                            .tint(.medicalRed)
                                         }
                                     }
                                     .listRowBackground(Color.clear)
@@ -150,7 +179,7 @@ struct ProfileListView: View {
                         // Empty state - no profiles at all
                         if viewModel.profiles.isEmpty && !viewModel.isLoading {
                             EmptyStateView(
-                                icon: "person.2.fill",
+                                //icon: "person.2.fill",
                                 title: "No family or friends yet",
                                 message: "Add your first family member or friend",
                                 buttonTitle: "Add Person",
@@ -220,6 +249,25 @@ struct ProfileListView: View {
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
         }
+        .alert("Send Invitation", isPresented: $showInviteEmailPrompt) {
+            TextField("Email address", text: $inviteEmail)
+                .textContentType(.emailAddress)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            Button("Cancel", role: .cancel) {
+                inviteEmail = ""
+            }
+            Button("Next") {
+                if !inviteEmail.isEmpty {
+                    showInviteMember = true
+                }
+            }
+        } message: {
+            Text("Enter the email address of the person you'd like to invite.")
+        }
+        .sidePanel(isPresented: $showInviteMember) {
+            InviteShareView(profileEmail: inviteEmail, onDismiss: { showInviteMember = false })
+        }
         .navigationBarHidden(true)
         .task {
             await viewModel.loadProfiles(appState: appState)
@@ -270,6 +318,10 @@ struct ProfileListView: View {
 
 // MARK: - Profile List Row
 struct ProfileListRow: View {
+
+    @Environment(\.appAccentColor) private var appAccentColor
+
+
     let profile: Profile
     var isPinned: Bool = false
     var onTogglePin: (() -> Void)? = nil
@@ -303,10 +355,10 @@ struct ProfileListRow: View {
                     if profile.isSyncedProfile {
                         Text("Connected")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.accentYellow)
+                            .foregroundColor(appAccentColor)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.accentYellow.opacity(0.15))
+                            .background(appAccentColor.opacity(0.15))
                             .cornerRadius(4)
                     }
 
@@ -337,7 +389,7 @@ struct ProfileListRow: View {
                 } label: {
                     Image(systemName: isPinned ? "pin.fill" : "pin")
                         .font(.system(size: 16))
-                        .foregroundColor(isPinned ? .accentYellow : .textSecondary)
+                        .foregroundColor(isPinned ? appAccentColor : .textSecondary)
                         .rotationEffect(.degrees(45))
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
@@ -486,7 +538,7 @@ class ProfileListViewModel: ObservableObject {
                 #if DEBUG
                 print("📋 ProfileListViewModel: Loaded \(loaded.count) profiles for account \(account.id) (forceRefresh: \(forceRefresh))")
                 for profile in loaded {
-                    print("📋   - [\(profile.id.uuidString)] \(profile.fullName): type=\(profile.type.rawValue), sourceUserId=\(profile.sourceUserId?.uuidString ?? "nil"), isLocalOnly=\(profile.isLocalOnly), isSyncedProfile=\(profile.isSyncedProfile)")
+                    print("📋   - [\(profile.id.uuidString)] type=\(profile.type.rawValue), isLocalOnly=\(profile.isLocalOnly), isSyncedProfile=\(profile.isSyncedProfile)")
                 }
                 #endif
 
@@ -648,29 +700,16 @@ struct ProfileDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .profileDetailsDidChange)) { notification in
             // Reload details when profile details change (medical conditions, gift ideas, clothing sizes)
             let isRemoteSync = notification.userInfo?["isRemoteSync"] as? Bool ?? false
+            let action = notification.userInfo?["action"] as? ProfileDetailChangeAction
+            let notifDetailId = notification.userInfo?["detailId"] as? UUID
+            let notifProfileId = notification.userInfo?["profileId"] as? UUID
 
-            // For remote sync notifications, check if this is for our profile or if profileId is missing (common for deletes)
-            if let profileId = notification.userInfo?["profileId"] as? UUID {
-                guard profileId == profile.id else { return }
-            } else if !isRemoteSync {
-                // Local notification without profileId - ignore
-                return
-            }
-            // Remote sync without profileId (e.g., delete) - refresh to be safe
-
-            Task {
-                await viewModel.loadDetails(profile: profile, appState: appState, forceRefresh: isRemoteSync)
-                // Reload synced detail IDs if this is a synced profile
-                if profile.isSyncedProfile {
-                    do {
-                        syncedDetailIds = try await appState.profileSyncRepository.getSyncedDetailIds(for: profile.id)
-                    } catch {
-                        #if DEBUG
-                        print("Error reloading synced detail IDs: \(error)")
-                        #endif
-                    }
-                }
-            }
+            handleDetailChangeNotification(
+                isRemoteSync: isRemoteSync,
+                action: action,
+                detailId: notifDetailId,
+                profileId: notifProfileId
+            )
         }
         .onReceive(NotificationCenter.default.publisher(for: .editPrimaryProfileRequested)) { _ in
             // Open edit sheet when requested (e.g., from onboarding completion)
@@ -813,6 +852,38 @@ struct ProfileDetailView: View {
             #if DEBUG
             print("Error loading synced profile sharing preferences: \(error)")
             #endif
+        }
+    }
+
+    // MARK: - Detail Change Handler
+    private func handleDetailChangeNotification(
+        isRemoteSync: Bool,
+        action: ProfileDetailChangeAction?,
+        detailId: UUID?,
+        profileId: UUID?
+    ) {
+        // Handle remote deletes immediately — remove from local cache and view model
+        if action == .deleted, let did = detailId {
+            appState.profileRepository.removeLocalProfileDetail(id: did)
+            viewModel.removeDetail(id: did)
+        }
+
+        // For remote sync notifications, check if this is for our profile
+        if let pid = profileId {
+            guard pid == profile.id else { return }
+        } else if !isRemoteSync {
+            return
+        }
+
+        Task {
+            // Small delay to allow transaction to fully commit on server
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await viewModel.loadDetails(profile: profile, appState: appState, forceRefresh: isRemoteSync)
+            if profile.isSyncedProfile {
+                do {
+                    syncedDetailIds = try await appState.profileSyncRepository.getSyncedDetailIds(for: profile.id)
+                } catch { }
+            }
         }
     }
 
@@ -959,7 +1030,6 @@ struct ProfileDetailView: View {
                             NavigationLink(destination: SectionBasedCategoryView(
                                 profile: profile,
                                 category: .hobbies,
-                                details: viewModel.hobbies,
                                 isOwnProfile: isOwnProfile
                             )) {
                                 CategoryCardView(
@@ -975,7 +1045,6 @@ struct ProfileDetailView: View {
                             NavigationLink(destination: SectionBasedCategoryView(
                                 profile: profile,
                                 category: .activities,
-                                details: viewModel.activityIdeas,
                                 isOwnProfile: isOwnProfile
                             )) {
                                 CategoryCardView(
@@ -1084,8 +1153,12 @@ struct ProfileDetailView: View {
                                 showInviteButton: !profile.isSyncedProfile && !isOwnProfile,
                                 canInvite: appState.currentUserRole?.canManageMembers == true,
                                 onInvite: {
-                                    inviteEmail = email
-                                    showInviteMember = true
+                                    if PremiumLimitsManager.shared.canInviteMembers(appState: appState) {
+                                        inviteEmail = email
+                                        showInviteMember = true
+                                    } else {
+                                        showUpgradePrompt = true
+                                    }
                                 }
                             )
                         }
@@ -1424,6 +1497,17 @@ class ProfileDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
+    /// Remove a detail by ID from all arrays immediately (for remote delete events)
+    func removeDetail(id: UUID) {
+        clothingSizes.removeAll { $0.id == id }
+        giftIdeas.removeAll { $0.id == id }
+        medicalConditions.removeAll { $0.id == id }
+        allergies.removeAll { $0.id == id }
+        customFields.removeAll { $0.id == id }
+        hobbies.removeAll { $0.id == id }
+        activityIdeas.removeAll { $0.id == id }
+    }
+
     func loadDetails(profile: Profile, appState: AppState, forceRefresh: Bool = false) async {
         isLoading = true
 
@@ -1478,7 +1562,7 @@ struct MyCardView: View {
                 LoadingView()
             } else {
                 EmptyStateView(
-                    icon: "person.circle",
+                    //icon: "person.circle",
                     title: "No profile found",
                     message: "Your primary profile hasn't been set up yet."
                 )

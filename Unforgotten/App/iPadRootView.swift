@@ -76,6 +76,8 @@ struct iPadRootView: View {
     @State private var addImportantAccountProfile: Profile?
     @State private var showAddMedicalCondition = false
     @State private var addMedicalConditionProfile: Profile?
+    @State private var showEditMedicalCondition = false
+    @State private var editMedicalConditionDetail: ProfileDetail?
     @State private var showAddGiftIdea = false
     @State private var addGiftIdeaProfile: Profile?
     @State private var showEditGiftIdea = false
@@ -107,6 +109,7 @@ struct iPadRootView: View {
     @State private var showSettingsEditAccountName = false
     @State private var showSettingsAdminPanel = false
     @State private var showSettingsUpgrade = false
+    @State private var showSettingsJoinAccount = false
 
     @State private var showFloatingAddButton = true
     @State private var hasHandledOnboardingAction = false
@@ -183,6 +186,12 @@ struct iPadRootView: View {
                       appState.isAuthenticated,
                       appState.hasCompletedOnboarding else { return }
                 handlePendingStickyReminderNavigation()
+            }
+            .onChange(of: appState.pendingCountdownId) { _, countdownId in
+                guard countdownId != nil,
+                      appState.isAuthenticated,
+                      appState.hasCompletedOnboarding else { return }
+                handlePendingCountdownNavigation()
             }
     }
 
@@ -330,6 +339,10 @@ struct iPadRootView: View {
                 addMedicalConditionProfile = profile
                 showAddMedicalCondition = true
             })
+            .environment(\.iPadEditMedicalConditionAction, { detail in
+                editMedicalConditionDetail = detail
+                showEditMedicalCondition = true
+            })
             .environment(\.iPadAddGiftIdeaAction, { profile in
                 addGiftIdeaProfile = profile
                 showAddGiftIdea = true
@@ -374,6 +387,7 @@ struct iPadRootView: View {
             .environment(\.iPadShowEditAccountNameAction, { showSettingsEditAccountName = true })
             .environment(\.iPadShowAdminPanelAction, { showSettingsAdminPanel = true })
             .environment(\.iPadShowUpgradeAction, { showSettingsUpgrade = true })
+            .environment(\.iPadShowJoinAccountAction, { showSettingsJoinAccount = true })
     }
 
     /// Main layout ZStack
@@ -416,6 +430,9 @@ struct iPadRootView: View {
                         navigationPath.append(countdown)
                     }
                 })
+                .environment(\.iPadTodayTaskAction, {
+                    selectedContent = .todoLists
+                })
                 .frame(width: 400)
 
                 // Gap between panels
@@ -426,8 +443,8 @@ struct iPadRootView: View {
                 ZStack(alignment: .bottomTrailing) {
                     contentAreaWithEnvironments
 
-                    // Floating add button with gradient (hidden when child views request it)
-                    if showFloatingAddButton {
+                    // Floating add button with gradient (only shown on home page)
+                    if showFloatingAddButton && selectedContent == .none {
                         iPadFloatingAddButtonOverlay(
                             showAddMenu: $showAddMenu
                         )
@@ -598,6 +615,8 @@ struct iPadRootView: View {
             addImportantAccountProfile: $addImportantAccountProfile,
             showAddMedicalCondition: $showAddMedicalCondition,
             addMedicalConditionProfile: $addMedicalConditionProfile,
+            showEditMedicalCondition: $showEditMedicalCondition,
+            editMedicalConditionDetail: $editMedicalConditionDetail,
             showAddGiftIdea: $showAddGiftIdea,
             addGiftIdeaProfile: $addGiftIdeaProfile,
             showEditGiftIdea: $showEditGiftIdea,
@@ -625,6 +644,7 @@ struct iPadRootView: View {
             showSettingsEditAccountName: $showSettingsEditAccountName,
             showSettingsAdminPanel: $showSettingsAdminPanel,
             showSettingsUpgrade: $showSettingsUpgrade,
+            showSettingsJoinAccount: $showSettingsJoinAccount,
             showAddCountdown: $showAddCountdown,
             showEditCountdown: $showEditCountdown,
             countdownToEdit: $countdownToEdit,
@@ -697,6 +717,9 @@ struct iPadRootView: View {
             .onReceive(NotificationCenter.default.publisher(for: .stickyRemindersDidChange)) { _ in
                 Task { await loadFeatureCounts() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .memberRoleDidChange)) { _ in
+                Task { await appState.refreshCurrentUserRole() }
+            }
     }
 
     // MARK: - Check Pending Notifications on Appear
@@ -713,6 +736,8 @@ struct iPadRootView: View {
                 handlePendingProfileNavigation()
             } else if appState.pendingStickyReminderId != nil {
                 handlePendingStickyReminderNavigation()
+            } else if appState.pendingCountdownId != nil {
+                handlePendingCountdownNavigation()
             }
         }
     }
@@ -724,7 +749,20 @@ struct iPadRootView: View {
         appState.pendingAppointmentId = nil
 
         Task {
-            guard let appointment = try? await appState.appointmentRepository.getAppointment(id: appointmentId) else { return }
+            // Try cached first, then fall back to remote
+            var appointment = try? await appState.appointmentRepository.getAppointment(id: appointmentId)
+            if appointment == nil {
+                // May not be cached yet (e.g. just shared) — try remote
+                let remote = AppointmentRepository()
+                appointment = try? await remote.getAppointment(id: appointmentId)
+            }
+            guard let appointment else {
+                await MainActor.run {
+                    selectedContent = .appointments
+                    navigationPath = NavigationPath()
+                }
+                return
+            }
             await MainActor.run {
                 selectedContent = .appointments
                 navigationPath = NavigationPath()
@@ -761,6 +799,27 @@ struct iPadRootView: View {
                     selectedContent = .stickyReminders
                     navigationPath = NavigationPath()
                 }
+            }
+        }
+    }
+
+    private func handlePendingCountdownNavigation() {
+        guard let countdownId = appState.pendingCountdownId else { return }
+        appState.pendingCountdownId = nil
+
+        Task {
+            guard let countdowns = try? await appState.countdownRepository.getCountdownsByIds([countdownId]),
+                  let countdown = countdowns.first else {
+                await MainActor.run {
+                    selectedContent = .countdownEvents
+                    navigationPath = NavigationPath()
+                }
+                return
+            }
+            await MainActor.run {
+                selectedContent = .countdownEvents
+                navigationPath = NavigationPath()
+                navigationPath.append(countdown)
             }
         }
     }

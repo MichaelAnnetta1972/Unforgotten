@@ -1,17 +1,26 @@
 {
   "images" : [
     {
-      "filename" : "beautiful-outdoor-backyard-fire-pit-perfect-relaxing-evenings-with-friends-family-gathering.jpg",
-      "idiom" : "universal",
+      "filename" : "137202 copy.jpg",
+      "idiom" : "iphone",
       "scale" : "1x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "2x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "3x"
+    },
+    {
+      "filename" : "15338.jpg",
+      "idiom" : "ipad",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "ipad",
+      "scale" : "2x"
     }
   ],
   "info" : {

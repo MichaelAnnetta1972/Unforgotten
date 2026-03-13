@@ -2,16 +2,25 @@
   "images" : [
     {
       "filename" : "delicate-pink-cherry-blossoms-full-bloom-springtime-create-breathtaking-view-serene-garden-filled-with-petals-floating-soft-breeze.jpg",
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "1x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "2x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "3x"
+    },
+    {
+      "filename" : "delicate-pink-cherry-blossoms-full-bloom-springtime-create-breathtaking-view-serene-garden-filled-with-petals-floating-soft-breeze 1.jpg",
+      "idiom" : "ipad",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "ipad",
+      "scale" : "2x"
     }
   ],
   "info" : {

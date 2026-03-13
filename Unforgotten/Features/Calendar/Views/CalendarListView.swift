@@ -18,10 +18,22 @@ struct CalendarListView: View {
         self.onEventSelected = onEventSelected
     }
 
-    /// All events sorted by date/time for flat list display
+    /// All events sorted by date/time for flat list display (collapse applied for cards)
     private var sortedEvents: [CalendarEvent] {
         let eventsToSort = viewModel.selectedTab == .family ? viewModel.familyEvents : viewModel.filteredEvents
-        return eventsToSort.sorted { $0.dateTime < $1.dateTime }
+        let collapsed = viewModel.collapseMultiDay ? collapseGroups(eventsToSort) : eventsToSort
+        return collapsed.sorted { $0.dateTime < $1.dateTime }
+    }
+
+    /// Collapse multi-day grouped events, keeping only the first (earliest) per group
+    private func collapseGroups(_ events: [CalendarEvent]) -> [CalendarEvent] {
+        var seenGroups: Set<UUID> = []
+        return events.filter { event in
+            if case .countdown(let cd, _, _) = event, let gid = cd.groupId {
+                return seenGroups.insert(gid).inserted
+            }
+            return true
+        }
     }
 
     var body: some View {
@@ -30,7 +42,7 @@ struct CalendarListView: View {
                 Button {
                     onEventSelected?(event)
                 } label: {
-                    CalendarEventRow(event: event, showDate: true)
+                    CalendarEventRow(event: event, showDate: true, multiDayCount: multiDayCount(for: event))
                 }
                 .buttonStyle(PlainButtonStyle())
                 .id(eventId(for: event))
@@ -54,6 +66,14 @@ struct CalendarListView: View {
                 scrollProxy?.scrollTo(eventId(for: firstTodayEvent), anchor: .top)
             }
         }
+    }
+
+    private func multiDayCount(for event: CalendarEvent) -> Int? {
+        guard viewModel.collapseMultiDay else { return nil }
+        if case .countdown(let cd, _, _) = event, let gid = cd.groupId {
+            return viewModel.countdownGroupDayCounts[gid]
+        }
+        return nil
     }
 
     private func eventId(for event: CalendarEvent) -> String {

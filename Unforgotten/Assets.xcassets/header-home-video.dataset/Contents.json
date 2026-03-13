@@ -1,9 +1,7 @@
 {
   "data" : [
     {
-      "filename" : "header-home.jpeg",
-      "idiom" : "universal",
-      "universal-type-identifier" : "public.jpeg"
+      "idiom" : "universal"
     }
   ],
   "info" : {

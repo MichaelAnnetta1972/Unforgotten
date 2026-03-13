@@ -17,6 +17,7 @@ struct CalendarFilterView: View {
 
     @State private var offsetX: CGFloat = 320
     @State private var opacity: Double = 0
+    @State private var showEventSubTypes: Bool = false
 
     /// Panel width - slightly wider on iPad
     private var panelWidth: CGFloat {
@@ -30,7 +31,7 @@ struct CalendarFilterView: View {
     var body: some View {
         ZStack {
             // Dimmed background - covers entire screen
-            Color.cardBackground.opacity(0.8)
+            Color.appBackground.opacity(0.6)
                 .ignoresSafeArea()
                 .onTapGesture {
                     dismissPanel()
@@ -44,19 +45,32 @@ struct CalendarFilterView: View {
                     VStack(spacing: 16) {
                         // Header
                         HStack {
-                            Text("Event Type")
-                                .font(.appTitle)
-                                .foregroundColor(.textPrimary)
+                            Text("Filter Calendar Items")
+                                .font(.appCardTitle)
+                                .foregroundColor(appAccentColor)
 
                             Spacer()
 
                             Button {
                                 dismissPanel()
                             } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.textSecondary)
-                            }
+                                // Image(systemName: "chechmark.circle.fill")
+                                //     .font(.system(size: 24))
+                                //     .foregroundColor(.textSecondary)
+                            
+                            
+
+
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3)))
+                            
+                                                        
+                            }                         
                         }
 
                         // Event Type Section
@@ -65,7 +79,14 @@ struct CalendarFilterView: View {
                                 FilterOptionRow(
                                     filter: filter,
                                     isSelected: selectedFilters.contains(filter),
-                                    accentColor: appAccentColor
+                                    accentColor: appAccentColor,
+                                    showChevron: filter == .countdowns && hasCountdownSubTypes && selectedFilters.contains(.countdowns),
+                                    isExpanded: filter == .countdowns && showEventSubTypes,
+                                    onChevronTap: filter == .countdowns ? {
+                                        withAnimation(.easeInOut(duration: 0.25)) {
+                                            showEventSubTypes.toggle()
+                                        }
+                                    } : nil
                                 ) {
                                     toggleFilter(filter)
                                 }
@@ -82,7 +103,7 @@ struct CalendarFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.cardBackgroundSoft)
+                                        .background(Color.white.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
 
@@ -95,18 +116,18 @@ struct CalendarFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.cardBackgroundSoft)
+                                        .background(Color.white.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
                             }
                         }
 
-                        // Countdown Sub-Type Section
-                        if selectedFilters.contains(.countdowns), hasCountdownSubTypes {
+                        // Countdown Sub-Type Section (shown when chevron is tapped)
+                        if selectedFilters.contains(.countdowns), hasCountdownSubTypes, showEventSubTypes {
                             VStack(alignment: .leading, spacing: 12) {
-                                Text("Event Types")
+                                Text("Filter by Event Type")
                                     .font(.appCardTitle)
-                                    .foregroundColor(.textSecondary)
+                                    .foregroundColor(appAccentColor)
                                     .padding(.top, 4)
 
                                 // Standard countdown types in use
@@ -134,22 +155,51 @@ struct CalendarFilterView: View {
                                         toggleCustomTypeName(name)
                                     }
                                 }
+
+                                // Quick actions for event sub-types
+                                HStack(spacing: 12) {
+                                    Button {
+                                        selectAllCountdownSubTypes()
+                                    } label: {
+                                        Text("Select All")
+                                            .font(.appCaption)
+                                            .foregroundColor(.textPrimary)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background(Color.white.opacity(0.2))
+                                            .cornerRadius(AppDimensions.cardCornerRadius)
+                                    }
+
+                                    Button {
+                                        clearAllCountdownSubTypes()
+                                    } label: {
+                                        Text("Clear")
+                                            .font(.appCaption)
+                                            .foregroundColor(.textPrimary)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background(Color.white.opacity(0.2))
+                                            .cornerRadius(AppDimensions.cardCornerRadius)
+                                    }
+                                }
                             }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
                     .padding(AppDimensions.cardPadding)
                 }
-                .frame(width: panelWidth)
-                .frame(maxHeight: UIScreen.main.bounds.height * 0.75)
-                .background(Color.cardBackgroundLight)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(width: 300)
+                .frame(maxHeight: UIScreen.main.bounds.height * 0.80)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(Color.cardBackground.opacity(0.8))
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
-                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
                 .offset(x: offsetX)
                 .opacity(opacity)
                 .padding(.trailing, 20)
             }
             .frame(maxHeight: .infinity, alignment: .top)
-            .padding(.top, 80)
+            .padding(.top, 60)
         }
         .transition(.opacity)
         .onAppear {
@@ -174,6 +224,12 @@ struct CalendarFilterView: View {
     private func toggleFilter(_ filter: CalendarEventFilter) {
         if selectedFilters.contains(filter) {
             selectedFilters.remove(filter)
+            // Collapse sub-types when Events is deselected
+            if filter == .countdowns {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showEventSubTypes = false
+                }
+            }
         } else {
             selectedFilters.insert(filter)
         }
@@ -220,13 +276,10 @@ struct CountdownTypeFilterRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                // Color indicator
-                Image(systemName: icon)
-                    .font(.system(size: 14))
-                    .foregroundColor(color)
-                    .frame(width: 28, height: 28)
-                    .background(color.opacity(0.2))
-                    .cornerRadius(6)
+                // Checkbox
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? appAccentColor : .textSecondary)
 
                 // Label
                 Text(name)
@@ -235,14 +288,11 @@ struct CountdownTypeFilterRow: View {
 
                 Spacer()
 
-                // Checkbox
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? appAccentColor : .textSecondary)
+
             }
             .padding(.horizontal, AppDimensions.cardPadding)
-            .padding(.vertical, 10)
-            .background(Color.cardBackgroundSoft.opacity(0.3))
+            .padding(.vertical, 5)
+            .background(Color.cardBackground.opacity(0.3))
             .cornerRadius(AppDimensions.cardCornerRadius)
         }
         .buttonStyle(PlainButtonStyle())
@@ -263,40 +313,53 @@ struct FilterOptionRow: View {
     let isSelected: Bool
     let accentColor: Color
     var style: FilterOptionRowStyle = .filled
+    var showChevron: Bool = false
+    var isExpanded: Bool = false
+    var onChevronTap: (() -> Void)? = nil
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Color indicator
-                Image(systemName: filter.icon)
-                    .font(.system(size: 16))
-                    .foregroundColor(filter.color)
-                    .frame(width: 32, height: 32)
-                    .background(filter.color.opacity(0.2))
-                    .cornerRadius(8)
+        HStack(spacing: 0) {
+            Button(action: onTap) {
+                HStack(spacing: 12) {
+                    // Checkbox
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundColor(isSelected ? appAccentColor : .textSecondary)
 
-                // Label
-                Text(filter.displayName)
-                    .font(.appBody)
-                    .foregroundColor(.textPrimary)
+                    // Label
+                    Text(filter.displayName)
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
 
-                Spacer()
-
-                // Checkbox
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 24))
-                    .foregroundColor(isSelected ? appAccentColor : .textSecondary)
+                    Spacer()
+                }
             }
-            .padding(AppDimensions.cardPadding)
-            .background(style == .filled ? Color.cardBackgroundSoft.opacity(0.4) : Color.clear)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .stroke(style == .outlined ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1)
-            )
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            .buttonStyle(PlainButtonStyle())
+
+            // Chevron for expanding sub-types
+            if showChevron {
+                Button {
+                    onChevronTap?()
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 28, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, AppDimensions.cardPadding)
+        .padding(.vertical, 5)
+        .background(style == .filled ? Color.cardBackground.opacity(0.4) : Color.clear)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                .stroke(style == .outlined ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1)
+        )
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 }
 

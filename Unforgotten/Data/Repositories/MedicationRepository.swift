@@ -377,7 +377,7 @@ final class MedicationRepository: MedicationRepositoryProtocol {
         #endif
     }
 
-    /// Gets active schedule entries for a specific date, handling sequential durations
+    /// Gets active schedule entries for a specific date
     /// Returns array of (time, dosage) tuples for entries active on the target date
     private func getActiveEntriesForDate(
         entries: [ScheduleEntry]?,
@@ -388,45 +388,12 @@ final class MedicationRepository: MedicationRepositoryProtocol {
         legacyDaysOfWeek: [Int]?,
         doseDescription: String?
     ) -> [(time: String, dosage: String?)] {
-        let calendar = Calendar.current
-
-        // If we have schedule entries, process them with sequential duration logic
+        // If we have schedule entries, filter by day of week
         if let entries = entries, !entries.isEmpty {
-            // Sort entries by sortOrder to ensure correct sequence
             let sortedEntries = entries.sorted { $0.sortOrder < $1.sortOrder }
-
-            // Calculate the day offset from schedule start
-            let daysSinceStart = calendar.dateComponents([.day], from: calendar.startOfDay(for: scheduleStartDate), to: calendar.startOfDay(for: targetDate)).day ?? 0
-
-            // Track cumulative days to determine which entry is active
-            var cumulativeDays = 0
-            var activeEntries: [(time: String, dosage: String?)] = []
-
-            for entry in sortedEntries {
-                let entryDuration = entry.durationDays ?? Int.max // No limit = infinite duration
-
-                // Check if this entry is active for the target date
-                let entryStartDay = cumulativeDays
-                let entryEndDay = entryDuration == Int.max ? Int.max : cumulativeDays + entryDuration - 1
-
-                if daysSinceStart >= entryStartDay && daysSinceStart <= entryEndDay {
-                    // This entry is active - check if target day of week is included
-                    if entry.daysOfWeek.contains(dayOfWeek) {
-                        activeEntries.append((time: entry.time, dosage: entry.dosage))
-                    }
-                }
-
-                // Move to next entry's start (only if this entry has a duration limit)
-                if entryDuration != Int.max {
-                    cumulativeDays += entryDuration
-                } else {
-                    // Entry with no duration limit - it's active indefinitely from this point
-                    // No further entries should be considered after an unlimited one
-                    break
-                }
+            return sortedEntries.compactMap { entry in
+                entry.daysOfWeek.contains(dayOfWeek) ? (time: entry.time, dosage: entry.dosage) : nil
             }
-
-            return activeEntries
         }
 
         // Legacy: Use times array with global days of week

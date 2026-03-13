@@ -19,7 +19,7 @@ struct CalendarView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingDayDetail = false
-    @State private var scrollToTodayTrigger = false
+    @State private var showingFilterPanel = false
 
     // Navigation state for event detail views (iPhone only - iPad uses iPadRootView navigation)
     @State private var selectedAppointment: Appointment?
@@ -72,74 +72,66 @@ struct CalendarView: View {
                 }
 
                 // Scrollable Content Section
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
-                        VStack(spacing: AppDimensions.cardSpacing) {
-                            // iPhone: Header scrolls with content
-                            if !isiPad {
-                                VStack(spacing: 0) {
-                                    CustomizableHeaderView(
-                                        pageIdentifier: .calendar,
-                                        title: "Calendar",
-                                        showBackButton: true,
-                                        backAction: { navigateToHomeTab?() ?? dismiss() },
-                                        showHomeButton: false,
-                                        homeAction: nil,
-                                        heightOverride: AppDimensions.headerHeight
-                                    )
+                ScrollView {
+                    VStack(spacing: AppDimensions.cardSpacing) {
+                        // iPhone: Header scrolls with content
+                        if !isiPad {
+                            VStack(spacing: 0) {
+                                CustomizableHeaderView(
+                                    pageIdentifier: .calendar,
+                                    title: "Calendar",
+                                    showBackButton: true,
+                                    backAction: { navigateToHomeTab?() ?? dismiss() },
+                                    showHomeButton: false,
+                                    homeAction: nil,
+                                    heightOverride: AppDimensions.headerHeight
+                                )
 
-                                    ViewingAsBar()
+                                ViewingAsBar()
 
-                                    VStack(spacing: AppDimensions.cardSpacing) {
-                                        calendarTabPicker
-                                        controlsRow
-                                    }
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-                                    .padding(.top, AppDimensions.cardSpacing)
-                                    .padding(.bottom, AppDimensions.cardSpacing)
+                                VStack(spacing: AppDimensions.cardSpacing) {
+                                    calendarTabPicker
+                                    controlsRow
                                 }
-                                .padding(.horizontal, -AppDimensions.screenPadding)
+                                .padding(.horizontal, AppDimensions.screenPadding)
+                                .padding(.top, AppDimensions.cardSpacing)
+                                .padding(.bottom, AppDimensions.cardSpacing)
                             }
+                            .padding(.horizontal, -AppDimensions.screenPadding)
+                        }
 
-                            // Calendar Content
-                            if viewModel.viewMode == .month {
-                                CalendarMonthView(viewModel: viewModel) {
-                                    // On iPad, use full-screen overlay from iPadRootView
-                                    if let iPadAction = iPadCalendarDayDetailAction,
-                                       let selectedDate = viewModel.selectedDate {
-                                        iPadAction(selectedDate, viewModel.eventsForSelectedDate) {
-                                            // onDismiss callback - clear the selection
-                                            viewModel.clearSelection()
-                                        }
-                                    } else {
-                                        showingDayDetail = true
-                                    }
-                                }
-
-                                // Month events list (like Appointment Calendar view)
-                                if !viewModel.eventsForCurrentMonth.isEmpty {
-                                    monthEventsSection
+                        // Calendar Content
+                        CalendarMonthView(viewModel: viewModel) {
+                            // On iPad, use full-screen overlay from iPadRootView
+                            if let iPadAction = iPadCalendarDayDetailAction,
+                               let selectedDate = viewModel.selectedDate {
+                                iPadAction(selectedDate, viewModel.eventsForSelectedDate) {
+                                    // onDismiss callback - clear the selection
+                                    viewModel.clearSelection()
                                 }
                             } else {
-                                CalendarListView(viewModel: viewModel, scrollProxy: scrollProxy, scrollToTodayTrigger: $scrollToTodayTrigger) { event in
-                                    handleEventSelection(event)
-                                }
-                            }
-
-                            // Loading state
-                            if viewModel.isLoading && viewModel.events.isEmpty {
-                                LoadingView(message: "Loading calendar...")
-                                    .padding(.top, 40)
-                            }
-
-                            // Empty state
-                            if !viewModel.isLoading && viewModel.filteredEvents.isEmpty {
-                                emptyStateView
+                                showingDayDetail = true
                             }
                         }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                        .padding(.bottom, 100)
+
+                        // Month events list (like Appointment Calendar view)
+                        if !viewModel.eventsForCurrentMonth.isEmpty {
+                            monthEventsSection
+                        }
+
+                        // Loading state
+                        if viewModel.isLoading && viewModel.events.isEmpty {
+                            LoadingView(message: "Loading calendar...")
+                                .padding(.top, 40)
+                        }
+
+                        // Empty state
+                        if !viewModel.isLoading && viewModel.filteredEvents.isEmpty {
+                            emptyStateView
+                        }
                     }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.bottom, 100)
                 }
             }
 
@@ -155,11 +147,31 @@ struct CalendarView: View {
                     }
                 )
             }
+
+            // Filter panel overlay
+            if showingFilterPanel {
+                CalendarFilterView(
+                    selectedFilters: $viewModel.selectedFilters,
+                    selectedCountdownTypes: $viewModel.selectedCountdownTypes,
+                    selectedCustomTypeNames: $viewModel.selectedCustomTypeNames,
+                    isPresented: $showingFilterPanel,
+                    availableCountdownTypes: viewModel.availableCountdownTypes,
+                    availableCustomTypeNames: viewModel.availableCustomTypeNames
+                )
+            }
         }
         .onChange(of: showingDayDetail) { _, isShowing in
             // Clear selection when modal is dismissed (iPhone)
             if !isShowing {
                 viewModel.clearSelection()
+            }
+        }
+        .onChange(of: showingFilterPanel) { _, isShowing in
+            // Sync filter state to iPad bindings when panel closes
+            if !isShowing {
+                iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
+                iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
+                iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
             }
         }
         .navigationDestination(isPresented: Binding(
@@ -305,14 +317,10 @@ struct CalendarView: View {
             // Today button
             Button {
                 viewModel.goToToday()
-                // Trigger scroll to today in list mode
-                if viewModel.viewMode == .list {
-                    scrollToTodayTrigger.toggle()
-                }
             } label: {
                 Text("Today")
                     .font(.appCaption)
-                    .foregroundColor(.textPrimary)
+                    .foregroundColor(appAccentColor)
                     .frame(minWidth: 60)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -322,136 +330,36 @@ struct CalendarView: View {
 
             Spacer()
 
-            // View mode toggle
-            HStack(spacing: 4) {
-                ForEach(CalendarViewMode.allCases) { mode in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            viewModel.viewMode = mode
-                        }
-                    } label: {
-                        Image(systemName: mode.icon)
-                            .font(.system(size: 16))
-                            .foregroundColor(viewModel.viewMode == mode ? .black : .textSecondary)
-                            .frame(width: 36, height: 36)
-                            .background(
-                                viewModel.viewMode == mode ? appAccentColor : Color.clear
-                            )
-                            .cornerRadius(8)
+            // Collapse multi-day events toggle
+            if viewModel.hasMultiDayEvents {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        viewModel.collapseMultiDay.toggle()
                     }
+                } label: {
+                    Image(systemName: viewModel.collapseMultiDay ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+                        .font(.system(size: 20))
+                        .foregroundColor(viewModel.collapseMultiDay ? appAccentColor : .textSecondary)
+                        .frame(width: 44, height: 44)
+                        .background(Color.cardBackgroundSoft)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
                 }
             }
-            .padding(4)
-            .background(Color.cardBackgroundSoft)
-            .cornerRadius(12)
 
-            // Event Type Filter menu
-            Menu {
-                ForEach(CalendarEventFilter.allCases) { filter in
-                    Button {
-                        toggleFilter(filter)
-                    } label: {
-                        if viewModel.selectedFilters.contains(filter) {
-                            Label(filter.displayName, systemImage: "checkmark")
-                        } else {
-                            Label(filter.displayName, systemImage: filter.icon)
-                        }
-                    }
-                }
-
-                Divider()
-
-                Button {
-                    viewModel.selectedFilters = Set(CalendarEventFilter.allCases)
-                    iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
-                } label: {
-                    Label("Select All", systemImage: "checkmark.circle")
-                }
-
-                Button {
-                    viewModel.selectedFilters = []
-                    iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
-                } label: {
-                    Label("Clear All", systemImage: "xmark.circle")
-                }
+            // Event Type Filter button - opens slide-in panel
+            Button {
+                showingFilterPanel = true
             } label: {
-                Image(systemName: hasActiveFilters
+                Image(systemName: hasActiveFilters || hasActiveCountdownSubFilters
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
                     .font(.system(size: 20))
-                    .foregroundColor(hasActiveFilters
+                    .foregroundColor(hasActiveFilters || hasActiveCountdownSubFilters
                         ? appAccentColor
                         : .textSecondary)
                     .frame(width: 44, height: 44)
                     .background(Color.cardBackgroundSoft)
                     .cornerRadius(AppDimensions.cardCornerRadius)
-            }
-            .tint(appAccentColor)
-
-            // Countdown Event Sub-Type Filter menu (only shown when Events filter is active)
-            if viewModel.selectedFilters.contains(.countdowns),
-               !viewModel.availableCountdownTypes.isEmpty || !viewModel.availableCustomTypeNames.isEmpty {
-                Menu {
-                    Text("Event Types")
-
-                    // Standard countdown types in use
-                    ForEach(viewModel.availableCountdownTypes) { type in
-                        Button {
-                            viewModel.toggleCountdownType(type)
-                            iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
-                        } label: {
-                            if viewModel.selectedCountdownTypes.contains(type) {
-                                Label(type.displayName, systemImage: "checkmark")
-                            } else {
-                                Label(type.displayName, systemImage: type.icon)
-                            }
-                        }
-                    }
-
-                    // Custom type names in use
-                    ForEach(viewModel.availableCustomTypeNames, id: \.self) { name in
-                        Button {
-                            viewModel.toggleCustomTypeName(name)
-                            iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
-                        } label: {
-                            if viewModel.selectedCustomTypeNames.contains(name) {
-                                Label(name, systemImage: "checkmark")
-                            } else {
-                                Label(name, systemImage: CountdownType.custom.icon)
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    Button {
-                        viewModel.selectAllCountdownSubTypes()
-                        iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
-                        iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
-                    } label: {
-                        Label("Select All", systemImage: "checkmark.circle")
-                    }
-
-                    Button {
-                        viewModel.clearAllCountdownSubTypes()
-                        iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
-                        iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
-                    } label: {
-                        Label("Clear All", systemImage: "xmark.circle")
-                    }
-                } label: {
-                    Image(systemName: hasActiveCountdownSubFilters
-                        ? "tag.circle.fill"
-                        : "tag.circle")
-                        .font(.system(size: 20))
-                        .foregroundColor(hasActiveCountdownSubFilters
-                            ? appAccentColor
-                            : .textSecondary)
-                        .frame(width: 44, height: 44)
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
-                }
-                .tint(appAccentColor)
             }
 
             // Member Filter menu (only shown when Family tab is selected)
@@ -511,13 +419,13 @@ struct CalendarView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("THIS MONTH")
                 .font(.appCaption)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(appAccentColor)
 
             ForEach(viewModel.eventsForCurrentMonth) { event in
                 Button {
                     handleEventSelection(event)
                 } label: {
-                    CalendarEventRow(event: event, showFullDetails: true, showDate: true)
+                    CalendarEventRow(event: event, showFullDetails: true, showDate: true, multiDayCount: monthEventMultiDayCount(for: event))
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -547,16 +455,17 @@ struct CalendarView: View {
         .padding(.vertical, 40)
     }
 
-    // MARK: - Filter Toggles
+    // MARK: - Multi-Day Count Helper
 
-    private func toggleFilter(_ filter: CalendarEventFilter) {
-        if viewModel.selectedFilters.contains(filter) {
-            viewModel.selectedFilters.remove(filter)
-        } else {
-            viewModel.selectedFilters.insert(filter)
+    private func monthEventMultiDayCount(for event: CalendarEvent) -> Int? {
+        guard viewModel.collapseMultiDay else { return nil }
+        if case .countdown(let cd, _, _) = event, let gid = cd.groupId {
+            return viewModel.countdownGroupDayCounts[gid]
         }
-        iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
+        return nil
     }
+
+    // MARK: - Filter Toggles
 
     private func toggleMemberFilter(_ userId: UUID) {
         if viewModel.selectedMemberFilters.contains(userId) {

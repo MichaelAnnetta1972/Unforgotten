@@ -16,6 +16,7 @@
 				<string>APPOINTMENT_REMINDER</string>
 				<string>BIRTHDAY_REMINDER</string>
 				<string>STICKY_REMINDER</string>
+				<string>SHARED_ITEM</string>
 			</array>
 			<key>UNNotificationExtensionInitialContentSizeRatio</key>
 			<real>0.45</real>

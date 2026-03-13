@@ -34,6 +34,10 @@ struct NotificationData {
     var reminderTitle: String? { userInfo["title"] as? String }
     var repeatInterval: String? { userInfo["repeatInterval"] as? String }
 
+    // Shared item fields (from push notification)
+    var sharedEventType: String? { userInfo["event_type"] as? String }
+    var sharedEventId: String? { userInfo["event_id"] as? String }
+
     // Category display info
     var categoryDisplayName: String {
         switch category {
@@ -41,6 +45,7 @@ struct NotificationData {
         case "APPOINTMENT_REMINDER": return "Appointment"
         case "BIRTHDAY_REMINDER": return "Birthday"
         case "STICKY_REMINDER": return "Reminder"
+        case "SHARED_ITEM": return "Shared with you"
         default: return "Notification"
         }
     }
@@ -51,6 +56,7 @@ struct NotificationData {
         case "APPOINTMENT_REMINDER": return "calendar"
         case "BIRTHDAY_REMINDER": return "gift.fill"
         case "STICKY_REMINDER": return "pin.fill"
+        case "SHARED_ITEM": return "person.2.fill"
         default: return "bell.fill"
         }
     }
@@ -61,6 +67,7 @@ struct NotificationData {
         case "APPOINTMENT_REMINDER": return NotificationTheme.accentYellow
         case "BIRTHDAY_REMINDER": return NotificationTheme.headerGradientEnd
         case "STICKY_REMINDER": return NotificationTheme.accentYellow
+        case "SHARED_ITEM": return NotificationTheme.accentYellow
         default: return NotificationTheme.accentYellow
         }
     }
@@ -91,8 +98,8 @@ struct NotificationContentView: View {
     // MARK: - Hidden Preview Content
 
     private var hiddenPreviewContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("You have things to do today. Open the Unforgotten app to get started.")
+        VStack(alignment: .leading, spacing: 20) {
+            Text("You have things to do today. Open Unforgotten to get started.")
                 .font(NotificationTheme.bodyFont)
                 .foregroundColor(NotificationTheme.textPrimary)
 
@@ -167,9 +174,27 @@ struct NotificationContentView: View {
             birthdayDetail
         case "STICKY_REMINDER":
             stickyReminderDetail
+        case "SHARED_ITEM":
+            sharedItemDetail
         default:
             genericDetail
         }
+    }
+
+    // MARK: - Shared Item Detail
+
+    private var sharedItemDetail: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(data.body)
+                .font(NotificationTheme.bodyFont)
+                .foregroundColor(NotificationTheme.textPrimary)
+            if let eventType = data.sharedEventType {
+                let typeDisplay = eventType == "appointment" ? "Appointment" : "Countdown"
+                detailRow(label: "Type", value: typeDisplay)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Medication Detail

@@ -730,6 +730,7 @@ struct IPhoneMainView: View {
                 )
             }
         }
+        .modelContainer(notesModelContainer)
         .sheet(isPresented: $showAddProfile, onDismiss: {
             // Post notification to refresh profiles list
             NotificationCenter.default.post(name: .profilesDidChange, object: nil)
@@ -791,6 +792,9 @@ struct IPhoneMainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .moodEntriesDidChange)) { _ in
             Task { await appState.checkMoodPrompt() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .memberRoleDidChange)) { _ in
+            Task { await appState.refreshCurrentUserRole() }
+        }
         .onChange(of: navigateToToDoLists) { _, shouldNavigate in
             if shouldNavigate {
                 // Set flag to show add sheet
@@ -831,6 +835,12 @@ struct IPhoneMainView: View {
                   appState.hasCompletedOnboarding else { return }
             handlePendingStickyReminderNavigation()
         }
+        .onChange(of: appState.pendingCountdownId) { _, countdownId in
+            guard countdownId != nil,
+                  appState.isAuthenticated,
+                  appState.hasCompletedOnboarding else { return }
+            handlePendingCountdownNavigation()
+        }
         .onChange(of: appState.pendingNavigateToHome) { _, shouldNavigate in
             guard shouldNavigate,
                   appState.isAuthenticated,
@@ -855,6 +865,8 @@ struct IPhoneMainView: View {
                 handlePendingProfileNavigation()
             } else if appState.pendingStickyReminderId != nil {
                 handlePendingStickyReminderNavigation()
+            } else if appState.pendingCountdownId != nil {
+                handlePendingCountdownNavigation()
             }
         }
     }
@@ -865,7 +877,21 @@ struct IPhoneMainView: View {
         appState.pendingAppointmentId = nil
 
         Task {
-            guard let appointment = try? await appState.appointmentRepository.getAppointment(id: appointmentId) else { return }
+            // Try cached first, then fall back to remote
+            var appointment = try? await appState.appointmentRepository.getAppointment(id: appointmentId)
+            if appointment == nil {
+                // May not be cached yet (e.g. just shared) — try remote
+                let remote = AppointmentRepository()
+                appointment = try? await remote.getAppointment(id: appointmentId)
+            }
+            guard let appointment else {
+                await MainActor.run {
+                    selectedTab = .home
+                    homePath = NavigationPath()
+                    homePath.append(HomeDestination.appointments)
+                }
+                return
+            }
             await MainActor.run {
                 selectedTab = .home
                 homePath = NavigationPath()
@@ -905,6 +931,30 @@ struct IPhoneMainView: View {
                 homePath = NavigationPath()
                 homePath.append(HomeDestination.stickyReminders)
                 homePath.append(HomeDestination.stickyReminderDetail(reminder))
+            }
+        }
+    }
+
+    private func handlePendingCountdownNavigation() {
+        guard let countdownId = appState.pendingCountdownId else { return }
+        appState.pendingCountdownId = nil
+
+        Task {
+            guard let countdowns = try? await appState.countdownRepository.getCountdownsByIds([countdownId]),
+                  let countdown = countdowns.first else {
+                // If countdown not found, just go to the list
+                await MainActor.run {
+                    selectedTab = .home
+                    homePath = NavigationPath()
+                    homePath.append(HomeDestination.countdownEvents)
+                }
+                return
+            }
+            await MainActor.run {
+                selectedTab = .home
+                homePath = NavigationPath()
+                homePath.append(HomeDestination.countdownEvents)
+                homePath.append(HomeDestination.countdownDetail(countdown))
             }
         }
     }

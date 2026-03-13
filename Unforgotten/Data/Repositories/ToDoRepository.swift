@@ -30,6 +30,19 @@ protocol ToDoRepositoryProtocol {
     func reorderItems(listId: UUID, items: [ToDoItem]) async throws
 }
 
+// MARK: - Date-Only Encoding Helper
+
+/// Formats a Date as a "yyyy-MM-dd" string for date-only database columns.
+/// This prevents timezone offsets from shifting the date by a day when
+/// the default ISO8601 encoder converts local midnight to UTC.
+private let dateOnlyFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone.current
+    return formatter
+}()
+
 class ToDoRepository: ToDoRepositoryProtocol {
     private let client: SupabaseClient
 
@@ -134,6 +147,19 @@ class ToDoRepository: ToDoRepositoryProtocol {
                 case listType = "list_type"
                 case dueDate = "due_date"
             }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(accountId, forKey: .accountId)
+                try container.encode(title, forKey: .title)
+                try container.encodeIfPresent(listType, forKey: .listType)
+                // Encode as "yyyy-MM-dd" string to avoid timezone shift on DATE column
+                if let dueDate = dueDate {
+                    try container.encode(dateOnlyFormatter.string(from: dueDate), forKey: .dueDate)
+                } else {
+                    try container.encodeNil(forKey: .dueDate)
+                }
+            }
         }
 
         let insert = Insert(accountId: accountId, title: title, listType: listType, dueDate: dueDate)
@@ -160,6 +186,18 @@ class ToDoRepository: ToDoRepositoryProtocol {
                 case title
                 case listType = "list_type"
                 case dueDate = "due_date"
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(title, forKey: .title)
+                try container.encodeIfPresent(listType, forKey: .listType)
+                // Encode as "yyyy-MM-dd" string to avoid timezone shift on DATE column
+                if let dueDate = dueDate {
+                    try container.encode(dateOnlyFormatter.string(from: dueDate), forKey: .dueDate)
+                } else {
+                    try container.encodeNil(forKey: .dueDate)
+                }
             }
         }
 

@@ -289,7 +289,7 @@ struct SettingsPanelView: View {
                         }
 
                         // Switch Account (only show if multiple accounts)
-                        if appState.allAccounts.count > 1 {
+                        if appState.switchableAccounts.count > 1 {
                             SettingsPanelButtonRow(
                                 icon: "arrow.left.arrow.right",
                                 title: "Switch Account",
@@ -848,7 +848,7 @@ struct ManageMembersPanelContent: View {
 
                 if viewModel.membersWithEmail.isEmpty && viewModel.pendingInvitations.isEmpty && !viewModel.isLoading {
                     EmptyStateView(
-                        icon: "person.2",
+                        //icon: "person.2",
                         title: "No members yet",
                         message: "Invite family members to share access to this account"
                     )
@@ -918,7 +918,7 @@ struct SwitchAccountPanelContent: View {
 
                 // Account List
                 VStack(spacing: 8) {
-                    ForEach(appState.allAccounts) { accountWithRole in
+                    ForEach(appState.switchableAccounts) { accountWithRole in
                         SwitchAccountRow(
                             accountWithRole: accountWithRole,
                             isSelected: appState.currentAccount?.id == accountWithRole.account.id,
@@ -1050,7 +1050,7 @@ struct MoodHistoryPanelContent: View {
 
                 if viewModel.entries.isEmpty && !viewModel.isLoading {
                     EmptyStateView(
-                        icon: "face.smiling",
+                        //icon: "face.smiling",
                         title: "No mood entries yet",
                         message: "Start tracking your mood to see history here"
                     )
@@ -1381,7 +1381,7 @@ struct AdminPanelContentView: View {
             } else if filteredUsers.isEmpty {
                 Spacer()
                 EmptyStateView(
-                    icon: "person.2.slash",
+                    //icon: "person.2.slash",
                     title: "No users found",
                     message: searchText.isEmpty ? "No users in the system yet" : "No users match your search"
                 )

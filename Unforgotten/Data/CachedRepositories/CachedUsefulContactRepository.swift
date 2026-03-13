@@ -183,7 +183,9 @@ final class CachedUsefulContactRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedContactRepo] Remote createContact failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -246,7 +248,9 @@ final class CachedUsefulContactRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedContactRepo] Remote updateContact failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -281,7 +285,9 @@ final class CachedUsefulContactRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedContactRepo] Remote deleteContact failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -314,7 +320,9 @@ final class CachedUsefulContactRepository {
                         _ = try await remoteRepository.updateContact(local.toRemote())
                         local.isSynced = true
                     } catch {
+                        #if DEBUG
                         print("[CachedContactRepo] Remote updateContactSortOrder failed: \(error). Queuing for sync.")
+                        #endif
                         syncEngine.queueChange(
                             entityType: "usefulContact",
                             entityId: update.id,

@@ -225,49 +225,53 @@ struct NoteEditorView: View {
 
                 // Auto-save on dismiss if there are unsaved changes
                 if !didSave && hasUnsavedChanges {
+                    let shouldSave = isNewNote ? hasContent : true
+                    guard shouldSave else { return }
+
+                    // Update local SwiftData properties synchronously while context is valid
+                    note.title = title
+                    note.setContent(attributedContent)
+                    note.isPinned = isPinned
+                    note.updatedAt = Date()
+                    note.isSynced = false
+
                     if isNewNote {
-                        // Only save new notes that have content
-                        if hasContent {
-                            // Update local SwiftData properties
-                            note.title = title
-                            note.setContent(attributedContent)
-                            note.isPinned = isPinned
-                            note.updatedAt = Date()
-                            note.isSynced = false
-                            onSave?()
+                        onSave?()
+                    }
 
-                            // Trigger immediate sync to Supabase (no debounce since view is disappearing)
-                            let noteToSync = note
-                            let syncServiceRef = syncService
-                            Task.detached { @MainActor in
-                                do {
-                                    try await syncServiceRef.syncImmediately(noteToSync)
-                                } catch {
-                                    #if DEBUG
-                                    print("Failed to sync note on disappear: \(error)")
-                                    #endif
-                                }
-                            }
-                        }
-                    } else {
-                        // Update local SwiftData properties
-                        note.title = title
-                        note.setContent(attributedContent)
-                        note.isPinned = isPinned
-                        note.updatedAt = Date()
-                        note.isSynced = false
+                    // Capture all note data into value types NOW, before the view hierarchy
+                    // is torn down, so the async sync doesn't need to access the SwiftData model
+                    let noteId = note.id
+                    let remoteId = note.supabaseId
+                    let noteAccountId = note.accountId
+                    let noteTitle = note.title
+                    let noteContent = note.content
+                    let noteContentPlainText = note.contentPlainText
+                    let noteTheme = note.theme
+                    let noteIsPinned = note.isPinned
+                    let noteCreatedAt = note.createdAt
+                    let noteUpdatedAt = note.updatedAt
+                    let syncServiceRef = syncService
 
-                        // Trigger immediate sync to Supabase (no debounce since view is disappearing)
-                        let noteToSync = note
-                        let syncServiceRef = syncService
-                        Task.detached { @MainActor in
-                            do {
-                                try await syncServiceRef.syncImmediately(noteToSync)
-                            } catch {
-                                #if DEBUG
-                                print("Failed to sync note on disappear: \(error)")
-                                #endif
-                            }
+                    // Trigger sync using captured values (no SwiftData model access in async context)
+                    Task.detached { @MainActor in
+                        do {
+                            try await syncServiceRef.syncImmediatelyWithValues(
+                                noteId: noteId,
+                                remoteId: remoteId,
+                                accountId: noteAccountId,
+                                title: noteTitle,
+                                content: noteContent,
+                                contentPlainText: noteContentPlainText,
+                                theme: noteTheme,
+                                isPinned: noteIsPinned,
+                                createdAt: noteCreatedAt,
+                                updatedAt: noteUpdatedAt
+                            )
+                        } catch {
+                            #if DEBUG
+                            print("Failed to sync note on disappear: \(error)")
+                            #endif
                         }
                     }
                 }

@@ -15,27 +15,11 @@ enum CalendarTab: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Calendar View Mode
-enum CalendarViewMode: String, CaseIterable, Identifiable {
-    case month
-    case list
-
-    var id: String { rawValue }
-
-    var icon: String {
-        switch self {
-        case .month: return "calendar"
-        case .list: return "list.bullet"
-        }
-    }
-}
-
 // MARK: - Calendar View Model
 @MainActor
 class CalendarViewModel: ObservableObject {
     // MARK: - Published Properties
     @Published var selectedTab: CalendarTab = .personal
-    @Published var viewMode: CalendarViewMode = .month
     @Published var selectedDate: Date? = nil
     @Published var currentMonth: Date = Date()
     @Published var selectedFilters: Set<CalendarEventFilter> = Set(CalendarEventFilter.allCases)
@@ -51,8 +35,30 @@ class CalendarViewModel: ObservableObject {
     @Published var familyShares: [FamilyCalendarShare] = [] // Full share objects for filtering by sharedByUserId
     @Published var familyShareMembers: [UUID: Set<UUID>] = [:] // Maps shareId -> set of memberUserIds
 
+    @Published var collapseMultiDay = true
+
     @Published var isLoading = false
+    @Published var isLoadingEvents = false
     @Published var error: String?
+
+    // MARK: - Month-Based Loading Cache
+    /// Tracks which months have already been loaded to avoid re-fetching
+    private var loadedMonthKeys: Set<String> = []
+    /// Weak reference to appState for month-change event loading
+    private weak var appStateRef: AppState?
+    /// Cached medication data (medications + their schedules) to avoid re-fetching on every month load
+    private var cachedMedications: [(medication: Medication, schedules: [MedicationSchedule])]?
+    /// Cached shared events (fetched once via RPC, reused across month loads)
+    private var cachedSharedAppointments: [Appointment]?
+    private var cachedSharedCountdowns: [Countdown]?
+
+    /// Returns a "yyyy-MM" key for a given date
+    private func monthKey(for date: Date) -> String {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: date)
+        let month = calendar.component(.month, from: date)
+        return "\(year)-\(String(format: "%02d", month))"
+    }
 
     /// All account members that can be used for filtering
     /// Returns all members sorted by display name - the filter allows filtering events
@@ -90,6 +96,37 @@ class CalendarViewModel: ObservableObject {
         return Array(Set(names)).sorted()
     }
 
+    /// Whether any multi-day (grouped) countdown events exist in the loaded data
+    var hasMultiDayEvents: Bool {
+        events.contains { event in
+            if case .countdown(let cd, _, _) = event { return cd.groupId != nil }
+            return false
+        }
+    }
+
+    /// Map of groupId → total day count for multi-day countdown events
+    var countdownGroupDayCounts: [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for event in events {
+            if case .countdown(let cd, _, _) = event, let gid = cd.groupId {
+                counts[gid, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
+    /// Collapse multi-day grouped events, keeping only the first (earliest) per group
+    private func collapseMultiDayGroups(_ events: [CalendarEvent]) -> [CalendarEvent] {
+        guard collapseMultiDay else { return events }
+        var seenGroups: Set<UUID> = []
+        return events.filter { event in
+            if case .countdown(let cd, _, _) = event, let gid = cd.groupId {
+                return seenGroups.insert(gid).inserted
+            }
+            return true
+        }
+    }
+
     /// Whether all countdown sub-types are selected
     var allCountdownSubTypesSelected: Bool {
         let allStandardSelected = Set(availableCountdownTypes).isSubset(of: selectedCountdownTypes)
@@ -97,10 +134,18 @@ class CalendarViewModel: ObservableObject {
         return allStandardSelected && allCustomSelected
     }
 
-    /// Resolves a member's display name using their linked profile's preferred name/full name
+    /// Resolves a member's display name using their linked profile's preferred name/full name.
+    /// Falls back to primary profile name if no linked/source profile match is found,
+    /// which handles Apple Sign-In users whose AppUser.displayName may be unset.
     func profileName(for member: AccountMemberWithUser) -> String {
+        // First try: profile linked or synced to this user
         if let profile = profiles.first(where: { ($0.linkedUserId ?? $0.sourceUserId) == member.userId }) {
             return profile.displayName
+        }
+        // Second try: if the member owns this account, use the primary profile name
+        if member.role == .owner,
+           let primaryProfile = profiles.first(where: { $0.type == .primary }) {
+            return primaryProfile.displayName
         }
         return member.displayName
     }
@@ -109,7 +154,7 @@ class CalendarViewModel: ObservableObject {
 
     /// Events filtered by the selected type filters, countdown sub-type filters, and member filters
     var filteredEvents: [CalendarEvent] {
-        events.filter { event in
+        let result = events.filter { event in
             // Must match type filter
             guard selectedFilters.contains(event.filterType) else { return false }
 
@@ -145,16 +190,19 @@ class CalendarViewModel: ObservableObject {
                 return true
             }
         }
+        return result
     }
 
     /// Events for the selected date (respects both tab selection and filters)
+    /// Collapse is applied here so grouped multi-day events show as one card
     var eventsForSelectedDate: [CalendarEvent] {
         guard let selectedDate = selectedDate else { return [] }
         let calendar = Calendar.current
         let eventsToFilter = selectedTab == .family ? familyEvents : filteredEvents
-        return eventsToFilter.filter { event in
+        let dayEvents = eventsToFilter.filter { event in
             calendar.isDate(event.date, inSameDayAs: selectedDate)
         }.sorted { $0.dateTime < $1.dateTime }
+        return collapseMultiDayGroups(dayEvents)
     }
 
     /// Events for the family calendar (only shared events)
@@ -188,7 +236,7 @@ class CalendarViewModel: ObservableObject {
         }
 
         // Filter by events shared by OR shared with the selected members
-        return sharedEvents.filter { event in
+        let memberFiltered = sharedEvents.filter { event in
             // Get the event's UUID
             let eventId: UUID?
             let eventType: CalendarEventType?
@@ -222,6 +270,7 @@ class CalendarViewModel: ObservableObject {
 
             return false
         }
+        return memberFiltered
     }
 
     /// Get events for a specific date
@@ -256,17 +305,20 @@ class CalendarViewModel: ObservableObject {
     }
 
     /// Events for the current month (respects both tab selection and filters)
+    /// Collapse is applied here so grouped multi-day events show as one card
     var eventsForCurrentMonth: [CalendarEvent] {
         let calendar = Calendar.current
         let eventsToFilter = selectedTab == .family ? familyEvents : filteredEvents
-        return eventsToFilter.filter { event in
+        let monthEvents = eventsToFilter.filter { event in
             calendar.isDate(event.date, equalTo: currentMonth, toGranularity: .month)
         }.sorted { $0.dateTime < $1.dateTime }
+        return collapseMultiDayGroups(monthEvents)
     }
 
     /// Events grouped by date for list view
+    /// Collapse is applied here so grouped multi-day events show as one card
     var eventsGroupedByDate: [(date: Date, events: [CalendarEvent])] {
-        let eventsToGroup = selectedTab == .family ? familyEvents : filteredEvents
+        let eventsToGroup = collapseMultiDayGroups(selectedTab == .family ? familyEvents : filteredEvents)
         let sorted = eventsToGroup.sorted { $0.dateTime < $1.dateTime }
 
         var grouped: [(date: Date, events: [CalendarEvent])] = []
@@ -299,6 +351,7 @@ class CalendarViewModel: ObservableObject {
     func loadData(appState: AppState) async {
         guard let account = appState.currentAccount else { return }
 
+        appStateRef = appState
         isLoading = true
         error = nil
 
@@ -325,62 +378,39 @@ class CalendarViewModel: ObservableObject {
             }
             familyShareMembers = memberMap
 
-            // Add all connected users (from profile_syncs) to accountMembers so they appear in the member filter
+            // Add connected users from profiles to accountMembers so they appear in the member filter.
             let existingMemberUserIds = Set(accountMembers.map { $0.userId })
-            if let currentUserId = await SupabaseManager.shared.currentUserId {
-                let syncs = try await appState.profileSyncRepository.getSyncsForUser(userId: currentUserId)
-                var connectedUserIds = Set<UUID>()
-                for sync in syncs {
-                    if sync.inviterUserId == currentUserId {
-                        connectedUserIds.insert(sync.acceptorUserId)
-                    } else {
-                        connectedUserIds.insert(sync.inviterUserId)
-                    }
-                }
-                // Remove users already in accountMembers
-                connectedUserIds.subtract(existingMemberUserIds)
-                // Look up connected users and create synthetic AccountMemberWithUser entries
-                for userId in connectedUserIds {
-                    if let appUser = try? await appState.appUserRepository.getUser(id: userId) {
-                        let syntheticMember = AccountMember(
-                            id: userId,
-                            accountId: account.id,
-                            userId: userId,
-                            role: .viewer,
-                            createdAt: Date()
-                        )
-                        accountMembers.append(AccountMemberWithUser(member: syntheticMember, user: appUser))
-                    }
-                }
+            let connectedProfiles = profiles.filter { profile in
+                let connectedUserId = profile.linkedUserId ?? profile.sourceUserId
+                return connectedUserId != nil && !profile.isLocalOnly
+            }
+            var seenUserIds = Set<UUID>()
+            for profile in connectedProfiles {
+                guard let userId = profile.linkedUserId ?? profile.sourceUserId else { continue }
+                guard !existingMemberUserIds.contains(userId) else { continue }
+                guard seenUserIds.insert(userId).inserted else { continue }
+
+                let appUser = AppUser(
+                    id: userId,
+                    email: profile.email ?? "",
+                    displayName: profile.displayName,
+                    isAppAdmin: false,
+                    hasComplimentaryAccess: false,
+                    createdAt: profile.createdAt,
+                    updatedAt: profile.updatedAt
+                )
+                let syntheticMember = AccountMember(
+                    id: userId,
+                    accountId: account.id,
+                    userId: userId,
+                    role: .viewer,
+                    createdAt: Date()
+                )
+                accountMembers.append(AccountMemberWithUser(member: syntheticMember, user: appUser))
             }
 
-            // Load all event types in parallel
-            async let appointmentsTask = loadAppointments(appState: appState, accountId: account.id)
-            async let countdownsTask = loadCountdowns(appState: appState, accountId: account.id)
-            async let birthdaysTask = loadBirthdays(appState: appState, accountId: account.id)
-            async let medicationsTask = loadMedications(appState: appState, accountId: account.id)
-            async let todoListsTask = loadToDoLists(appState: appState, accountId: account.id)
-
-            let (appointments, countdowns, birthdays, medications, todoLists) = await (
-                appointmentsTask,
-                countdownsTask,
-                birthdaysTask,
-                medicationsTask,
-                todoListsTask
-            )
-
-            // Combine all events
-            var allEvents: [CalendarEvent] = []
-            allEvents.append(contentsOf: appointments)
-            allEvents.append(contentsOf: countdowns)
-            allEvents.append(contentsOf: birthdays)
-            allEvents.append(contentsOf: medications)
-            allEvents.append(contentsOf: todoLists)
-
-            events = allEvents
-
-            // Initialize custom type name selections to include all available custom types
-            selectedCustomTypeNames = Set(availableCustomTypeNames)
+            // Load events for the current month (this is fast — only fetches one month window)
+            await loadEventsForMonth(currentMonth, appState: appState)
 
         } catch {
             self.error = error.localizedDescription
@@ -392,21 +422,107 @@ class CalendarViewModel: ObservableObject {
         isLoading = false
     }
 
-    private func loadAppointments(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
+    // MARK: - Month-Based Event Loading
+
+    /// Loads events for a given month (with 1-month buffer on each side).
+    /// Skips months that have already been loaded. New events are merged into the existing array.
+    func loadEventsForMonth(_ month: Date, appState: AppState? = nil) async {
+        guard let appState = appState ?? appStateRef,
+              let account = appState.currentAccount else { return }
+
+        let calendar = Calendar.current
+
+        // The 3 months we want covered: previous, current, next
+        guard let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month)),
+              let prevMonth = calendar.date(byAdding: .month, value: -1, to: monthStart),
+              let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) else { return }
+        let monthStarts = [prevMonth, monthStart, nextMonth]
+
+        // Find which months still need loading
+        let unloadedMonths = monthStarts.filter { !loadedMonthKeys.contains(monthKey(for: $0)) }
+        guard !unloadedMonths.isEmpty,
+              let rangeStart = unloadedMonths.min(),
+              let maxMonth = unloadedMonths.max(),
+              let rangeEnd = calendar.date(byAdding: .month, value: 1, to: maxMonth) else { return }
+
+        isLoadingEvents = true
+
+        // Load all event types in parallel for the date range
+        async let appointmentsTask = loadAppointments(appState: appState, accountId: account.id, startDate: rangeStart, endDate: rangeEnd)
+        async let countdownsTask = loadCountdowns(appState: appState, accountId: account.id, startDate: rangeStart, endDate: rangeEnd)
+        async let birthdaysTask = loadBirthdays(appState: appState, accountId: account.id, startDate: rangeStart, endDate: rangeEnd)
+        async let medicationsTask = loadMedications(appState: appState, accountId: account.id, startDate: rangeStart, endDate: rangeEnd)
+        async let todoListsTask = loadToDoLists(appState: appState, accountId: account.id, startDate: rangeStart, endDate: rangeEnd)
+
+        let (appointments, countdowns, birthdays, medications, todoLists) = await (
+            appointmentsTask,
+            countdownsTask,
+            birthdaysTask,
+            medicationsTask,
+            todoListsTask
+        )
+
+        // Merge new events with existing ones (avoid duplicates by ID)
+        var newEvents: [CalendarEvent] = []
+        newEvents.append(contentsOf: appointments)
+        newEvents.append(contentsOf: countdowns)
+        newEvents.append(contentsOf: birthdays)
+        newEvents.append(contentsOf: medications)
+        newEvents.append(contentsOf: todoLists)
+
+        let existingIds = Set(events.map { $0.id })
+        let uniqueNewEvents = newEvents.filter { !existingIds.contains($0.id) }
+        events.append(contentsOf: uniqueNewEvents)
+
+        // Mark these months as loaded
+        for monthDate in unloadedMonths {
+            loadedMonthKeys.insert(monthKey(for: monthDate))
+        }
+
+        // Initialize custom type name selections on first load
+        if selectedCustomTypeNames.isEmpty {
+            selectedCustomTypeNames = Set(availableCustomTypeNames)
+        }
+
+        isLoadingEvents = false
+    }
+
+    /// Force a full reload (e.g., after creating/editing an event)
+    func reloadEvents() async {
+        loadedMonthKeys.removeAll()
+        cachedMedications = nil
+        cachedSharedAppointments = nil
+        cachedSharedCountdowns = nil
+        events.removeAll()
+        await loadEventsForMonth(currentMonth)
+    }
+
+    // MARK: - Private Event Loaders
+
+    private func loadAppointments(appState: AppState, accountId: UUID, startDate: Date, endDate: Date) async -> [CalendarEvent] {
         do {
-            let ownAppointments = try await appState.appointmentRepository.getAppointments(accountId: accountId)
+            let ownAppointments = try await appState.appointmentRepository.getAppointmentsInRange(accountId: accountId, startDate: startDate, endDate: endDate)
             let ownIds = Set(ownAppointments.map { $0.id })
             var allAppointments = ownAppointments
 
-            // Fetch shared appointments via RPC (bypasses RLS on appointments table)
-            do {
-                let shared = try await appState.appointmentRepository.getSharedAppointments()
-                let newShared = shared.filter { !ownIds.contains($0.id) }
+            // Fetch shared appointments via RPC once, then reuse cache
+            if cachedSharedAppointments == nil {
+                do {
+                    cachedSharedAppointments = try await appState.appointmentRepository.getSharedAppointments()
+                } catch {
+                    cachedSharedAppointments = []
+                    #if DEBUG
+                    print("Failed to load shared appointments: \(error)")
+                    #endif
+                }
+            }
+
+            if let shared = cachedSharedAppointments {
+                let newShared = shared.filter { apt in
+                    !ownIds.contains(apt.id) &&
+                    apt.date >= startDate && apt.date < endDate
+                }
                 allAppointments.append(contentsOf: newShared)
-            } catch {
-                #if DEBUG
-                print("Failed to load shared appointments: \(error)")
-                #endif
             }
 
             return allAppointments.map { apt in
@@ -421,26 +537,95 @@ class CalendarViewModel: ObservableObject {
         }
     }
 
-    private func loadCountdowns(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
+    private func loadCountdowns(appState: AppState, accountId: UUID, startDate: Date, endDate: Date) async -> [CalendarEvent] {
         do {
-            let ownCountdowns = try await appState.countdownRepository.getCountdowns(accountId: accountId)
+            let ownCountdowns = try await appState.countdownRepository.getCountdownsInRange(accountId: accountId, startDate: startDate, endDate: endDate)
             let ownIds = Set(ownCountdowns.map { $0.id })
             var allCountdowns = ownCountdowns
 
-            // Fetch shared countdowns via RPC (bypasses RLS on countdowns table)
-            do {
-                let shared = try await appState.countdownRepository.getSharedCountdowns()
-                let newShared = shared.filter { !ownIds.contains($0.id) }
+            // Fetch shared countdowns via RPC once, then reuse cache
+            if cachedSharedCountdowns == nil {
+                do {
+                    cachedSharedCountdowns = try await appState.countdownRepository.getSharedCountdowns()
+                } catch {
+                    cachedSharedCountdowns = []
+                    #if DEBUG
+                    print("Failed to load shared countdowns: \(error)")
+                    #endif
+                }
+            }
+
+            if let shared = cachedSharedCountdowns {
+                let newShared = shared.filter { cd in
+                    !ownIds.contains(cd.id) &&
+                    (cd.isRecurring || (cd.date >= startDate && cd.date < endDate))
+                }
                 allCountdowns.append(contentsOf: newShared)
-            } catch {
-                #if DEBUG
-                print("Failed to load shared countdowns: \(error)")
-                #endif
             }
 
             let calendar = Calendar.current
+
+            // For recurring grouped events, find the earliest date per group so we can
+            // calculate each day's offset from the group start
+            var groupEarliestDates: [UUID: Date] = [:]
+            for cd in allCountdowns {
+                if let gid = cd.groupId, cd.isRecurring {
+                    let day = calendar.startOfDay(for: cd.date)
+                    if let existing = groupEarliestDates[gid] {
+                        if day < existing { groupEarliestDates[gid] = day }
+                    } else {
+                        groupEarliestDates[gid] = day
+                    }
+                }
+            }
+
             return allCountdowns.flatMap { cd -> [CalendarEvent] in
                 let isShared = sharedCountdownIds.contains(cd.id)
+
+                // Recurring countdowns: generate occurrence entries within the requested range
+                if cd.isRecurring && !cd.recurrenceHasEnded {
+                    let unit = cd.recurrenceUnit ?? .year
+                    let interval = cd.recurrenceInterval ?? 1
+
+                    // For grouped recurring events, generate occurrences based on the group's
+                    // earliest date, then offset each day within the group accordingly
+                    let baseDate: Date
+                    let dayOffset: Int
+                    if let gid = cd.groupId, let groupStart = groupEarliestDates[gid] {
+                        baseDate = groupStart
+                        dayOffset = calendar.dateComponents([.day], from: groupStart, to: calendar.startOfDay(for: cd.date)).day ?? 0
+                    } else {
+                        baseDate = cd.date
+                        dayOffset = 0
+                    }
+
+                    let occurrences = baseDate.recurrenceDates(
+                        unit: unit,
+                        interval: interval,
+                        in: startDate...endDate,
+                        endDate: cd.recurrenceEndDate
+                    )
+
+                    var events: [CalendarEvent] = []
+
+                    // Include the original date if it falls in range
+                    let startDay = calendar.startOfDay(for: cd.date)
+                    if startDay >= startDate && startDay <= endDate {
+                        events.append(CalendarEvent.countdown(cd, isShared: isShared, displayDate: startDay))
+                    }
+
+                    for occurrenceDate in occurrences {
+                        let displayDate = calendar.date(byAdding: .day, value: dayOffset, to: occurrenceDate) ?? occurrenceDate
+                        // Skip if this is the same as the original date (already added above)
+                        if !calendar.isDate(displayDate, inSameDayAs: startDay) {
+                            events.append(CalendarEvent.countdown(cd, isShared: isShared, displayDate: displayDate))
+                        }
+                    }
+
+                    return events.isEmpty
+                        ? [CalendarEvent.countdown(cd, isShared: isShared)]
+                        : events
+                }
 
                 // Grouped events (new multi-day) or single-day — each is its own calendar event
                 if cd.groupId != nil || cd.endDate == nil {
@@ -452,10 +637,10 @@ class CalendarViewModel: ObservableObject {
                     return [CalendarEvent.countdown(cd, isShared: isShared)]
                 }
 
-                let startDay = calendar.startOfDay(for: cd.date)
+                let cdStartDay = calendar.startOfDay(for: cd.date)
                 let endDay = calendar.startOfDay(for: endDate)
                 var events: [CalendarEvent] = []
-                var currentDay = startDay
+                var currentDay = cdStartDay
 
                 while currentDay <= endDay {
                     events.append(CalendarEvent.countdown(cd, isShared: isShared, displayDate: currentDay))
@@ -473,56 +658,62 @@ class CalendarViewModel: ObservableObject {
         }
     }
 
-    private func loadBirthdays(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
-        do {
-            let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
-            return profiles.compactMap { profile -> CalendarEvent? in
-                guard profile.birthday != nil else { return nil }
-                let upcoming = UpcomingBirthday(profile: profile, daysUntil: profile.birthday?.daysUntilNextOccurrence() ?? 0)
-                return CalendarEvent.birthday(upcoming)
-            }
-        } catch {
-            #if DEBUG
-            print("Failed to load birthdays: \(error)")
-            #endif
-            return []
+    private func loadBirthdays(appState: AppState, accountId: UUID, startDate: Date, endDate: Date) async -> [CalendarEvent] {
+        // Birthdays use already-loaded profiles (no extra fetch needed)
+        // Generate birthday events for the requested date range
+        let calendar = Calendar.current
+        return profiles.compactMap { profile -> CalendarEvent? in
+            guard let birthday = profile.birthday else { return nil }
+            let nextOccurrence = birthday.nextOccurrenceDate()
+            // Only include if the next occurrence falls within the range
+            guard nextOccurrence >= startDate && nextOccurrence < endDate else { return nil }
+            let upcoming = UpcomingBirthday(profile: profile, daysUntil: birthday.daysUntilNextOccurrence())
+            return CalendarEvent.birthday(upcoming)
         }
     }
 
-    private func loadMedications(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
+    private func loadMedications(appState: AppState, accountId: UUID, startDate: Date, endDate: Date) async -> [CalendarEvent] {
         do {
-            let medications = try await appState.medicationRepository.getMedications(accountId: accountId)
+            // Cache medication data on first load to avoid N+1 queries on subsequent months
+            if cachedMedications == nil {
+                let medications = try await appState.medicationRepository.getMedications(accountId: accountId)
+                var medData: [(medication: Medication, schedules: [MedicationSchedule])] = []
+                for medication in medications {
+                    guard !medication.isPaused else { continue }
+                    let schedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+                    medData.append((medication: medication, schedules: schedules))
+                }
+                cachedMedications = medData
+            }
+
+            guard let medData = cachedMedications else { return [] }
+
             var medEvents: [CalendarEvent] = []
-
             let calendar = Calendar.current
-            let today = calendar.startOfDay(for: Date())
+            let rangeStartDay = calendar.startOfDay(for: startDate)
+            let rangeEndDay = calendar.startOfDay(for: endDate)
 
-            // Generate medication events for the next 30 days
-            for medication in medications {
-                // Skip paused medications
-                guard !medication.isPaused else { continue }
-
-                // Load schedules for this medication
-                let schedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
-
-                for schedule in schedules {
+            for item in medData {
+                for schedule in item.schedules {
                     guard schedule.scheduleType == .scheduled,
                           let entries = schedule.scheduleEntries else { continue }
 
                     for entry in entries {
-                        // Check each day in the next 30 days
-                        for dayOffset in 0..<30 {
-                            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: today) else { continue }
-
-                            // Check if this day of week is in the schedule
-                            let weekday = calendar.component(.weekday, from: date) - 1 // 0-6 (Sunday-Saturday)
+                        // Iterate days in the requested range
+                        var currentDay = rangeStartDay
+                        while currentDay < rangeEndDay {
+                            let weekday = calendar.component(.weekday, from: currentDay) - 1
                             if entry.daysOfWeek.contains(weekday) {
-                                // Check date range
-                                if date < schedule.startDate { continue }
-                                if let endDate = schedule.endDate, date > endDate { continue }
-
-                                medEvents.append(CalendarEvent.medication(medication, entry, date))
+                                if currentDay >= schedule.startDate {
+                                    if let scheduleEnd = schedule.endDate, currentDay > scheduleEnd {
+                                        // Past schedule end, skip
+                                    } else {
+                                        medEvents.append(CalendarEvent.medication(item.medication, entry, currentDay))
+                                    }
+                                }
                             }
+                            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: currentDay) else { break }
+                            currentDay = nextDay
                         }
                     }
                 }
@@ -537,11 +728,14 @@ class CalendarViewModel: ObservableObject {
         }
     }
 
-    private func loadToDoLists(appState: AppState, accountId: UUID) async -> [CalendarEvent] {
+    private func loadToDoLists(appState: AppState, accountId: UUID, startDate: Date, endDate: Date) async -> [CalendarEvent] {
         do {
             let lists = try await appState.toDoRepository.getListsWithDueDates(accountId: accountId)
-            return lists.map { list in
-                CalendarEvent.todoList(list)
+            // Filter to only include lists with due dates in the range
+            return lists.compactMap { list -> CalendarEvent? in
+                guard let dueDate = list.dueDate else { return nil }
+                guard dueDate >= startDate && dueDate < endDate else { return nil }
+                return CalendarEvent.todoList(list)
             }
         } catch {
             #if DEBUG
@@ -615,6 +809,7 @@ class CalendarViewModel: ObservableObject {
         let calendar = Calendar.current
         if let newMonth = calendar.date(byAdding: .month, value: -1, to: currentMonth) {
             currentMonth = newMonth
+            Task { await loadEventsForMonth(newMonth) }
         }
     }
 
@@ -622,11 +817,13 @@ class CalendarViewModel: ObservableObject {
         let calendar = Calendar.current
         if let newMonth = calendar.date(byAdding: .month, value: 1, to: currentMonth) {
             currentMonth = newMonth
+            Task { await loadEventsForMonth(newMonth) }
         }
     }
 
     func goToToday() {
         currentMonth = Date()
+        Task { await loadEventsForMonth(currentMonth) }
         selectedDate = nil
     }
 

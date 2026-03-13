@@ -2,16 +2,25 @@
   "images" : [
     {
       "filename" : "delicate-pink-cherry-blossoms-soft-pink-background-springtime-celebration.jpg",
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "1x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "2x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "3x"
+    },
+    {
+      "filename" : "delicate-pink-cherry-blossoms-soft-pink-background-springtime-celebration 1.jpg",
+      "idiom" : "ipad",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "ipad",
+      "scale" : "2x"
     }
   ],
   "info" : {

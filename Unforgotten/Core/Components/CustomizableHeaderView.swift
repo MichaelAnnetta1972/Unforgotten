@@ -55,6 +55,9 @@ struct CustomizableHeaderView: View {
     @State private var customImage: UIImage?
     @State private var isLoadingImage = false
     @State private var settingsButtonPressed = false
+    @State private var showImageAdjuster = false
+    @State private var pendingImage: UIImage?
+    @State private var headerWidth: CGFloat = UIScreen.main.bounds.width
 
     /// The current style's asset for this page
     private var styleAsset: HeaderAsset {
@@ -100,6 +103,8 @@ struct CustomizableHeaderView: View {
             GeometryReader { geometry in
                 backgroundView
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottom)
+                    .onAppear { headerWidth = geometry.size.width }
+                    .onChange(of: geometry.size) { _, newSize in headerWidth = newSize.width }
             }
             .frame(height: effectiveHeaderHeight)
             .clipped()
@@ -273,6 +278,27 @@ struct CustomizableHeaderView: View {
                 loadImage(from: item)
             }
         }
+        .fullScreenCover(isPresented: $showImageAdjuster) {
+            if let image = pendingImage {
+                HeaderImageAdjusterView(
+                    image: image,
+                    headerAspectRatio: headerWidth / effectiveHeaderHeight,
+                    onSave: { croppedImage in
+                        headerOverrides.setImage(croppedImage, for: pageIdentifier)
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            customImage = headerOverrides.image(for: pageIdentifier)
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        pendingImage = nil
+                        showImageAdjuster = false
+                    },
+                    onCancel: {
+                        pendingImage = nil
+                        showImageAdjuster = false
+                    }
+                )
+            }
+        }
     }
 
     // MARK: - Background View
@@ -342,19 +368,10 @@ struct CustomizableHeaderView: View {
             do {
                 if let data = try await item.loadTransferable(type: Data.self),
                    let uiImage = UIImage(data: data) {
-                    // Save to header overrides
-                    headerOverrides.setImage(uiImage, for: pageIdentifier)
-
-                    // Update local state with animation
                     await MainActor.run {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            customImage = headerOverrides.image(for: pageIdentifier)
-                            isLoadingImage = false
-                        }
-
-                        // Haptic feedback
-                        let generator = UINotificationFeedbackGenerator()
-                        generator.notificationOccurred(.success)
+                        pendingImage = uiImage
+                        showImageAdjuster = true
+                        isLoadingImage = false
                     }
                 } else {
                     await MainActor.run {

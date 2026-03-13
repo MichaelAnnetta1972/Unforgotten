@@ -7,7 +7,7 @@ struct UserPreferencesRecord: Codable, Identifiable, Equatable {
     let userId: UUID
     let accountId: UUID
     var headerStyleId: String
-    var accentColorIndex: Int
+    var accentColorHex: String
     var hasCustomAccentColor: Bool
     var featureVisibility: [String: Bool]
     var featureOrder: [String]
@@ -19,7 +19,7 @@ struct UserPreferencesRecord: Codable, Identifiable, Equatable {
         case userId = "user_id"
         case accountId = "account_id"
         case headerStyleId = "header_style_id"
-        case accentColorIndex = "accent_color_index"
+        case accentColorHex = "accent_color_hex"
         case hasCustomAccentColor = "has_custom_accent_color"
         case featureVisibility = "feature_visibility"
         case featureOrder = "feature_order"
@@ -33,7 +33,7 @@ struct UserPreferencesRecord: Codable, Identifiable, Equatable {
         userId = try container.decode(UUID.self, forKey: .userId)
         accountId = try container.decode(UUID.self, forKey: .accountId)
         headerStyleId = try container.decode(String.self, forKey: .headerStyleId)
-        accentColorIndex = try container.decode(Int.self, forKey: .accentColorIndex)
+        accentColorHex = try container.decode(String.self, forKey: .accentColorHex)
         hasCustomAccentColor = try container.decode(Bool.self, forKey: .hasCustomAccentColor)
         featureVisibility = try container.decode([String: Bool].self, forKey: .featureVisibility)
         featureOrder = try container.decodeIfPresent([String].self, forKey: .featureOrder) ?? []
@@ -47,7 +47,7 @@ private struct UserPreferencesInsert: Codable {
     let userId: UUID
     let accountId: UUID
     let headerStyleId: String
-    let accentColorIndex: Int
+    let accentColorHex: String
     let hasCustomAccentColor: Bool
     let featureVisibility: [String: Bool]
     let featureOrder: [String]
@@ -56,7 +56,7 @@ private struct UserPreferencesInsert: Codable {
         case userId = "user_id"
         case accountId = "account_id"
         case headerStyleId = "header_style_id"
-        case accentColorIndex = "accent_color_index"
+        case accentColorHex = "accent_color_hex"
         case hasCustomAccentColor = "has_custom_accent_color"
         case featureVisibility = "feature_visibility"
         case featureOrder = "feature_order"
@@ -65,14 +65,14 @@ private struct UserPreferencesInsert: Codable {
 
 private struct UserPreferencesUpdate: Codable {
     let headerStyleId: String
-    let accentColorIndex: Int
+    let accentColorHex: String
     let hasCustomAccentColor: Bool
     let featureVisibility: [String: Bool]
     let featureOrder: [String]
 
     enum CodingKeys: String, CodingKey {
         case headerStyleId = "header_style_id"
-        case accentColorIndex = "accent_color_index"
+        case accentColorHex = "accent_color_hex"
         case hasCustomAccentColor = "has_custom_accent_color"
         case featureVisibility = "feature_visibility"
         case featureOrder = "feature_order"
@@ -116,7 +116,7 @@ final class UserPreferencesRepository {
         userId: UUID,
         accountId: UUID,
         headerStyleId: String,
-        accentColorIndex: Int,
+        accentColorHex: String,
         hasCustomAccentColor: Bool,
         featureVisibility: [String: Bool],
         featureOrder: [String]
@@ -125,7 +125,7 @@ final class UserPreferencesRepository {
             userId: userId,
             accountId: accountId,
             headerStyleId: headerStyleId,
-            accentColorIndex: accentColorIndex,
+            accentColorHex: accentColorHex,
             hasCustomAccentColor: hasCustomAccentColor,
             featureVisibility: featureVisibility,
             featureOrder: featureOrder
@@ -152,14 +152,14 @@ final class UserPreferencesRepository {
         userId: UUID,
         accountId: UUID,
         headerStyleId: String,
-        accentColorIndex: Int,
+        accentColorHex: String,
         hasCustomAccentColor: Bool,
         featureVisibility: [String: Bool],
         featureOrder: [String]
     ) async throws -> UserPreferencesRecord {
         let update = UserPreferencesUpdate(
             headerStyleId: headerStyleId,
-            accentColorIndex: accentColorIndex,
+            accentColorHex: accentColorHex,
             hasCustomAccentColor: hasCustomAccentColor,
             featureVisibility: featureVisibility,
             featureOrder: featureOrder
@@ -188,7 +188,7 @@ final class UserPreferencesRepository {
         userId: UUID,
         accountId: UUID,
         headerStyleId: String,
-        accentColorIndex: Int,
+        accentColorHex: String,
         hasCustomAccentColor: Bool,
         featureVisibility: [String: Bool],
         featureOrder: [String]
@@ -200,7 +200,7 @@ final class UserPreferencesRepository {
                 userId: userId,
                 accountId: accountId,
                 headerStyleId: headerStyleId,
-                accentColorIndex: accentColorIndex,
+                accentColorHex: accentColorHex,
                 hasCustomAccentColor: hasCustomAccentColor,
                 featureVisibility: featureVisibility,
                 featureOrder: featureOrder
@@ -211,7 +211,7 @@ final class UserPreferencesRepository {
                 userId: userId,
                 accountId: accountId,
                 headerStyleId: headerStyleId,
-                accentColorIndex: accentColorIndex,
+                accentColorHex: accentColorHex,
                 hasCustomAccentColor: hasCustomAccentColor,
                 featureVisibility: featureVisibility,
                 featureOrder: featureOrder

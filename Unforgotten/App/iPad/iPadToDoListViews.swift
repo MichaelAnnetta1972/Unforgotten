@@ -207,9 +207,9 @@ struct iPadToDoListsListView: View {
     // MARK: - Empty State
     private var toDoListsEmptyStateView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "checklist")
-                .font(.system(size: 60))
-                .foregroundColor(.textSecondary)
+            // Image(systemName: "checklist")
+            //     .font(.system(size: 60))
+            //     .foregroundColor(.textSecondary)
 
             if let activeTypeFilter {
                 // Filtered empty state (no lists match filter)
@@ -298,6 +298,7 @@ struct iPadToDoListDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var typeToDelete: ToDoListType?
     @State private var showDeleteTypeConfirmation = false
+    @State private var showingDueDatePicker = false
     @State private var focusedItemId: UUID?
     @FocusState private var newItemFocused: Bool
     @Environment(\.appAccentColor) private var appAccentColor
@@ -319,13 +320,13 @@ struct iPadToDoListDetailView: View {
             Color.appBackgroundLight.ignoresSafeArea()
 
             ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
-                        // Close button row
+                List {
+                    // Close button row
+                    Section {
                         HStack {
                             Spacer()
                             Button(action: onClose) {
-                                Image(systemName: "xmark")
+                                Image(systemName: "checkmark")
                                     .font(.system(size: 20, weight: .semibold))
                                     .foregroundColor(.textSecondary)
                                     .frame(width: 40, height: 40)
@@ -333,10 +334,13 @@ struct iPadToDoListDetailView: View {
                                     .clipShape(Circle())
                             }
                         }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                        .padding(.top, AppDimensions.screenPadding)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: AppDimensions.screenPadding, leading: AppDimensions.screenPadding, bottom: 0, trailing: AppDimensions.screenPadding))
+                    }
 
-                        // Title Edit Field with Type Icon and Delete Button
+                    // Title Edit Field with Type Icon and Delete Button
+                    Section {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("List Title")
@@ -375,46 +379,127 @@ struct iPadToDoListDetailView: View {
                                         .font(.system(size: 20))
                                         .foregroundColor(viewModel.selectedType != nil ? appAccentColor : .textSecondary)
                                 }
-
-                                Button(action: { showDeleteConfirmation = true }) {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(.red)
-                                }
                             }
                             .padding(AppDimensions.cardPadding)
                             .background(Color.cardBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
                         }
-                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                    }
 
-                        // To Do Items
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Items")
+                    // Due Date
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("DUE DATE")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                                .padding(.horizontal, AppDimensions.screenPadding)
+                                .foregroundColor(appAccentColor)
 
-                            LazyVStack(spacing: 12) {
-                                ForEach(viewModel.sortedItems) { item in
-                                    ToDoItemCard(
-                                        item: item,
-                                        focusedItemId: $focusedItemId,
-                                        onToggle: { viewModel.toggleItem(item) },
-                                        onTextChange: { newText in
-                                            viewModel.updateItemText(item, text: newText)
-                                        },
-                                        onDelete: { viewModel.deleteItem(item) }
-                                    )
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-                                    .id(item.id)
+                            HStack {
+                                if let date = viewModel.dueDate {
+                                    Text(date, style: .date)
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+
+                                    Spacer()
+
+                                    Button {
+                                        viewModel.dueDate = nil
+                                        viewModel.saveDueDate()
+                                        showingDueDatePicker = false
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.textSecondary)
+                                    }
+                                } else {
+                                    Text("No due date")
+                                        .font(.appBody)
+                                        .foregroundColor(.textSecondary)
+
+                                    Spacer()
+                                }
+
+                                Button {
+                                    showingDueDatePicker.toggle()
+                                } label: {
+                                    Image(systemName: "calendar")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(viewModel.dueDate != nil ? appAccentColor : .textSecondary)
                                 }
                             }
-                        }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
 
-                        Spacer().frame(height: 300)
+                            if showingDueDatePicker {
+                                VStack(spacing: 0) {
+                                    Text((viewModel.dueDate ?? Date()).formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                                        .font(.appBodyMedium)
+                                        .foregroundColor(appAccentColor)
+                                        .padding(.top, 12)
+
+                                    DatePicker("", selection: Binding(
+                                        get: { viewModel.dueDate ?? Date() },
+                                        set: { newDate in
+                                            viewModel.dueDate = newDate
+                                            viewModel.saveDueDate()
+                                        }
+                                    ), displayedComponents: .date)
+                                    .datePickerStyle(.wheel)
+                                    .colorScheme(.dark)
+                                    .tint(appAccentColor)
+                                }
+                                .padding(AppDimensions.cardPadding)
+                                .background(Color.cardBackground)
+                                .cornerRadius(AppDimensions.cardCornerRadius)
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
                     }
+
+                    // To Do Items
+                    Section {
+                        Text("Items")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: 0, trailing: AppDimensions.screenPadding))
+
+                        ForEach(viewModel.sortedItems) { item in
+                            ToDoItemCard(
+                                item: item,
+                                focusedItemId: $focusedItemId,
+                                onToggle: { viewModel.toggleItem(item) },
+                                onTextChange: { newText in
+                                    viewModel.updateItemText(item, text: newText)
+                                }
+                            )
+                            .id(item.id)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    viewModel.deleteItem(item)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .tint(.medicalRed)
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
+                    }
+
+                    // Bottom spacer
+                    Spacer().frame(height: 300)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .scrollIndicators(.hidden)
                 .onChange(of: focusedItemId) { _, newValue in
                     if let itemId = newValue {

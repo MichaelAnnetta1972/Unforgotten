@@ -149,21 +149,21 @@ struct FamilyTreeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // Parent navigation button (when not viewing primary)
-            ToolbarItem(placement: .topBarLeading) {
-                if let parent = focusedParent {
-                    Button {
-                        focusOnProfile(parent)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text(parent.displayName)
-                                .lineLimit(1)
-                        }
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(appAccentColor)
-                    }
-                }
-            }
+            // ToolbarItem(placement: .topBarLeading) {
+            //     if let parent = focusedParent {
+            //         Button {
+            //             focusOnProfile(parent)
+            //         } label: {
+            //             HStack(spacing: 4) {
+            //                 Image(systemName: "chevron.left")
+            //                 Text(parent.displayName)
+            //                     .lineLimit(1)
+            //             }
+            //             .font(.system(size: 14, weight: .medium))
+            //             .foregroundColor(appAccentColor)
+            //         }
+            //     }
+            // }
 
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
@@ -378,76 +378,19 @@ struct FamilyTreeView: View {
     // MARK: - Infer Connection
     /// Determines who a profile should connect to based on their relationship
     private func inferConnection(for profile: Profile, primaryId: UUID, allProfiles: [Profile]) -> UUID? {
-        // If they have an explicit connection, use it
-        if let explicitConnection = profile.connectedToProfileId {
-            return explicitConnection
-        }
-
-        guard let relationship = profile.relationship else { return nil }
-
-        // Direct relationships connect to primary
-        if Self.directRelationships.contains(relationship) {
-            return primaryId
-        }
-
-        // Grandchildren connect to the first available Son/Daughter
-        if Self.grandchildRelationships.contains(relationship) {
-            if let parent = allProfiles.first(where: { p in
-                p.id != profile.id &&
-                p.type != .primary &&
-                Self.childRelationships.contains(p.relationship ?? "")
-            }) {
-                return parent.id
-            }
-            // Fallback to primary if no child found
-            return primaryId
-        }
-
-        // Nieces/Nephews connect to the first available Brother/Sister
-        if Self.niblingRelationships.contains(relationship) {
-            if let sibling = allProfiles.first(where: { p in
-                p.id != profile.id &&
-                p.type != .primary &&
-                Self.siblingRelationships.contains(p.relationship ?? "")
-            }) {
-                return sibling.id
-            }
-            // Fallback to primary if no sibling found
-            return primaryId
-        }
-
-        // Cousin connects to Aunt/Uncle if available
-        if relationship == "Cousin" {
-            if let auntUncle = allProfiles.first(where: { p in
-                p.id != profile.id &&
-                (p.relationship == "Aunt" || p.relationship == "Uncle")
-            }) {
-                return auntUncle.id
-            }
-            return primaryId
-        }
-
-        return nil
+        // Only use explicit connections - no automatic inference from relationship type
+        // Profiles must have connectedToProfileId set to appear connected in the tree
+        return profile.connectedToProfileId
     }
 
     // MARK: - Determine Ring
     /// Determines which ring a profile belongs in based on connection chain depth
     private func determineRing(for profile: Profile, primaryId: UUID, allProfiles: [Profile]) -> Int {
-        // Calculate ring based on connection chain depth
-        let connectionId = inferConnection(for: profile, primaryId: primaryId, allProfiles: allProfiles)
+        // Calculate ring based on explicit connection chain depth
+        let connectionId = profile.connectedToProfileId
 
-        // If connected directly to primary, it's ring 1
+        // If connected directly to primary or no connection, it's ring 1
         if connectionId == primaryId || connectionId == nil {
-            // Check relationship-based ring for profiles without explicit connections
-            if profile.connectedToProfileId == nil {
-                guard let relationship = profile.relationship else { return 1 }
-
-                if Self.grandchildRelationships.contains(relationship) ||
-                   Self.niblingRelationships.contains(relationship) ||
-                   relationship == "Cousin" {
-                    return 2
-                }
-            }
             return 1
         }
 
@@ -565,6 +508,9 @@ struct FamilyTreeView: View {
         }
 
         // Find ring 2+ profiles (connected to ring 1 profiles)
+        // Follows connections bidirectionally:
+        //   - Children: profiles whose connectedToProfileId points to a ring node
+        //   - Parents: the profile a ring node's connectedToProfileId points to
         var currentRing = 1
         var maxRings = 5  // Limit to prevent infinite loops
 
@@ -575,12 +521,18 @@ struct FamilyTreeView: View {
             let currentRingNodes = nodes.filter { $0.ring == currentRing }
 
             for ringNode in currentRingNodes {
-                // Find profiles connected to this node
+                // Children: find profiles whose connectedToProfileId points to this node
                 for profile in treeProfiles where !processedIds.contains(profile.id) {
-                    let connectionId = inferConnectionForFocused(for: profile, focusedId: focused.id, allProfiles: profiles)
-                    if connectionId == ringNode.profile.id {
+                    if profile.connectedToProfileId == ringNode.profile.id {
                         nextRingProfiles.append((profile: profile, parentId: ringNode.profile.id))
                     }
+                }
+
+                // Parent: if this ring node's connectedToProfileId points to an unprocessed profile, pull it in
+                if let parentId = ringNode.profile.connectedToProfileId,
+                   !processedIds.contains(parentId),
+                   let parent = treeProfiles.first(where: { $0.id == parentId }) {
+                    nextRingProfiles.append((profile: parent, parentId: ringNode.profile.id))
                 }
             }
 
@@ -634,29 +586,128 @@ struct FamilyTreeView: View {
             currentRing += 1
         }
 
+        // Collect orphaned profiles (those without a connection to any node in the tree)
+        // Orphan "roots" are profiles not yet processed whose connectedToProfileId is nil
+        // or points to a profile not in the tree. Their descendants should still connect to them.
+        let remainingProfiles = treeProfiles.filter { !processedIds.contains($0.id) }
+
+        if !remainingProfiles.isEmpty {
+            // Find orphan roots: profiles whose parent is not in the remaining set
+            // (i.e. they are the top of their own disconnected sub-tree)
+            let remainingIds = Set(remainingProfiles.map { $0.id })
+            var orphanRoots: [Profile] = []
+            var orphanDescendants: [Profile] = []
+
+            for profile in remainingProfiles {
+                if let parentId = profile.connectedToProfileId, remainingIds.contains(parentId) {
+                    // This profile's parent is also unprocessed — it's a descendant, not a root
+                    orphanDescendants.append(profile)
+                } else {
+                    // No parent or parent is already in the tree / doesn't exist — this is a root
+                    orphanRoots.append(profile)
+                }
+            }
+
+            // Place orphan roots on the outermost ring, evenly distributed
+            let orphanRing = max(currentRing, 2)
+            let orphanCount = orphanRoots.count
+
+            for (index, profile) in orphanRoots.enumerated() {
+                let angle = (2 * .pi / Double(max(orphanCount, 1))) * Double(index) - .pi / 2
+                let node = FamilyTreeNode(
+                    profile: profile,
+                    ring: orphanRing,
+                    angle: angle,
+                    connectedToProfileId: nil  // No connection line to the main tree
+                )
+                nodes.append(node)
+                processedIds.insert(profile.id)
+                nodeAngles[profile.id] = angle
+            }
+
+            // Now expand descendants from orphan roots, ring by ring
+            var orphanCurrentRing = orphanRing
+            let orphanMaxRings = orphanRing + 3  // Limit depth from orphan roots
+
+            while orphanCurrentRing < orphanMaxRings {
+                var nextRingProfiles: [(profile: Profile, parentId: UUID)] = []
+
+                let currentRingNodes = nodes.filter { $0.ring == orphanCurrentRing }
+
+                for ringNode in currentRingNodes {
+                    for profile in treeProfiles where !processedIds.contains(profile.id) {
+                        if profile.connectedToProfileId == ringNode.profile.id {
+                            nextRingProfiles.append((profile: profile, parentId: ringNode.profile.id))
+                        }
+                    }
+                }
+
+                if nextRingProfiles.isEmpty {
+                    break
+                }
+
+                var profilesByParent: [UUID: [Profile]] = [:]
+                for item in nextRingProfiles {
+                    profilesByParent[item.parentId, default: []].append(item.profile)
+                }
+
+                for (parentId, siblings) in profilesByParent {
+                    guard let parentNode = nodes.first(where: { $0.id == parentId }) else { continue }
+
+                    let siblingCount = siblings.count
+                    let spread: Double = 0.4
+
+                    for (index, profile) in siblings.sorted(by: { $0.id.uuidString < $1.id.uuidString }).enumerated() {
+                        let siblingOffset = (Double(index) - Double(siblingCount - 1) / 2) * spread
+
+                        let hashValue = abs(profile.id.hashValue)
+                        let radiusHash = Double(hashValue % 1000) / 1000.0
+                        let angleHash = Double((hashValue / 1000) % 1000) / 1000.0
+                        let radiusOffset = CGFloat((radiusHash - 0.5) * 60)
+                        let angleOffset = (angleHash - 0.5) * 0.4
+
+                        let angle = parentNode.angle + siblingOffset + angleOffset
+
+                        let node = FamilyTreeNode(
+                            profile: profile,
+                            ring: orphanCurrentRing + 1,
+                            angle: angle,
+                            connectedToProfileId: parentId,
+                            radiusOffset: radiusOffset
+                        )
+                        nodes.append(node)
+                        processedIds.insert(profile.id)
+                        nodeAngles[profile.id] = angle
+                    }
+                }
+
+                orphanCurrentRing += 1
+            }
+
+            // Any still-unprocessed profiles are truly isolated (no connections at all)
+            let isolatedProfiles = treeProfiles.filter { !processedIds.contains($0.id) }
+            if !isolatedProfiles.isEmpty {
+                let isolatedRing = orphanCurrentRing + 1
+                for (index, profile) in isolatedProfiles.enumerated() {
+                    let angle = (2 * .pi / Double(max(isolatedProfiles.count, 1))) * Double(index) - .pi / 2
+                    let node = FamilyTreeNode(
+                        profile: profile,
+                        ring: isolatedRing,
+                        angle: angle,
+                        connectedToProfileId: nil
+                    )
+                    nodes.append(node)
+                }
+            }
+        }
+
         return nodes
     }
 
     /// Infer connection relative to the focused profile context
     private func inferConnectionForFocused(for profile: Profile, focusedId: UUID, allProfiles: [Profile]) -> UUID? {
-        // If they have an explicit connection, use it
-        if let explicitConnection = profile.connectedToProfileId {
-            return explicitConnection
-        }
-
-        // For primary profile, check standard relationship logic
-        guard let primary = primaryProfile else { return nil }
-
-        // Use the existing infer logic relative to primary
-        let result = inferConnection(for: profile, primaryId: primary.id, allProfiles: allProfiles)
-
-        // If no connection was inferred (e.g. synced/connected profiles with no relationship set),
-        // default to connecting to the primary profile so they still appear in the tree
-        if result == nil {
-            return primary.id
-        }
-
-        return result
+        // Only use explicit connections - profiles without connectedToProfileId remain orphaned
+        return profile.connectedToProfileId
     }
 
     // MARK: - Build Family Tree (Legacy)

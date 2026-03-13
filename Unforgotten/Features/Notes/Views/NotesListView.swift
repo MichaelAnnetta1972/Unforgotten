@@ -88,7 +88,7 @@ struct NotesListView: View {
                     if accountNoteCount == 0 {
                         // Empty state - no notes for this account
                         EmptyStateView(
-                            icon: "note.text",
+                            //icon: "note.text",
                             title: "No Notes",
                             message: "Create notes to keep track of important information",
                             buttonTitle: "Create Note",
@@ -142,6 +142,7 @@ struct NotesListView: View {
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
+                                    .tint(.medicalRed)
                                 }
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -207,14 +208,20 @@ struct NotesListView: View {
             }
             Button("Delete", role: .destructive) {
                 if let note = noteToDelete {
-                    // Delete from Supabase if synced
-                    if let remoteId = note.supabaseId {
+                    // Track deletion to prevent merge from re-creating this note
+                    syncService.trackLocalDeletion(note.id)
+                    // Capture remote ID before deleting locally
+                    let remoteId = note.supabaseId
+                    modelContext.delete(note)
+                    try? modelContext.save()
+                    noteToDelete = nil
+                    // Delete from Supabase if synced (awaited to ensure remote is soft-deleted
+                    // before any subsequent fetchRemoteChanges could re-create the note)
+                    if let remoteId = remoteId {
                         Task {
                             try? await syncService.deleteRemote(id: remoteId)
                         }
                     }
-                    modelContext.delete(note)
-                    noteToDelete = nil
                 }
             }
         } message: {
@@ -351,15 +358,33 @@ struct NotesListView: View {
 
     private func handleSheetDismiss() {
         if let note = noteToDelete {
+            // Track deletion to prevent merge from re-creating this note
+            syncService.trackLocalDeletion(note.id)
+            // Delete from Supabase if synced
+            if let remoteId = note.supabaseId {
+                Task {
+                    try? await syncService.deleteRemote(id: remoteId)
+                }
+            }
             modelContext.delete(note)
+            try? modelContext.save()
             noteToDelete = nil
         }
     }
 
     private func handleNewNoteDismiss() {
         if let note = noteToDelete, newNoteSaved {
+            // Track deletion to prevent merge from re-creating this note
+            syncService.trackLocalDeletion(note.id)
             // User explicitly requested deletion after saving
+            // Delete from Supabase if synced
+            if let remoteId = note.supabaseId {
+                Task {
+                    try? await syncService.deleteRemote(id: remoteId)
+                }
+            }
             modelContext.delete(note)
+            try? modelContext.save()
             noteToDelete = nil
         }
         // If not saved, the note was never inserted, so nothing to delete
@@ -394,12 +419,12 @@ struct NoteListCard: View {
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .top, spacing: 6) {
-                        if note.isPinned {
-                            Image(systemName: "pin.fill")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(appAccentColor)
-                                .padding(.top, 4)
-                        }
+                        // if note.isPinned {
+                        //     Image(systemName: "pin.fill")
+                        //         .font(.system(size: 10, weight: .medium))
+                        //         .foregroundColor(appAccentColor)
+                        //         .padding(.top, 4)
+                        // }
 
                         Text(note.displayTitle)
                             .font(.appCardTitle)
@@ -418,7 +443,7 @@ struct NoteListCard: View {
                 Button {
                     onTogglePin()
                 } label: {
-                    Image(systemName: note.isPinned ? "pin.slash.fill" : "pin.fill")
+                    Image(systemName: note.isPinned ? "pin.fill" : "pin.fill")
                         .font(.system(size: 16))
                         .foregroundColor(note.isPinned ? appAccentColor : .textSecondary)
                         .frame(width: 44, height: 44)

@@ -61,6 +61,7 @@ struct HomeView: View {
     @State private var isReordering = false
     @Environment(\.navNamespace) private var namespace
     @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(FeatureVisibilityManager.self) private var featureVisibility
     @Environment(UserPreferences.self) private var userPreferences
     @Environment(UserHeaderOverrides.self) private var headerOverrides
@@ -109,7 +110,7 @@ struct HomeView: View {
                     CustomizableHeaderView(
                         pageIdentifier: .home,
                         title: "Unforgotten",
-                        showAccountSwitcherButton: appState.allAccounts.count > 1,
+                        showAccountSwitcherButton: appState.switchableAccounts.count > 1,
                         accountSwitcherAction: { showAccountSwitcher = true },
                         //showSettingsButton: true,
                         settingsAction: { showSettings = true },
@@ -216,6 +217,7 @@ struct HomeView: View {
             #endif
         }
         .refreshable {
+            await appState.generateTodaysMedicationLogs()
             await viewModel.loadData(appState: appState)
         }
         .onReceive(NotificationCenter.default.publisher(for: .medicationsDidChange)) { _ in
@@ -240,6 +242,11 @@ struct HomeView: View {
                 await viewModel.refreshCountdownsFromRemote(appState: appState)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .todosDidChange)) { _ in
+            Task {
+                await viewModel.loadData(appState: appState)
+            }
+        }
         .onChange(of: appState.currentAccount?.id) { _, _ in
             // Reload data when account changes
             Task { @MainActor in
@@ -247,6 +254,15 @@ struct HomeView: View {
                 await appState.generateTodaysMedicationLogs()
                 guard !Task.isCancelled else { return }
                 await viewModel.loadData(appState: appState)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                // Reload all today data when returning to foreground
+                Task {
+                    await appState.generateTodaysMedicationLogs()
+                    await viewModel.loadData(appState: appState)
+                }
             }
         }
     }
@@ -388,6 +404,8 @@ struct TodayCard: View {
                         TodayBirthdayRow(profile: profile)
                     case .countdown(let countdown):
                         TodayCountdownRow(countdown: countdown)
+                    case .todoList(let list, let pendingCount):
+                        TodayTaskSummaryRow(list: list, pendingCount: pendingCount)
                     }
                 }
             }
@@ -428,6 +446,7 @@ enum TodayItem: Identifiable {
     case appointment(Appointment)
     case birthday(Profile)
     case countdown(Countdown)
+    case todoList(list: ToDoList, pendingCount: Int)
 
     var id: String {
         switch self {
@@ -435,6 +454,7 @@ enum TodayItem: Identifiable {
         case .appointment(let apt): return "apt-\(apt.id)"
         case .birthday(let profile): return "bday-\(profile.id)"
         case .countdown(let countdown): return "countdown-\(countdown.id)"
+        case .todoList(let list, _): return "todo-\(list.id)"
         }
     }
 }
@@ -702,6 +722,48 @@ struct TodayCountdownRow: View {
     }
 }
 
+// MARK: - Today Task Summary Row
+struct TodayTaskSummaryRow: View {
+    let list: ToDoList
+    let pendingCount: Int
+    @State private var navigateToLists = false
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        Button {
+            navigateToLists = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 18))
+                    .foregroundColor(appAccentColor)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(list.title)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
+
+                    Text(pendingCount == 1
+                         ? "1 task pending"
+                         : "\(pendingCount) tasks pending")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .padding(AppDimensions.cardPadding)
+        .navigationDestination(isPresented: $navigateToLists) {
+            ToDoListsView()
+        }
+    }
+}
+
 // MARK: - Home View Model
 @MainActor
 class HomeViewModel: ObservableObject {
@@ -709,6 +771,7 @@ class HomeViewModel: ObservableObject {
     @Published var todayAppointments: [Appointment] = []
     @Published var todayBirthdays: [Profile] = []
     @Published var todayCountdowns: [Countdown] = []
+    @Published var todayToDoLists: [(list: ToDoList, pendingCount: Int)] = []
     @Published var medications: [Medication] = []
     @Published var isLoading = false
     @Published var error: String?
@@ -794,7 +857,7 @@ class HomeViewModel: ObservableObject {
     }
 
     var hasTodayItems: Bool {
-        !todayMedications.isEmpty || !todayAppointments.isEmpty || !todayBirthdays.isEmpty || !todayCountdowns.isEmpty
+        !todayMedications.isEmpty || !todayAppointments.isEmpty || !todayBirthdays.isEmpty || !todayCountdowns.isEmpty || !todayToDoLists.isEmpty
     }
 
     /// Check if there are today items, optionally excluding birthdays/countdowns
@@ -802,7 +865,7 @@ class HomeViewModel: ObservableObject {
         if showBirthdays {
             return hasTodayItems
         }
-        return !todayMedications.isEmpty || !todayAppointments.isEmpty
+        return !todayMedications.isEmpty || !todayAppointments.isEmpty || !todayToDoLists.isEmpty
     }
 
     var allTodayItems: [TodayItem] {
@@ -818,6 +881,7 @@ class HomeViewModel: ObservableObject {
             items.append(contentsOf: todayBirthdays.map { .birthday($0) })
             items.append(contentsOf: todayCountdowns.map { .countdown($0) })
         }
+        items.append(contentsOf: todayToDoLists.map { .todoList(list: $0.list, pendingCount: $0.pendingCount) })
         return items
     }
 
@@ -845,7 +909,8 @@ class HomeViewModel: ObservableObject {
             print("🏠 HomeViewModel: Loaded \(medications.count) medications")
             #endif
 
-            // Load today's medication logs
+            // Load today's medication logs - show all statuses so every scheduled
+            // medication appears on the Today card regardless of time of day
             let allLogs = try await appState.medicationRepository.getTodaysLogs(accountId: accountId)
             #if DEBUG
             print("🏠 HomeViewModel: Got \(allLogs.count) total logs for today")
@@ -853,9 +918,9 @@ class HomeViewModel: ObservableObject {
                 print("🏠   - log id: \(log.id), medicationId: \(log.medicationId), status: \(log.status), scheduledAt: \(log.scheduledAt)")
             }
             #endif
-            todayMedications = allLogs.filter { $0.status == .scheduled || $0.status == .taken || $0.status == .skipped }
+            todayMedications = allLogs
             #if DEBUG
-            print("🏠 HomeViewModel: Filtered to \(todayMedications.count) scheduled/taken/skipped medications")
+            print("🏠 HomeViewModel: Showing \(todayMedications.count) medications for today")
             #endif
 
             // Load today's appointments
@@ -876,6 +941,19 @@ class HomeViewModel: ObservableObject {
             // Load today's countdowns
             let allCountdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: accountId, days: 365)
             todayCountdowns = allCountdowns.filter { $0.daysUntilNextOccurrence == 0 }
+
+            // Load to-do lists due today
+            let calendar2 = Calendar.current
+            let todayStart = calendar2.startOfDay(for: Date())
+            let todayEnd = calendar2.date(byAdding: .day, value: 1, to: todayStart)!
+            let allLists = try await appState.toDoRepository.getLists(accountId: accountId)
+            todayToDoLists = allLists.compactMap { list in
+                guard let dueDate = list.dueDate,
+                      dueDate >= todayStart && dueDate < todayEnd else { return nil }
+                let pending = list.items.filter { !$0.isCompleted }.count
+                guard pending > 0 else { return nil }
+                return (list: list, pendingCount: pending)
+            }
 
         } catch {
             self.error = error.localizedDescription
@@ -961,9 +1039,15 @@ struct HomeUpgradeBanner: View {
         } label: {
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(appAccentColor)
+                    // Image(systemName: "crown.fill")
+                    //     .font(.system(size: 24))
+                    //     .foregroundColor(appAccentColor)
+
+                    Image("unforgotten-icon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("You're on the Free Plan")

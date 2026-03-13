@@ -158,10 +158,14 @@ struct InviteAcceptModal: View {
         do {
             if let inv = try await appState.invitationRepository.getInvitationByCode(code) {
                 if inv.isActive {
-                    let account = try await appState.accountRepository.getAccount(id: inv.accountId)
+                    // Use RPC to get account name (bypasses RLS for non-members)
+                    var name = "their account"
+                    if let rpcName = try? await appState.invitationRepository.getAccountNameForInvitation(code: code) {
+                        name = rpcName
+                    }
                     await MainActor.run {
                         self.invitation = inv
-                        self.accountName = account.displayName
+                        self.accountName = name
                         self.isLoading = false
                     }
                 } else {
@@ -200,7 +204,9 @@ struct InviteAcceptModal: View {
             var acceptorProfileId: UUID? = nil
             if let account = appState.currentAccount {
                 if let primaryProfile = try? await appState.profileRepository.getPrimaryProfile(accountId: account.id) {
-                    if (primaryProfile.linkedUserId ?? primaryProfile.sourceUserId) == userId {
+                    // Use the primary profile if it belongs to this user, or if it's the only primary profile
+                    let linkedId = primaryProfile.linkedUserId ?? primaryProfile.sourceUserId
+                    if linkedId == userId || linkedId == nil {
                         acceptorProfileId = primaryProfile.id
                     }
                 }
@@ -211,7 +217,6 @@ struct InviteAcceptModal: View {
                 if let profileId = acceptorProfileId, let acceptorProfile = try? await appState.profileRepository.getProfile(id: profileId) {
                     let matches = try await appState.profileRepository.findMatchingProfiles(
                         accountId: invitation.accountId,
-                        name: acceptorProfile.fullName,
                         email: acceptorProfile.email
                     )
                     if let match = matches.first {
@@ -243,9 +248,7 @@ struct InviteAcceptModal: View {
                     )
                 }
             } catch {
-                #if DEBUG
-                print("Sync RPC failed: \(error), falling back to regular acceptance")
-                #endif
+                // Fallback to basic acceptance without sync
                 try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
             }
 

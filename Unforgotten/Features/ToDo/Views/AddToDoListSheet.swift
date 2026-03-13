@@ -90,9 +90,9 @@ struct AddToDoListSheet: View {
                     // Title Field with Type Icon
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("List Title")
+                            Text("LIST TITLE")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                                .foregroundColor(appAccentColor)
 
                             Spacer()
 
@@ -114,7 +114,11 @@ struct AddToDoListSheet: View {
                             .focused($titleFieldFocused)
                             .padding(AppDimensions.cardPadding)
                             .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.cardCornerRadius)
+                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                            )
                     }
 
                     // Error message
@@ -127,9 +131,9 @@ struct AddToDoListSheet: View {
 
                     // Due Date (optional)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Due Date")
+                        Text("DUE DATE")
                             .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                            .foregroundColor(appAccentColor)
 
                         HStack {
                             if let date = dueDate {
@@ -164,13 +168,17 @@ struct AddToDoListSheet: View {
                         }
                         .padding(AppDimensions.cardPadding)
                         .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        )
 
                         if showingDueDatePicker {
                             VStack(spacing: 0) {
                                 Text((dueDate ?? Date()).formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
                                     .font(.appBodyMedium)
-                                    .foregroundColor(.accentYellow)
+                                    .foregroundColor(appAccentColor)
                                     .padding(.top, 12)
 
                                 DatePicker("", selection: Binding(
@@ -183,7 +191,11 @@ struct AddToDoListSheet: View {
                             }
                             .padding(AppDimensions.cardPadding)
                             .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.cardCornerRadius)
+                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                            )
                         }
                     }
                 }
@@ -299,7 +311,7 @@ private struct TypeSelectorSheetOverlay: View {
                         }
                     }
                     .padding(AppDimensions.cardPadding)
-                    .background(Color.cardBackgroundSoft)
+                    .background(Color.cardBackground)
                     .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
@@ -321,7 +333,7 @@ private struct TypeSelectorSheetOverlay: View {
                             }
                         }
                         .padding(AppDimensions.cardPadding)
-                        .background(Color.cardBackgroundSoft)
+                        .background(Color.cardBackground)
                         .cornerRadius(8)
                     }
                     .buttonStyle(.plain)

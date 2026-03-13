@@ -5,5 +5,6 @@ import SwiftUI
 struct MorningBriefingBundle: WidgetBundle {
     var body: some Widget {
         MorningBriefingWidget()
+        DailySummaryLiveActivity()
     }
 }

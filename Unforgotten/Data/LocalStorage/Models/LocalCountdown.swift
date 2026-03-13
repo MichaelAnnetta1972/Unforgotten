@@ -20,6 +20,9 @@ final class LocalCountdown {
     var groupId: UUID?
     var reminderOffsetMinutes: Int?
     var isRecurring: Bool
+    var recurrenceUnit: String?
+    var recurrenceInterval: Int?
+    var recurrenceEndDate: Date?
     var createdAt: Date
     var updatedAt: Date
 
@@ -43,6 +46,9 @@ final class LocalCountdown {
         groupId: UUID? = nil,
         reminderOffsetMinutes: Int? = nil,
         isRecurring: Bool = false,
+        recurrenceUnit: String? = nil,
+        recurrenceInterval: Int? = nil,
+        recurrenceEndDate: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isSynced: Bool = false,
@@ -62,6 +68,9 @@ final class LocalCountdown {
         self.groupId = groupId
         self.reminderOffsetMinutes = reminderOffsetMinutes
         self.isRecurring = isRecurring
+        self.recurrenceUnit = recurrenceUnit
+        self.recurrenceInterval = recurrenceInterval
+        self.recurrenceEndDate = recurrenceEndDate
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isSynced = isSynced
@@ -85,6 +94,9 @@ final class LocalCountdown {
             groupId: remote.groupId,
             reminderOffsetMinutes: remote.reminderOffsetMinutes,
             isRecurring: remote.isRecurring,
+            recurrenceUnit: remote.recurrenceUnit?.rawValue,
+            recurrenceInterval: remote.recurrenceInterval,
+            recurrenceEndDate: remote.recurrenceEndDate,
             createdAt: remote.createdAt,
             updatedAt: remote.updatedAt,
             isSynced: true,
@@ -109,6 +121,9 @@ final class LocalCountdown {
             groupId: groupId,
             reminderOffsetMinutes: reminderOffsetMinutes,
             isRecurring: isRecurring,
+            recurrenceUnit: recurrenceUnit.flatMap { RecurrenceUnit(rawValue: $0) },
+            recurrenceInterval: recurrenceInterval,
+            recurrenceEndDate: recurrenceEndDate,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -129,6 +144,9 @@ final class LocalCountdown {
         self.groupId = remote.groupId
         self.reminderOffsetMinutes = remote.reminderOffsetMinutes
         self.isRecurring = remote.isRecurring
+        self.recurrenceUnit = remote.recurrenceUnit?.rawValue
+        self.recurrenceInterval = remote.recurrenceInterval
+        self.recurrenceEndDate = remote.recurrenceEndDate
         self.createdAt = remote.createdAt
         self.updatedAt = remote.updatedAt
         self.isSynced = true
@@ -153,20 +171,27 @@ final class LocalCountdown {
         return countdownType.displayName
     }
 
+    var recurrenceHasEnded: Bool {
+        guard isRecurring, let endDate = recurrenceEndDate else { return false }
+        return endDate < Date()
+    }
+
     var daysUntilNextOccurrence: Int {
-        if isRecurring {
-            return date.daysUntilNextOccurrence()
+        if isRecurring && !recurrenceHasEnded {
+            let unit = recurrenceUnit.flatMap { RecurrenceUnit(rawValue: $0) } ?? .year
+            let interval = recurrenceInterval ?? 1
+            return date.daysUntilNextRecurrence(unit: unit, interval: interval)
         } else {
             let calendar = Calendar.current
             let today = calendar.startOfDay(for: Date())
             let eventDate = calendar.startOfDay(for: date)
             let components = calendar.dateComponents([.day], from: today, to: eventDate)
-            return max(0, components.day ?? 0)
+            return components.day ?? 0
         }
     }
 
     var hasPassed: Bool {
-        if isRecurring { return false }
+        if isRecurring && !recurrenceHasEnded { return false }
         return date < Date()
     }
 }

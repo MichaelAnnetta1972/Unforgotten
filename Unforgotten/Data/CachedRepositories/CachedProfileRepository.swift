@@ -11,6 +11,11 @@ final class CachedProfileRepository {
     private let syncEngine: SyncEngine
     private let networkMonitor: NetworkMonitor
 
+    // MARK: - Concurrency Guard
+    /// Tracks in-progress refresh tasks per account to prevent duplicate profile insertions
+    /// when multiple code paths (Realtime, loadAccountData, performFullSync) trigger simultaneously
+    private var activeRefreshTasks: [UUID: Task<[Profile], Error>] = [:]
+
     // MARK: - Initialization
     init(modelContext: ModelContext, remoteRepository: ProfileRepository, syncEngine: SyncEngine, networkMonitor: NetworkMonitor = .shared) {
         self.modelContext = modelContext
@@ -30,30 +35,10 @@ final class CachedProfileRepository {
 
         let localProfiles = try modelContext.fetch(descriptor)
 
-        // If cache is empty and we're online, fetch from network and cache
+        // If cache is empty and we're online, delegate to the coalesced refresh
+        // which prevents duplicate insertions from concurrent calls
         if localProfiles.isEmpty && networkMonitor.isConnected {
-            let remoteProfiles = try await remoteRepository.getProfiles(accountId: accountId)
-            // Cache the fetched profiles (check for duplicates and locally-deleted entries)
-            var filteredProfiles: [Profile] = []
-            for remote in remoteProfiles {
-                let remoteId = remote.id
-                let existingDescriptor = FetchDescriptor<LocalProfile>(
-                    predicate: #Predicate { $0.id == remoteId }
-                )
-                let existing = try modelContext.fetch(existingDescriptor)
-                if let existingLocal = existing.first {
-                    // Skip profiles that have been locally deleted — don't resurrect them
-                    if existingLocal.locallyDeleted {
-                        continue
-                    }
-                } else {
-                    let local = LocalProfile(from: remote)
-                    modelContext.insert(local)
-                }
-                filteredProfiles.append(remote)
-            }
-            try? modelContext.save()
-            return filteredProfiles
+            return try await refreshProfiles(accountId: accountId)
         }
 
         // Deduplicate: if multiple LocalProfile entries share the same id, remove extras
@@ -83,6 +68,22 @@ final class CachedProfileRepository {
             return try await getProfiles(accountId: accountId)
         }
 
+        // Coalesce concurrent refresh calls for the same account to prevent
+        // multiple simultaneous fetches from inserting duplicate LocalProfile entries
+        if let existingTask = activeRefreshTasks[accountId] {
+            return try await existingTask.value
+        }
+
+        let task = Task<[Profile], Error> {
+            defer { activeRefreshTasks[accountId] = nil }
+            return try await performRefreshProfiles(accountId: accountId)
+        }
+        activeRefreshTasks[accountId] = task
+        return try await task.value
+    }
+
+    /// Internal refresh implementation — only called by the coalesced task
+    private func performRefreshProfiles(accountId: UUID) async throws -> [Profile] {
         let remoteProfiles = try await remoteRepository.getProfiles(accountId: accountId)
         let remoteIds = Set(remoteProfiles.map { $0.id })
 
@@ -144,7 +145,26 @@ final class CachedProfileRepository {
         }
 
         try? modelContext.save()
-        return remoteProfiles
+
+        // Return the complete merged set from local cache (remote + local-only unsynced)
+        // This ensures newly created but not-yet-synced profiles remain visible after a refresh
+        let mergedDescriptor = FetchDescriptor<LocalProfile>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted },
+            sortBy: [SortDescriptor<LocalProfile>(\.sortOrder), SortDescriptor<LocalProfile>(\.fullName)]
+        )
+        let mergedProfiles = try modelContext.fetch(mergedDescriptor)
+
+        // Deduplicate by ID (keep first occurrence)
+        var seenRefreshIds = Set<UUID>()
+        var result: [Profile] = []
+        for local in mergedProfiles {
+            if seenRefreshIds.contains(local.id) {
+                continue
+            }
+            seenRefreshIds.insert(local.id)
+            result.append(local.toRemote())
+        }
+        return result
     }
 
     /// Get a specific profile from local cache
@@ -167,16 +187,16 @@ final class CachedProfileRepository {
         return try modelContext.fetch(descriptor).first?.toRemote()
     }
 
-    /// Find profiles matching a given name or email in an account (for duplicate detection)
-    func findMatchingProfiles(accountId: UUID, name: String?, email: String?) async throws -> [Profile] {
-        try await remoteRepository.findMatchingProfiles(accountId: accountId, name: name, email: email)
+    /// Find profiles matching a given email in an account (for duplicate detection)
+    func findMatchingProfiles(accountId: UUID, email: String?) async throws -> [Profile] {
+        try await remoteRepository.findMatchingProfiles(accountId: accountId, email: email)
     }
 
     /// Get profiles with birthdays
     func getProfilesWithBirthdays(accountId: UUID) async throws -> [Profile] {
         let descriptor = FetchDescriptor<LocalProfile>(
             predicate: #Predicate {
-                $0.accountId == accountId && $0.birthday != nil && !$0.locallyDeleted && !$0.isDeceased
+                $0.accountId == accountId && $0.birthday != nil && !$0.locallyDeleted
             },
             sortBy: [SortDescriptor<LocalProfile>(\.fullName)]
         )
@@ -279,43 +299,60 @@ final class CachedProfileRepository {
     }
 
     /// Update a profile
+    /// Uses remote-first approach when online for immediate cross-device sync
     func updateProfile(_ profile: Profile) async throws -> Profile {
         let profileId = profile.id
         let descriptor = FetchDescriptor<LocalProfile>(
             predicate: #Predicate { $0.id == profileId }
         )
 
-        if let local = try modelContext.fetch(descriptor).first {
-            local.fullName = profile.fullName
-            local.preferredName = profile.preferredName
-            local.relationship = profile.relationship
-            local.connectedToProfileId = profile.connectedToProfileId
-            local.birthday = profile.birthday
-            local.isDeceased = profile.isDeceased
-            local.dateOfDeath = profile.dateOfDeath
-            local.address = profile.address
-            local.phone = profile.phone
-            local.email = profile.email
-            local.notes = profile.notes
-            local.isFavourite = profile.isFavourite
-            local.photoUrl = profile.photoUrl
-            local.sortOrder = profile.sortOrder
-            local.includeInFamilyTree = profile.includeInFamilyTree
-            local.markAsModified()
-
-            // Queue for sync
-            syncEngine.queueChange(
-                entityType: "profile",
-                entityId: profile.id,
-                accountId: profile.accountId,
-                changeType: .update
-            )
-
-            try modelContext.save()
-            return local.toRemote()
+        guard let local = try modelContext.fetch(descriptor).first else {
+            throw SupabaseError.notFound
         }
 
-        throw SupabaseError.notFound
+        // Update local fields
+        local.fullName = profile.fullName
+        local.preferredName = profile.preferredName
+        local.relationship = profile.relationship
+        local.connectedToProfileId = profile.connectedToProfileId
+        local.birthday = profile.birthday
+        local.isDeceased = profile.isDeceased
+        local.dateOfDeath = profile.dateOfDeath
+        local.address = profile.address
+        local.phone = profile.phone
+        local.email = profile.email
+        local.notes = profile.notes
+        local.isFavourite = profile.isFavourite
+        local.photoUrl = profile.photoUrl
+        local.sortOrder = profile.sortOrder
+        local.includeInFamilyTree = profile.includeInFamilyTree
+        local.markAsModified()
+
+        // When online, try remote first for immediate cross-device sync
+        if networkMonitor.isConnected {
+            do {
+                let updated = try await remoteRepository.updateProfile(profile)
+                local.isSynced = true
+                try modelContext.save()
+                return updated
+            } catch {
+                // Remote failed — save locally and queue for sync
+                #if DEBUG
+                print("[CachedProfileRepo] Remote updateProfile failed: \(error). Saving locally.")
+                #endif
+            }
+        }
+
+        // Offline or remote failed: queue for sync
+        syncEngine.queueChange(
+            entityType: "profile",
+            entityId: profile.id,
+            accountId: profile.accountId,
+            changeType: .update
+        )
+
+        try modelContext.save()
+        return local.toRemote()
     }
 
     /// Delete a profile
@@ -436,6 +473,9 @@ final class CachedProfileRepository {
             if !remoteIds.contains(local.id) {
                 if local.isSynced {
                     // Previously synced but no longer on server — deleted remotely
+                    #if DEBUG
+                    print("[CachedProfileRepo] Removing locally cached detail \(local.id) (\(local.category)/\(local.label)) - no longer on server")
+                    #endif
                     modelContext.delete(local)
                 } else {
                     // Not yet synced — preserve and include in results
@@ -506,7 +546,9 @@ final class CachedProfileRepository {
                 return remote
             } catch {
                 // Remote failed — save locally and queue for sync so user's work isn't lost
-                print("[CachedProfileRepo] Remote createProfileDetail failed: \(error)")
+                #if DEBUG
+                print("[CachedProfileRepo] Remote createProfileDetail failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -569,7 +611,9 @@ final class CachedProfileRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedProfileRepo] Remote updateProfileDetail failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -605,7 +649,9 @@ final class CachedProfileRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedProfileRepo] Remote deleteProfileDetail failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -618,5 +664,17 @@ final class CachedProfileRepository {
         )
 
         try modelContext.save()
+    }
+
+    /// Remove a profile detail from local cache when notified of remote deletion
+    /// Called when a Realtime DELETE event is received for a synced detail
+    func removeLocalProfileDetail(id: UUID) {
+        let descriptor = FetchDescriptor<LocalProfileDetail>(
+            predicate: #Predicate { $0.id == id }
+        )
+        if let local = try? modelContext.fetch(descriptor).first {
+            modelContext.delete(local)
+            try? modelContext.save()
+        }
     }
 }

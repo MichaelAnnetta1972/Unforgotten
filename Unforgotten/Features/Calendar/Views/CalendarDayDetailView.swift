@@ -22,7 +22,7 @@ struct CalendarDayDetailView: View {
     var body: some View {
         ZStack {
             // Dimmed background
-            Color.cardBackground.opacity(0.8)
+            Color.appBackground.opacity(0.6)
                 .ignoresSafeArea()
                 .onTapGesture {
                     dismissPanel()
@@ -59,7 +59,7 @@ struct CalendarDayDetailView: View {
                 .padding(AppDimensions.cardPadding)
 
                 Divider()
-                    .background(Color.cardBackground)
+                    .background(Color.cardBackgroundLight)
 
                 // Events list
                 if events.isEmpty {
@@ -93,7 +93,7 @@ struct CalendarDayDetailView: View {
              //   .padding(AppDimensions.cardPadding)
             }
             .frame(width: panelWidth)
-            .background(Color.cardBackgroundLight)
+            .background(Color.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
             .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
             .scaleEffect(scale)

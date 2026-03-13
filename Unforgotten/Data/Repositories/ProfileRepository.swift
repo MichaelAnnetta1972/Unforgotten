@@ -23,7 +23,7 @@ protocol ProfileRepositoryProtocol {
     func getTodaysBirthdays(accountId: UUID) async throws -> [Profile]
 
     // Profile matching (for duplicate detection)
-    func findMatchingProfiles(accountId: UUID, name: String?, email: String?) async throws -> [Profile]
+    func findMatchingProfiles(accountId: UUID, email: String?) async throws -> [Profile]
 }
 
 // MARK: - Sort Order Update
@@ -192,6 +192,7 @@ final class ProfileRepository: ProfileRepositoryProtocol {
     // MARK: - Update Profile Detail
     func updateProfileDetail(_ detail: ProfileDetail) async throws -> ProfileDetail {
         let update = ProfileDetailUpdate(
+            category: detail.category,
             label: detail.label,
             value: detail.value,
             status: detail.status,
@@ -238,7 +239,7 @@ final class ProfileRepository: ProfileRepositoryProtocol {
         #if DEBUG
         print("🔍 Query returned \(profiles.count) profiles with birthdays")
         profiles.forEach { profile in
-            print("🔍 Profile: \(profile.fullName), Birthday: \(profile.birthday?.description ?? "nil")")
+            print("🔍 Profile ID: \(profile.id), hasBirthday: \(profile.birthday != nil)")
         }
         #endif
 
@@ -248,7 +249,7 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             let daysUntil = birthday.daysUntilNextOccurrence()
             let included = daysUntil >= 0 && daysUntil <= days
             #if DEBUG
-            print("🔍 \(profile.fullName): \(daysUntil) days until birthday, included: \(included)")
+            print("🔍 Profile \(profile.id): \(daysUntil) days until birthday, included: \(included)")
             #endif
             return included
         }.sorted { profile1, profile2 in
@@ -287,7 +288,9 @@ final class ProfileRepository: ProfileRepositoryProtocol {
     }
 
     // MARK: - Find Matching Profiles (Duplicate Detection)
-    func findMatchingProfiles(accountId: UUID, name: String?, email: String?) async throws -> [Profile] {
+    func findMatchingProfiles(accountId: UUID, email: String?) async throws -> [Profile] {
+        guard let email = email, !email.isEmpty else { return [] }
+
         let profiles: [Profile] = try await supabase
             .from(TableName.profiles)
             .select()
@@ -296,21 +299,24 @@ final class ProfileRepository: ProfileRepositoryProtocol {
             .value
 
         return profiles.filter { profile in
-            // Match by email (case-insensitive)
-            if let email = email, !email.isEmpty,
-               let profileEmail = profile.email, !profileEmail.isEmpty,
-               profileEmail.lowercased() == email.lowercased() {
-                return true
-            }
-            // Match by name (case-insensitive)
-            if let name = name, !name.isEmpty,
-               profile.fullName.lowercased() == name.lowercased() {
-                return true
-            }
-            return false
+            profile.email != nil && !profile.email!.isEmpty &&
+            profile.email!.lowercased() == email.lowercased()
         }
     }
 }
+
+// MARK: - Date-Only Encoding Helper
+
+/// Formats a Date as a "yyyy-MM-dd" string for date-only database columns.
+/// This prevents timezone offsets from shifting the date by a day when
+/// the default ISO8601 encoder converts local midnight to UTC.
+private let dateOnlyEncoder: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone.current
+    return formatter
+}()
 
 // MARK: - Insert/Update Types
 struct ProfileInsert: Encodable {
@@ -393,6 +399,37 @@ struct ProfileInsert: Encodable {
         self.linkedUserId = linkedUserId
         self.photoUrl = photoUrl
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encode(accountId, forKey: .accountId)
+        try container.encode(type, forKey: .type)
+        try container.encode(fullName, forKey: .fullName)
+        try container.encodeIfPresent(preferredName, forKey: .preferredName)
+        try container.encodeIfPresent(relationship, forKey: .relationship)
+        try container.encodeIfPresent(connectedToProfileId, forKey: .connectedToProfileId)
+        try container.encode(includeInFamilyTree, forKey: .includeInFamilyTree)
+        // Encode date-only fields as "yyyy-MM-dd" strings to avoid timezone shift
+        if let birthday = birthday {
+            try container.encode(dateOnlyEncoder.string(from: birthday), forKey: .birthday)
+        } else {
+            try container.encodeNil(forKey: .birthday)
+        }
+        try container.encode(isDeceased, forKey: .isDeceased)
+        if let dateOfDeath = dateOfDeath {
+            try container.encode(dateOnlyEncoder.string(from: dateOfDeath), forKey: .dateOfDeath)
+        } else {
+            try container.encodeNil(forKey: .dateOfDeath)
+        }
+        try container.encodeIfPresent(address, forKey: .address)
+        try container.encodeIfPresent(phone, forKey: .phone)
+        try container.encodeIfPresent(email, forKey: .email)
+        try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encode(isFavourite, forKey: .isFavourite)
+        try container.encodeIfPresent(linkedUserId, forKey: .linkedUserId)
+        try container.encodeIfPresent(photoUrl, forKey: .photoUrl)
+    }
 }
 
 private struct ProfileUpdate: Encodable {
@@ -436,9 +473,18 @@ private struct ProfileUpdate: Encodable {
         try container.encode(relationship, forKey: .relationship)
         try container.encode(connectedToProfileId, forKey: .connectedToProfileId)
         try container.encode(includeInFamilyTree, forKey: .includeInFamilyTree)
-        try container.encode(birthday, forKey: .birthday)
+        // Encode date-only fields as "yyyy-MM-dd" strings to avoid timezone shift
+        if let birthday = birthday {
+            try container.encode(dateOnlyEncoder.string(from: birthday), forKey: .birthday)
+        } else {
+            try container.encodeNil(forKey: .birthday)
+        }
         try container.encode(isDeceased, forKey: .isDeceased)
-        try container.encode(dateOfDeath, forKey: .dateOfDeath)
+        if let dateOfDeath = dateOfDeath {
+            try container.encode(dateOnlyEncoder.string(from: dateOfDeath), forKey: .dateOfDeath)
+        } else {
+            try container.encodeNil(forKey: .dateOfDeath)
+        }
         try container.encode(address, forKey: .address)
         try container.encode(phone, forKey: .phone)
         try container.encode(email, forKey: .email)
@@ -495,6 +541,7 @@ struct ProfileDetailInsert: Encodable {
 }
 
 private struct ProfileDetailUpdate: Encodable {
+    let category: DetailCategory
     let label: String
     let value: String
     let status: String?

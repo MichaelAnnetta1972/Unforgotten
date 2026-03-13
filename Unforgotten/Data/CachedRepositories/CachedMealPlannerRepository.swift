@@ -102,7 +102,9 @@ final class CachedMealPlannerRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedMealPlannerRepo] Remote createRecipe failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -154,7 +156,9 @@ final class CachedMealPlannerRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedMealPlannerRepo] Remote updateRecipe failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -189,7 +193,9 @@ final class CachedMealPlannerRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedMealPlannerRepo] Remote deleteRecipe failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -327,7 +333,9 @@ final class CachedMealPlannerRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedMealPlannerRepo] Remote createPlannedMeal failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -381,7 +389,9 @@ final class CachedMealPlannerRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedMealPlannerRepo] Remote updatePlannedMeal failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -416,7 +426,9 @@ final class CachedMealPlannerRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedMealPlannerRepo] Remote deletePlannedMeal failed: \(error). Saving locally.")
+                #endif
             }
         }
 

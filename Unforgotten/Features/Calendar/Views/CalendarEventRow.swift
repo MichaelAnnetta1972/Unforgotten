@@ -12,6 +12,7 @@ struct CalendarEventRow: View {
     var showFullDetails: Bool = false
     var showDate: Bool = false
     var style: CalendarEventRowStyle = .filled
+    var multiDayCount: Int? = nil
 
     @Environment(\.appAccentColor) private var appAccentColor
 
@@ -77,6 +78,18 @@ struct CalendarEventRow: View {
                         }
                         .foregroundColor(.textSecondary)
                     }
+
+                    // Multi-day count pill (shown when collapsed)
+                    if let dayCount = multiDayCount, dayCount > 1 {
+                        Text("\(dayCount) days")
+                            .font(.appCaption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(appAccentColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(appAccentColor.opacity(0.15))
+                            .cornerRadius(AppDimensions.pillCornerRadius)
+                    }
                 }
             }
 
@@ -90,7 +103,7 @@ struct CalendarEventRow: View {
             }
         }
         .padding(AppDimensions.cardPadding)
-        .background(style == .filled ? Color.cardBackgroundSoft.opacity(0.4) : Color.clear)
+        .background(style == .filled ? Color.cardBackgroundLight.opacity(0.4) : Color.clear)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
                 .stroke(style == .outlined ? .white.opacity(0.2) : Color.clear, lineWidth: 1)

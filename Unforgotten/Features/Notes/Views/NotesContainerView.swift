@@ -176,6 +176,8 @@ struct iPadNotesView: View {
     }
 
     private func deleteNote(_ note: LocalNote) {
+        // Track deletion to prevent merge from re-creating this note
+        syncService.trackLocalDeletion(note.id)
         // Delete from Supabase if synced
         if let remoteId = note.supabaseId {
             Task {
@@ -183,6 +185,7 @@ struct iPadNotesView: View {
             }
         }
         modelContext.delete(note)
+        try? modelContext.save()
         if selectedNote?.id == note.id {
             selectedNote = nil
         }
@@ -305,14 +308,9 @@ struct NotesFeatureView: View {
     }
 
     var body: some View {
-        if isiPad {
-            // iPad: Use shared container from iPadRootView
-            NotesContainerView()
-        } else {
-            // iPhone: Create local container
-            NotesContainerView()
-                .modelContainer(for: LocalNote.self)
-        }
+        // Both iPad and iPhone: Use shared container from parent view
+        // (iPadRootView for iPad, IPhoneMainView for iPhone)
+        NotesContainerView()
     }
 }
 
@@ -380,7 +378,6 @@ struct AddNoteSheet: View {
         .background(Color.clear)
         .scrollContentBackground(.hidden)
         .containerBackground(.clear, for: .navigation)
-        .modelContainer(for: LocalNote.self)
     }
 }
 

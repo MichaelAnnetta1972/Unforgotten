@@ -100,20 +100,35 @@ struct RemoteNoteInsert: Encodable {
         case updatedAt = "updated_at"
     }
 
+    init(accountId: UUID, userId: String, localId: UUID, title: String, content: String?, contentPlainText: String, theme: String, isPinned: Bool, createdAt: Date, updatedAt: Date) {
+        self.accountId = accountId
+        self.userId = userId
+        self.localId = localId
+        self.title = title
+        self.content = content
+        self.contentPlainText = contentPlainText
+        self.theme = theme
+        self.isPinned = isPinned
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
     init(from note: LocalNote, userId: String) throws {
         guard let accountId = note.accountId else {
             throw NotesSyncError.missingAccountId
         }
-        self.accountId = accountId
-        self.userId = userId
-        self.localId = note.id
-        self.title = note.title
-        self.content = note.content.isEmpty ? nil : note.content.base64EncodedString()
-        self.contentPlainText = note.contentPlainText
-        self.theme = note.theme
-        self.isPinned = note.isPinned
-        self.createdAt = note.createdAt
-        self.updatedAt = note.updatedAt
+        self.init(
+            accountId: accountId,
+            userId: userId,
+            localId: note.id,
+            title: note.title,
+            content: note.content.isEmpty ? nil : note.content.base64EncodedString(),
+            contentPlainText: note.contentPlainText,
+            theme: note.theme,
+            isPinned: note.isPinned,
+            createdAt: note.createdAt,
+            updatedAt: note.updatedAt
+        )
     }
 }
 
@@ -150,13 +165,24 @@ struct RemoteNoteUpdate: Encodable {
         case updatedAt = "updated_at"
     }
 
+    init(title: String, content: String?, contentPlainText: String, theme: String, isPinned: Bool, updatedAt: Date) {
+        self.title = title
+        self.content = content
+        self.contentPlainText = contentPlainText
+        self.theme = theme
+        self.isPinned = isPinned
+        self.updatedAt = updatedAt
+    }
+
     init(from note: LocalNote) {
-        self.title = note.title
-        self.content = note.content.isEmpty ? nil : note.content.base64EncodedString()
-        self.contentPlainText = note.contentPlainText
-        self.theme = note.theme
-        self.isPinned = note.isPinned
-        self.updatedAt = note.updatedAt
+        self.init(
+            title: note.title,
+            content: note.content.isEmpty ? nil : note.content.base64EncodedString(),
+            contentPlainText: note.contentPlainText,
+            theme: note.theme,
+            isPinned: note.isPinned,
+            updatedAt: note.updatedAt
+        )
     }
 }
 
@@ -175,6 +201,10 @@ final class NotesSyncService: ObservableObject, NotesSyncServiceProtocol {
     // Debounce timer for batching sync requests
     private var syncDebounceTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval = 0.5
+
+    // Track recently deleted local IDs to prevent merge from re-creating them
+    // Static so deletions persist across view recreations (when @StateObject is re-created)
+    private static var recentlyDeletedLocalIds: Set<UUID> = []
 
     // MARK: - Sync Operations
 
@@ -259,6 +289,69 @@ final class NotesSyncService: ObservableObject, NotesSyncServiceProtocol {
         } else {
             updateDTO = nil
             insertDTO = try RemoteNoteInsert(from: note, userId: userId.uuidString)
+        }
+
+        // Perform sync immediately without debounce
+        try await performSyncWithoutCallback(
+            noteId: noteId,
+            remoteId: remoteId,
+            updateDTO: updateDTO,
+            insertDTO: insertDTO
+        )
+    }
+
+    /// Sync using pre-captured values (safe for use when SwiftData model context may be invalidated)
+    func syncImmediatelyWithValues(
+        noteId: UUID,
+        remoteId: String?,
+        accountId: UUID?,
+        title: String,
+        content: Data,
+        contentPlainText: String,
+        theme: String,
+        isPinned: Bool,
+        createdAt: Date,
+        updatedAt: Date
+    ) async throws {
+        // Cancel any pending debounced sync since we're doing an immediate sync
+        syncDebounceTask?.cancel()
+
+        // Get userId now while we're on main actor
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            throw NotesSyncError.notAuthenticated
+        }
+
+        // Create DTOs from captured values (no SwiftData access needed)
+        let updateDTO: RemoteNoteUpdate?
+        let insertDTO: RemoteNoteInsert?
+
+        if remoteId != nil {
+            updateDTO = RemoteNoteUpdate(
+                title: title,
+                content: content.isEmpty ? nil : content.base64EncodedString(),
+                contentPlainText: contentPlainText,
+                theme: theme,
+                isPinned: isPinned,
+                updatedAt: updatedAt
+            )
+            insertDTO = nil
+        } else {
+            guard let accountId = accountId else {
+                throw NotesSyncError.missingAccountId
+            }
+            updateDTO = nil
+            insertDTO = RemoteNoteInsert(
+                accountId: accountId,
+                userId: userId.uuidString,
+                localId: noteId,
+                title: title,
+                content: content.isEmpty ? nil : content.base64EncodedString(),
+                contentPlainText: contentPlainText,
+                theme: theme,
+                isPinned: isPinned,
+                createdAt: createdAt,
+                updatedAt: updatedAt
+            )
         }
 
         // Perform sync immediately without debounce
@@ -386,6 +479,11 @@ final class NotesSyncService: ObservableObject, NotesSyncServiceProtocol {
         return notes
     }
 
+    /// Track a local note ID as recently deleted so merge won't re-create it
+    func trackLocalDeletion(_ localId: UUID) {
+        NotesSyncService.recentlyDeletedLocalIds.insert(localId)
+    }
+
     /// Delete a note from remote
     func deleteRemote(id: String) async throws {
         // Soft delete by setting deleted_at
@@ -403,6 +501,9 @@ final class NotesSyncService: ObservableObject, NotesSyncServiceProtocol {
         for remote in remoteNotes {
             // Skip deleted notes
             if remote.deletedAt != nil { continue }
+
+            // Skip notes that were recently deleted locally (remote soft-delete may still be in flight)
+            if NotesSyncService.recentlyDeletedLocalIds.contains(remote.localId) { continue }
 
             // Find local note by local_id
             let descriptor = FetchDescriptor<LocalNote>(

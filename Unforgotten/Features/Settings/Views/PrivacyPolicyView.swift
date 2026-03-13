@@ -220,19 +220,47 @@ struct PrivacyPolicyPanelContent: View {
     private var privacyContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             PolicySection(title: "Introduction") {
-                Text("Unforgotten (\"we\", \"our\", or \"us\") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application.")
+                Text("Unforgotten (“we”, “our”, or “us”) is committed to protecting your privacy and handling your personal information responsibly.")
+                Text("This Privacy Policy explains how we collect, use, store, and protect your information when you use the Unforgotten mobile application (“App”) and related services.")
+                Text("By using the App, you agree to the collection and use of information in accordance with this Privacy Policy.")
+
             }
 
             PolicySection(title: "Information We Collect") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("We collect information that you provide directly to us, including:")
+                    Text("We collect information that you provide directly when using the App. This may include:")
+                    .font(.appBodyMedium)
 
-                    BulletPoint("Account information (email address, password)")
-                    BulletPoint("Profile information (names, birthdays, photos)")
-                    BulletPoint("Health-related information (medications, appointments)")
-                    BulletPoint("Contact information for useful contacts")
-                    BulletPoint("Mood tracking entries")
+                    Text("Account Information")
+                    .font(.appBodyMedium)
+                    BulletPoint("Email address")
+                    BulletPoint("Login credentials")
+                    BulletPoint("Subscription status")
+            
+                    Text("Profile and Contact Information")
+                    .font(.appBodyMedium)
+                    BulletPoint("Names of individuals you create profiles for")
+                    BulletPoint("Birthdays or important dates")
+                    BulletPoint("Photos you upload")
+                    BulletPoint("Contact details for useful contacts (such as doctors, family members, or service providers)")
+
+                    Text("Personal Organisation Information")
+                    .font(.appBodyMedium)
+                    BulletPoint("Tasks and to-do lists")
                     BulletPoint("Notes and reminders")
+                    BulletPoint("Calendar events and appointments")        
+                    BulletPoint("Sticky reminders and other organisational information")        
+
+                    
+                    Text("Health-Related Information (Optional)")
+                    .font(.appBodyMedium)
+                    BulletPoint("Medication reminders")
+                    BulletPoint("Health-related notes")
+                    BulletPoint("Appointment tracking")
+                    
+                    Text("This information is used solely to provide the features of the App.")
+                    Text("Users may choose to store information about themselves or about other individuals (such as family members). You are responsible for ensuring you have permission to store information about others.")
+
                 }
             }
 
@@ -240,55 +268,104 @@ struct PrivacyPolicyPanelContent: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("We use the information we collect to:")
 
-                    BulletPoint("Provide, maintain, and improve our services")
-                    BulletPoint("Process transactions and send related information")
-                    BulletPoint("Send you technical notices and support messages")
-                    BulletPoint("Respond to your comments and questions")
-                    BulletPoint("Enable family sharing features")
-                    BulletPoint("Send medication and appointment reminders")
+                    BulletPoint("Provide, maintain, and improve the App")
+                    BulletPoint("Enable organisational features such as reminders, tasks, and calendars")
+                    BulletPoint("Enable profile management and contact storage")
+                    BulletPoint("Support shared access and family collaboration features")
+                    BulletPoint("Process subscriptions and payments")
+                    BulletPoint("Send service-related notifications such as reminders or account notices")
+                    BulletPoint("Respond to support requests and user inquiries")
+                    BulletPoint("Maintain the security and reliability of the App")
+                    Text("We do not sell your personal data.")
+
+                }
+            }
+
+            PolicySection(title: "Family Sharing and Shared Access") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("The App may allow you to invite other users to access shared profiles or information. When you share access:")
+
+                    BulletPoint("Other invited users may be able to view or edit shared information depending on their role or permissions.")
+                    BulletPoint("You control who is invited and can remove access at any time.")
+                    Text("You should only share access with individuals you trust.")
+
                 }
             }
 
             PolicySection(title: "Data Storage and Security") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Your data is stored securely using industry-standard encryption and security measures. We use Supabase as our backend provider, which implements:")
+                    Text("We take reasonable measures to protect your information.")
+                    Text("Data is stored securely using industry-standard security practices. Our backend infrastructure is provided by Supabase, which implements security measures including:")
 
-                    BulletPoint("End-to-end encryption for data in transit")
-                    BulletPoint("Encryption at rest for stored data")
-                    BulletPoint("Row-level security policies")
-                    BulletPoint("Regular security audits")
+                    BulletPoint("Encryption of data in transit")
+                    BulletPoint("Encryption of stored data")
+                    BulletPoint("Role-based access controls and row-level security")
+                    BulletPoint("Secure server infrastructure")
+                    Text("While we take reasonable steps to protect your information, no system can guarantee absolute security.")
+
                 }
             }
+            
+            PolicySection(title: "Family Sharing and Shared Access") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("The App may allow you to invite other users to access shared profiles or information. When you share access:")
 
+                    BulletPoint("Other invited users may be able to view or edit shared information depending on their role or permissions.")
+                    BulletPoint("You control who is invited and can remove access at any time.")
+                    Text("You should only share access with individuals you trust.")
+
+                }
+            }           
+            
             PolicySection(title: "Data Sharing") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("We do not sell your personal information. We may share your information only in the following circumstances:")
+                    Text("We do not sell or rent your personal information.")
+                    Text("We may share information only in the following limited circumstances:")
+                    Text("With Users You Invite")
+                    .font(.appBodyMedium)
+                    Text("Information may be shared with family members or other users whom you explicitly invite to access shared profiles or information.")
+                    Text("With Service Providers")
+                    .font(.appBodyMedium)
+                    Text("We may use trusted third-party providers (such as cloud infrastructure providers) to operate and maintain the App.")
+                    Text("Legal Requirements")
+                    .font(.appBodyMedium)
+                    Text("We may disclose information if required to do so by law or in response to valid legal requests.")
+                    Text("Protection of Rights")
+                    .font(.appBodyMedium)
+                    Text("We may disclose information where necessary to protect the rights, safety, or integrity of the App or its users.")
 
-                    BulletPoint("With family members you explicitly invite to share your account")
-                    BulletPoint("With service providers who assist in our operations")
-                    BulletPoint("To comply with legal obligations")
-                    BulletPoint("To protect our rights and safety")
+
                 }
             }
-
+            PolicySection(title: "Data Retention") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("We retain your information for as long as your account remains active.")
+                    Text("If you delete your account, your personal data will be deleted or anonymized within a reasonable period unless we are legally required to retain certain information.")
+                }
+            }
+            
             PolicySection(title: "Your Rights") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("You have the right to:")
 
-                    BulletPoint("Access your personal data")
+                    BulletPoint("Access the personal data associated with your account")
                     BulletPoint("Correct inaccurate data")
                     BulletPoint("Delete your account and associated data")
-                    BulletPoint("Export your data")
-                    BulletPoint("Withdraw consent for optional processing")
+                    BulletPoint("Export your stored data where technically feasible")
+                    BulletPoint("Withdraw consent for optional features")
+                    Text("You can manage most of your data directly within the App.")
+
                 }
             }
 
             PolicySection(title: "Children's Privacy") {
-                Text("Unforgotten is not intended for children under 13. We do not knowingly collect personal information from children under 13. If you believe we have collected such information, please contact us immediately.")
+                Text("The App is not intended for children under the age of 13.")
+                Text("We do not knowingly collect personal information from children under 13. If you believe that a child has provided personal information through the App, please contact us and we will promptly remove such information.")
+
             }
 
             PolicySection(title: "Changes to This Policy") {
-                Text("We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the \"Last updated\" date.")
+                Text("We may update this Privacy Policy from time to time. When changes are made, the “Last Updated” date at the top of this document will be revised. Continued use of the App after updates indicates acceptance of the revised policy.")
             }
 
             PolicySection(title: "Contact Us") {
@@ -296,7 +373,7 @@ struct PrivacyPolicyPanelContent: View {
                     Text("If you have questions about this Privacy Policy, please contact us at:")
 
                     Link("support@unforgottenapp.com", destination: URL(string: "mailto:support@unforgottenapp.com")!)
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(.white)
 
                     Link("View full policy online", destination: URL(string: "https://unforgottenapp.com/privacy")!)
                         .font(.appCaption)

@@ -35,6 +35,9 @@ struct CountdownDetailView: View {
             return "Today!"
         } else if days == 1 {
             return "Tomorrow"
+        } else if days < 0 {
+            let absDays = abs(days)
+            return absDays == 1 ? "1 day ago" : "\(absDays) days ago"
         } else {
             return "In \(days) days"
         }
@@ -256,10 +259,37 @@ struct CountdownDetailView: View {
 
             VStack(alignment: .leading, spacing: 4) {
 
-                Text(countdown.title)
-                    .font(.appTitle)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(2)
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text(countdown.title)
+                        .font(.appTitle)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(2)
+
+                    // Recurring badge
+                    if countdown.isRecurring {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.trianglehead.2.counterclockwise.rotate.90")
+                                .font(.system(size: 12))
+                            Text(countdown.recurrenceDescription ?? "Recurring")
+                                .font(.appCaption)
+                        }
+                        .foregroundColor(.textSecondary)
+                    }
+
+                    if isSharedByMe || isSharedFromOtherAccount {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 10))
+                            Text("Shared")
+                                .font(.appCaption)
+                        }
+                        .foregroundColor(appAccentColor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(appAccentColor.opacity(0.15))
+                        .cornerRadius(12)
+                    }
+                }
 
                 if let subtitle = countdown.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
@@ -281,37 +311,8 @@ struct CountdownDetailView: View {
                 Text(countdown.formattedDateShort)
                     .font(.appBody)
                     .foregroundColor(.textSecondary)
-            }
+            }   
 
-            Spacer()
-
-            VStack(spacing: 8) {
-                // Recurring badge
-                if countdown.isRecurring {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.trianglehead.2.counterclockwise.rotate.90")
-                            .font(.system(size: 12))
-                        Text("Recurring")
-                            .font(.appCaption)
-                    }
-                    .foregroundColor(.textSecondary)
-                }
-
-                // Shared badge
-                if isSharedByMe || isSharedFromOtherAccount {
-                    HStack(spacing: 4) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 10))
-                        Text("Shared")
-                            .font(.appCaption)
-                    }
-                    .foregroundColor(appAccentColor)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(appAccentColor.opacity(0.15))
-                    .cornerRadius(12)
-                }
-            }
         }
         .padding(AppDimensions.cardPaddingLarge)
         .background(Color.cardBackground)
@@ -321,9 +322,9 @@ struct CountdownDetailView: View {
     // MARK: - Details Card
     private var detailsCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Details")
-                .font(.appCardTitle)
-                .foregroundColor(.textPrimary)
+            Text("DETAILS")
+                .font(.appCaption)
+                .foregroundColor(appAccentColor)
 
             // Type
             HStack {
@@ -484,9 +485,9 @@ struct CountdownDetailView: View {
     // MARK: - Photo Card
     private func photoCard(url: URL) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Photo")
-                .font(.appCardTitle)
-                .foregroundColor(.textPrimary)
+            Text("PHOTO")
+                .font(.appCaption)
+                .foregroundColor(appAccentColor)
 
             Button {
                 showFullscreenPhoto = true

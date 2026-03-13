@@ -38,11 +38,10 @@
     <!-- Apple Smart Banner -->
     <meta name="apple-itunes-app" content="app-id=YOUR_APP_ID">
 
-    <!-- Favicon (add these files before deployment) -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-    <!-- <link rel="manifest" href="site.webmanifest"> -->
     <meta name="theme-color" content="#E8A02A">
 
     <!-- Fonts -->
@@ -52,9 +51,6 @@
 
     <!-- Stylesheet -->
     <link rel="stylesheet" href="styles.css">
-
-    <!-- Lucide Icons (loaded with defer to not block rendering) -->
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
 
     <!-- Structured Data - Organization -->
     <script type="application/ld+json">
@@ -183,7 +179,7 @@
     </script>
 </head>
 <body>
-    <!-- Floating Navigation -->
+    <!-- Navigation -->
     <nav class="nav" id="nav" role="navigation" aria-label="Main navigation">
         <div class="nav-container">
             <a href="#" class="nav-logo" aria-label="Unforgotten Home">
@@ -191,13 +187,10 @@
             </a>
             <div class="nav-links">
                 <a href="#features">Features</a>
-                <a href="#screenshots">Screenshots</a>
-                <a href="#how-it-works">How It Works</a>
-                <a href="#testimonials">Stories</a>
                 <a href="#pricing">Pricing</a>
-                <a href="contact.html">Contact</a>
+                <a href="#faq">FAQ</a>
             </div>
-            <a href="#download" class="nav-cta">Download Free</a>
+            <a href="#download" class="nav-cta">Download</a>
             <button class="nav-mobile-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
                 <span></span>
                 <span></span>
@@ -209,166 +202,52 @@
     <div class="mobile-menu" id="mobileMenu" role="dialog" aria-modal="true" aria-label="Mobile navigation">
         <div class="mobile-menu-content">
             <a href="#features">Features</a>
-            <a href="#screenshots">Screenshots</a>
-            <a href="#how-it-works">How It Works</a>
-            <a href="#testimonials">Stories</a>
             <a href="#pricing">Pricing</a>
-            <a href="contact.html">Contact</a>
-            <a href="#download" class="mobile-cta">Download Free</a>
+            <a href="#faq">FAQ</a>
+            <a href="#download" class="mobile-cta">Download</a>
         </div>
     </div>
 
     <!-- Hero Section -->
-    <header class="hero">
-        <div class="hero-bg">
-            <div class="hero-gradient"></div>
-            <div class="hero-shapes">
-                <div class="shape shape-1"></div>
-                <div class="shape shape-2"></div>
-                <div class="shape shape-3"></div>
-            </div>
-        </div>
-
+    <header class="hero" id="hero">
         <div class="hero-content">
-            <div class="hero-text">
-                <p class="hero-eyebrow">For families who care</p>
-                <h1 class="hero-title">
-                    Keep what matters
-                    <span class="title-accent">close</span>
-                </h1>
-                <p class="hero-subtitle">
-                    Unforgotten is a simple, secure way to keep track of your life.
-                    Track medications, appointments, birthdays, and precious details—all in one
-                    beautiful, accessible app designed for the whole family.                </p>
-                <p class="hero-subtitle">
-                    Whether you’re managing a busy family, supporting someone you love, or just want a smarter way to stay organised.
-                    Unforgotten helps everything stay in one place.
-                </p>
-                <p class="hero-subtitle">
-                    Remember more. Stress less. Live freely.
-                </p>
-                <div class="hero-actions">
-                    <a href="#download" class="btn btn-primary" aria-label="Download Unforgotten for iOS">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/>
-                            <path d="M12 16V8M8 12l4 4 4-4"/>
-                        </svg>
-                        Download for iOS
-                    </a>
-                    <a href="#how-it-works" class="btn btn-secondary">
-                        See How It Works
-                    </a>
-                </div>
-                <div class="hero-trust">
-                    <div class="trust-stars" aria-label="5 out of 5 stars">★★★★★</div>
-                    <p>Trusted by <strong>10,000+</strong> families</p>
-                </div>
-            </div>
-
-            <div class="hero-visual">
-                <div class="phone-mockup">
-                    <div class="phone-frame">
-                        <div class="phone-screen">
-                            <!-- Video plays inside the phone screen with rounded corners mask -->
-                            <video
-                                class="phone-video"
-                                autoplay
-                                muted
-                                loop
-                                playsinline
-                                preload="auto"
-                            >
-                                <source src="assets/app-demo.mp4" type="video/mp4">
-                            </video>
-                            <!-- Fallback content shown if video fails to load -->
-                            <div class="phone-screen-fallback">
-                                <div class="screen-header">
-                                    <span class="screen-time">9:41</span>
-                                </div>
-                                <div class="screen-content">
-                                    <div class="app-greeting">Good morning, Sarah</div>
-                                    <div class="app-card today-card">
-                                        <div class="card-label">Today</div>
-                                        <div class="card-items">
-                                            <div class="card-item med-item">
-                                                <span class="item-icon">💊</span>
-                                                <span class="item-text">Metformin — 8:00 AM</span>
-                                                <span class="item-status taken">✓</span>
-                                            </div>
-                                            <div class="card-item appt-item">
-                                                <span class="item-icon">🏥</span>
-                                                <span class="item-text">Dr. Chen — 2:30 PM</span>
-                                            </div>
-                                            <div class="card-item bday-item">
-                                                <span class="item-icon">🎂</span>
-                                                <span class="item-text">Mom's Birthday!</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="app-nav">
-                                        <div class="nav-item active">
-                                            <span class="nav-icon">🏠</span>
-                                            <span>Home</span>
-                                        </div>
-                                        <div class="nav-item">
-                                            <span class="nav-icon">👥</span>
-                                            <span>Family</span>
-                                        </div>
-                                        <div class="nav-item">
-                                            <span class="nav-icon">💊</span>
-                                            <span>Meds</span>
-                                        </div>
-                                        <div class="nav-item">
-                                            <span class="nav-icon">⚙️</span>
-                                            <span>Settings</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="phone-glow"></div>
-                </div>
-            </div>
+            <h1 class="hero-brand">Unforgotten</h1>
+            <p class="hero-tagline">Because the important things in life should be unforgettable</p>
+            <a href="#download" class="hero-cta">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+                Download for iOS
+            </a>
         </div>
-
-        <div class="hero-scroll">
-            <span>Scroll to explore</span>
-            <div class="scroll-line"></div>
+        <div class="hero-phones-wrapper" id="heroPhonesWrapper">
+            <div class="hero-phones" id="heroPhones">
+                <div class="hero-phone"><img src="assets/screenshots/iphone/iphone-01.png" alt="Unforgotten home screen" loading="lazy"></div>
+                <div class="hero-phone"><img src="assets/screenshots/iphone/iphone-02.png" alt="Unforgotten medications" loading="lazy"></div>
+                <div class="hero-phone"><img src="assets/screenshots/iphone/iphone-03.png" alt="Unforgotten profiles" loading="eager"></div>
+                <div class="hero-phone"><img src="assets/screenshots/iphone/iphone-04.png" alt="Unforgotten appointments" loading="lazy"></div>
+                <div class="hero-phone"><img src="assets/screenshots/iphone/iphone-05.png" alt="Unforgotten contacts" loading="lazy"></div>
+            </div>
         </div>
     </header>
 
-    <!-- Problem/Solution Section -->
-    <section class="problem-section" aria-labelledby="problem-title">
+    <!-- Showcase Section -->
+    <section class="showcase-section reveal" id="showcase">
         <div class="container">
-            <div class="problem-grid">
-                <div class="problem-text">
-                    <h2 id="problem-title" class="section-title">
-                        What is <em>Unforgotten</em>?
-                    </h2>
-                    <p class="section-body">
-                        Unforgotten started as a tool to help people who struggle with memory — but it quickly became something more.
-                        Today, it’s a personal life management app designed for anyone who wants clarity, organisation, and peace of mind.
-                    </p>
-                    <p class="section-body">
-                        <strong>Unforgotten brings it all together</strong>—one app that the whole family
-                        can access, whether you're the primary caregiver or helping from across the country.
-                    </p>
-
-                    </article>
+            <div class="showcase-grid">
+                <div class="showcase-text">
+                    <h2>Keep what matters close</h2>
+                    <p>Unforgotten is a simple, secure way to keep track of your life. Track medications, appointments, birthdays, and precious details about the people who matter most — all in one beautiful, accessible app designed for the whole family.</p>
+                    <p>Whether you're a full-time caregiver, a family member supporting someone you love, or just want a place to keep life's important details organised, Unforgotten was made for you.</p>
+                    <div class="showcase-thumbnails">
+                        <img class="showcase-thumbnail" src="assets/screenshots/iphone/iphone-06.png" alt="App feature screenshot">
+                        <img class="showcase-thumbnail" src="assets/screenshots/iphone/iphone-07.png" alt="App feature screenshot">
+                        <img class="showcase-thumbnail" src="assets/screenshots/iphone/iphone-08.png" alt="App feature screenshot">
+                    </div>
                 </div>
-                <div class="problem-stats">
-                    <div class="stat">
-                        <span class="stat-number">Seniors</span>
-                        <span class="stat-label">Stay independent with gentle reminders for medications, appointments, and daily routines — all in a simple, easy-to-use app, with optional family support when needed.</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-number">Families</span>
-                        <span class="stat-label">Keep everyone organised in one shared place. Manage profiles, important dates, reminders, and key information for the people who matter most.</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-number">Individuals</span>
-                        <span class="stat-label">A calm, personal organiser for modern life. Capture tasks, reminders, and important details in one place — and free your mind from mental clutter.</span>
+                <div class="showcase-phone">
+                    <div class="showcase-phone-frame">
+                        <img src="assets/screenshots/iphone/iphone-09.png" alt="Unforgotten app on iPhone">
                     </div>
                 </div>
             </div>
@@ -376,420 +255,176 @@
     </section>
 
     <!-- Features Section -->
-    <section class="features-section" id="features" aria-labelledby="features-title">
+    <section class="features-section section reveal" id="features">
         <div class="container">
-            <div class="section-header">
-                <p class="section-eyebrow">Everything you need</p>
-                <h2 id="features-title" class="section-title">One app. Infinite peace of mind.</h2>
+            <div class="features-header">
+                <h2>Make sure you never forget a thing</h2>
+                <p>Unforgotten is a simple, secure way to keep track of your life. Track medications, appointments, birthdays, and more — all in one beautifully accessible app designed for the entire family.</p>
             </div>
-
-            <div class="features-grid">
-                <article class="feature-card feature-large">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="pill"></i>
+            <div class="features-grid reveal-stagger">
+                <!-- Calendar -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     </div>
-                    <h3>Medication Management</h3>
-                    <p>Track every medication with schedules, dosages, and reminders. Log when doses are taken, missed, or skipped. Get alerts so nothing falls through the cracks.</p>
-                    <div class="feature-visual med-visual">
-                        <div class="med-item-demo">
-                            <div class="med-pill"></div>
-                            <div class="med-info">
-                                <span class="med-name">Metformin 500mg</span>
-                                <span class="med-time">Next: 2:00 PM</span>
-                            </div>
-                            <button class="med-take" aria-label="Mark medication as taken">Take</button>
-                        </div>
-                    </div>
-                </article>
-
-                <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="heart-handshake"></i>
-                    </div>
-                    <h3>Family Profiles</h3>
-                    <p>Build rich profiles for everyone important. Track relationships, birthdays, preferences, and those special details that matter most.</p>
-                </article>
-
-                <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="calendar-check"></i>
-                    </div>
-                    <h3>Appointments</h3>
-                    <p>Never miss a doctor visit, therapy session, or important meeting. Set reminders and see everything at a glance.</p>
-                </article>
-
-                <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="cake"></i>
-                    </div>
-                    <h3>Birthdays & Dates</h3>
-                    <p>Keep track of birthdays, anniversaries, and special occasions. Unforgotten reminds you so your loved one can celebrate too.</p>
-                </article>
-
-                <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="contact"></i>
-                    </div>
-                    <h3>Useful Contacts</h3>
-                    <p>Store doctors, pharmacies, emergency contacts, and service providers. Everything your family needs, one tap away.</p>
-                </article>
-
-                <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="smile"></i>
-                    </div>
-                    <h3>Mood Tracking</h3>
-                    <p>Log daily moods to spot patterns and share insights with healthcare providers. Understand trends over time.</p>
-                </article>
-
-                <article class="feature-card">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="sticky-note"></i>
-                    </div>
-                    <h3>Notes & Reminders</h3>
-                    <p>Capture important information, create to-do lists, and set sticky reminders that repeat until acknowledged.</p>
-                </article>
-
-                <article class="feature-card feature-highlight">
-                    <div class="feature-icon" aria-hidden="true">
-                        <i data-lucide="users"></i>
-                    </div>
-                    <h3>Family Collaboration</h3>
-                    <p>Invite family members with different roles—owners, admins, helpers, or viewers. Everyone stays in sync, no matter where they are.</p>
-                    <div class="role-badges">
-                        <span class="role-badge owner">Owner</span>
-                        <span class="role-badge admin">Admin</span>
-                        <span class="role-badge helper">Helper</span>
-                        <span class="role-badge viewer">Viewer</span>
-                    </div>
-                </article>
-            </div>
-        </div>
-    </section>
-
-    <!-- App Screenshots Gallery Section -->
-    <section class="gallery-section" id="screenshots" aria-labelledby="gallery-title">
-        <div class="container">
-            <div class="gallery-header">
-                <p class="section-eyebrow">See it in action</p>
-                <h2 id="gallery-title" class="section-title">Beautiful on iPhone and iPad</h2>
-                <div class="gallery-tabs" role="tablist">
-                    <button class="gallery-tab active" data-target="iphone" role="tab" aria-selected="true" aria-controls="iphone-gallery">iPhone</button>
-                    <button class="gallery-tab" data-target="ipad" role="tab" aria-selected="false" aria-controls="ipad-gallery">iPad</button>
+                    <span class="feature-label">Calendar</span>
                 </div>
-            </div>
-
-            <!-- Gallery Navigation Wrapper -->
-            <div class="gallery-wrapper">
-                <button class="gallery-nav gallery-nav-prev" aria-label="Scroll left" type="button">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                </button>
-
-                <!-- iPhone Screenshots -->
-                <div class="gallery-track" data-device="iphone" id="iphone-gallery" role="tabpanel" aria-label="iPhone screenshots">
-                <!-- iPhone Screenshot 1 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-01.png" alt="Unforgotten iPhone Home Screen" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Family Profiles -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     </div>
-                    <p class="gallery-label">Home Dashboard</p>
+                    <span class="feature-label">Family Profiles</span>
                 </div>
-
-                <!-- iPhone Screenshot 2 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-02.png" alt="Unforgotten iPhone Medications" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Appointments -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M9 16l2 2 4-4"/></svg>
                     </div>
-                    <p class="gallery-label">Medication Tracking</p>
+                    <span class="feature-label">Appointments</span>
                 </div>
-
-                <!-- iPhone Screenshot 3 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-03.png" alt="Unforgotten iPhone Family Profiles" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Events -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                     </div>
-                    <p class="gallery-label">Family Profiles</p>
+                    <span class="feature-label">Events</span>
                 </div>
-
-                <!-- iPhone Screenshot 4 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-04.png" alt="Unforgotten iPhone Appointments" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Contacts -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                     </div>
-                    <p class="gallery-label">Appointments</p>
+                    <span class="feature-label">Contacts</span>
                 </div>
-
-                <!-- iPhone Screenshot 5 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-05.png" alt="Unforgotten iPhone Birthdays" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- To Do Lists -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                     </div>
-                    <p class="gallery-label">Birthdays</p>
+                    <span class="feature-label">To Do Lists</span>
                 </div>
-
-                <!-- iPhone Screenshot 6 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-06.png" alt="Unforgotten iPhone Contacts" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Reminders -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                     </div>
-                    <p class="gallery-label">Useful Contacts</p>
+                    <span class="feature-label">Reminders</span>
                 </div>
-
-                <!-- iPhone Screenshot 7 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-07.png" alt="Unforgotten iPhone Mood Tracker" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Birthdays -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M12 2v1"/><path d="M12 0.5a0.5 0.5 0 0 1 0 1a0.5 0.5 0 0 1 0-1" fill="currentColor" stroke="none"/></svg>
                     </div>
-                    <p class="gallery-label">Mood Tracking</p>
+                    <span class="feature-label">Birthdays</span>
                 </div>
-
-                <!-- iPhone Screenshot 8 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-08.png" alt="Unforgotten iPhone Notes" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Meal Planner -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
                     </div>
-                    <p class="gallery-label">Notes & Reminders</p>
+                    <span class="feature-label">Meal Planner</span>
                 </div>
-
-                <!-- iPhone Screenshot 9 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-09.png" alt="Unforgotten iPhone Profile Detail" class="screenshot-img" loading="lazy">
-                        </div>
+                <!-- Medications -->
+                <div class="feature-item">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24"><path d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 16.5h3" stroke-width="1.5"/></svg>
                     </div>
-                    <p class="gallery-label">Profile Details</p>
-                </div>
-
-                <!-- iPhone Screenshot 10 -->
-                <div class="gallery-item gallery-phone">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/iphone/iphone-10.png" alt="Unforgotten iPhone Settings" class="screenshot-img" loading="lazy">
-                        </div>
-                    </div>
-                    <p class="gallery-label">Settings</p>
-                </div>
-            </div>
-
-            <!-- iPad Screenshots -->
-            <div class="gallery-track" data-device="ipad" id="ipad-gallery" role="tabpanel" aria-label="iPad screenshots" style="display: none;">
-                <!-- iPad Screenshot 1 -->
-                <div class="gallery-item gallery-ipad">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/ipad/ipad-01.png" alt="Unforgotten iPad Home Screen" class="screenshot-img" loading="lazy">
-                        </div>
-                    </div>
-                    <p class="gallery-label">iPad Home</p>
-                </div>
-
-                <!-- iPad Screenshot 2 -->
-                <div class="gallery-item gallery-ipad">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/ipad/ipad-02.png" alt="Unforgotten iPad Family View" class="screenshot-img" loading="lazy">
-                        </div>
-                    </div>
-                    <p class="gallery-label">Family Profiles</p>
-                </div>
-
-                <!-- iPad Screenshot 3 -->
-                <div class="gallery-item gallery-ipad">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/ipad/ipad-03.png" alt="Unforgotten iPad Medications" class="screenshot-img" loading="lazy">
-                        </div>
-                    </div>
-                    <p class="gallery-label">Medications Split View</p>
-                </div>
-
-                <!-- iPad Screenshot 4 -->
-                <div class="gallery-item gallery-ipad">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/ipad/ipad-04.png" alt="Unforgotten iPad Appointments" class="screenshot-img" loading="lazy">
-                        </div>
-                    </div>
-                    <p class="gallery-label">Appointments</p>
-                </div>
-
-                <!-- iPad Screenshot 5 -->
-                <div class="gallery-item gallery-ipad">
-                    <div class="gallery-frame">
-                        <div class="gallery-screen">
-                            <img src="assets/screenshots/ipad/ipad-05.png" alt="Unforgotten iPad Settings" class="screenshot-img" loading="lazy">
-                        </div>
-                    </div>
-                    <p class="gallery-label">Settings</p>
-                </div>
-            </div>
-
-                <button class="gallery-nav gallery-nav-next" aria-label="Scroll right" type="button">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- How It Works Section -->
-    <section class="how-section" id="how-it-works" aria-labelledby="how-title">
-        <div class="container">
-            <div class="section-header">
-                <p class="section-eyebrow">Simple to start</p>
-                <h2 id="how-title" class="section-title">Up and running in minutes</h2>
-            </div>
-
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h3>Create your account</h3>
-                        <p>Sign up with email, Apple ID, or a magic link. No passwords to remember if you don't want them.</p>
-                    </div>
-                </div>
-
-                <div class="step-line" aria-hidden="true"></div>
-
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <div class="step-content">
-                        <h3>Add your loved one</h3>
-                        <p>Create a profile for the person you're caring for. Add their details, medications, and important dates.</p>
-                    </div>
-                </div>
-
-                <div class="step-line" aria-hidden="true"></div>
-
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <div class="step-content">
-                        <h3>Invite your family</h3>
-                        <p>Share access with siblings, caregivers, or anyone who helps. Everyone sees the same up-to-date information.</p>
-                    </div>
-                </div>
-
-                <div class="step-line" aria-hidden="true"></div>
-
-                <div class="step">
-                    <div class="step-number">4</div>
-                    <div class="step-content">
-                        <h3>Stay connected</h3>
-                        <p>Unforgotten keeps everyone in the loop. Updates sync instantly. Important moments are never missed.</p>
-                    </div>
+                    <span class="feature-label">Medications</span>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Designed For Section -->
-    <section class="designed-section" aria-labelledby="designed-title">
+    <!-- Device Section -->
+    <section class="device-section section reveal" id="devices">
         <div class="container">
-            <div class="designed-grid">
-                <div class="designed-text">
-                    <p class="section-eyebrow">Thoughtfully crafted</p>
-                    <h2 id="designed-title" class="section-title">Designed for real life</h2>
-                    <ul class="designed-list">
-                        <li>
-                            <span class="check" aria-hidden="true">✓</span>
-                            <span><strong>Large touch targets</strong> for older adults and those with dexterity challenges</span>
-                        </li>
-                        <li>
-                            <span class="check" aria-hidden="true">✓</span>
-                            <span><strong>High contrast dark theme</strong> that's easy on the eyes</span>
-                        </li>
-                        <li>
-                            <span class="check" aria-hidden="true">✓</span>
-                            <span><strong>Works on iPhone and iPad</strong> with adaptive layouts</span>
-                        </li>
-                        <li>
-                            <span class="check" aria-hidden="true">✓</span>
-                            <span><strong>Offline-capable</strong> with automatic sync when connected</span>
-                        </li>
-                        <li>
-                            <span class="check" aria-hidden="true">✓</span>
-                            <span><strong>Customizable appearance</strong> with multiple header styles and accent colors</span>
-                        </li>
-                        <li>
-                            <span class="check" aria-hidden="true">✓</span>
-                            <span><strong>Secure and private</strong> with row-level data protection</span>
-                        </li>
-                    </ul>
+            <div class="device-header">
+                <h2>Great on iPhone and iPad</h2>
+                <p>We all work differently and all prefer different devices, so we've made sure Unforgotten is a truly beautiful app that you'll love to use on each one.</p>
+            </div>
+            <div class="device-toggles">
+                <button class="device-toggle active" data-device="iphone">iPhone</button>
+                <button class="device-toggle" data-device="ipad">iPad</button>
+            </div>
+            <div class="device-video-container">
+                <div class="device-frame device-frame--iphone" id="iphoneFrame">
+                    <video muted loop playsinline preload="auto" id="iphoneVideo">
+                        <source src="assets/app-demo.mp4" type="video/mp4">
+                    </video>
                 </div>
-                <div class="designed-visual">
-                    <div class="designed-phone-mockup">
-                        <div class="designed-phone-frame">
-                            <div class="designed-phone-screen">
-                                <img src="assets/screenshots/designed-iphone.png" alt="Unforgotten app showing accessibility features" class="designed-screenshot" loading="lazy">
-                            </div>
-                        </div>
-                        <div class="designed-phone-glow"></div>
-                    </div>
+                <div class="device-frame device-frame--ipad hidden" id="ipadFrame">
+                    <video muted loop playsinline preload="auto" id="ipadVideo">
+                        <source src="assets/app-demo.mp4" type="video/mp4">
+                    </video>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- Testimonials Section -->
-    <section class="testimonials-section" id="testimonials" aria-labelledby="testimonials-title">
+    <section class="testimonials-section section reveal" id="testimonials">
         <div class="container">
-            <div class="section-header">
-                <p class="section-eyebrow">Real families</p>
-                <h2 id="testimonials-title" class="section-title">Stories from caregivers like you</h2>
+            <div class="testimonials-header">
+                <h2>Stories from caregivers like you</h2>
             </div>
-
-            <div class="testimonials-grid">
+            <div class="testimonials-grid reveal-stagger">
                 <article class="testimonial-card">
-                    <blockquote class="testimonial-content">
-                        <p>"After Mom's diagnosis, I was drowning in sticky notes and spreadsheets. Unforgotten changed everything. Now my sister in California and I are finally on the same page."</p>
-                    </blockquote>
-                    <div class="testimonial-author">
-                        <div class="author-avatar">JM</div>
-                        <div class="author-info">
-                            <span class="author-name">Jennifer M.</span>
-                            <span class="author-role">Caring for her mother with dementia</span>
-                        </div>
+                    <div class="testimonial-stars">
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                     </div>
-                </article>
-
-                <article class="testimonial-card featured">
-                    <blockquote class="testimonial-content">
-                        <p>"The medication tracking alone is worth it. Dad takes 8 different medications, and now I can see from my phone that he's taken them—even when I can't be there in person."</p>
+                    <blockquote class="testimonial-quote">
+                        "After Mom's diagnosis, I was drowning in sticky notes and spreadsheets. Unforgotten changed everything. Now my sister in California and I are finally on the same page."
                     </blockquote>
                     <div class="testimonial-author">
-                        <div class="author-avatar">RK</div>
-                        <div class="author-info">
-                            <span class="author-name">Robert K.</span>
-                            <span class="author-role">Long-distance caregiver</span>
+                        <div class="testimonial-avatar">JM</div>
+                        <div>
+                            <div class="testimonial-name">Jennifer M.</div>
+                            <div class="testimonial-role">Caring for her mother with dementia</div>
                         </div>
                     </div>
                 </article>
 
                 <article class="testimonial-card">
-                    <blockquote class="testimonial-content">
-                        <p>"I love that I can give our home health aide 'helper' access. She can update medications and appointments, but the sensitive stuff stays private."</p>
+                    <div class="testimonial-stars">
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    </div>
+                    <blockquote class="testimonial-quote">
+                        "The medication tracking alone is worth it. Dad takes 8 different medications, and now I can see from my phone that he's taken them — even when I can't be there in person."
                     </blockquote>
                     <div class="testimonial-author">
-                        <div class="author-avatar">SC</div>
-                        <div class="author-info">
-                            <span class="author-name">Sandra C.</span>
-                            <span class="author-role">Managing care for her husband</span>
+                        <div class="testimonial-avatar">RK</div>
+                        <div>
+                            <div class="testimonial-name">Robert K.</div>
+                            <div class="testimonial-role">Long-distance caregiver</div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="testimonial-card">
+                    <div class="testimonial-stars">
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    </div>
+                    <blockquote class="testimonial-quote">
+                        "I love that I can give our home health aide 'helper' access. She can update medications and appointments, but the sensitive stuff stays private."
+                    </blockquote>
+                    <div class="testimonial-author">
+                        <div class="testimonial-avatar">SC</div>
+                        <div>
+                            <div class="testimonial-name">Sarah C.</div>
+                            <div class="testimonial-role">Family caregiver coordinator</div>
                         </div>
                     </div>
                 </article>
@@ -798,155 +433,224 @@
     </section>
 
     <!-- Pricing Section -->
-    <section class="pricing-section" id="pricing" aria-labelledby="pricing-title">
+    <section class="pricing-section section reveal" id="pricing">
         <div class="container">
-            <div class="section-header">
-                <p class="section-eyebrow">Simple pricing</p>
-                <h2 id="pricing-title" class="section-title">Start free, upgrade when you're ready</h2>
+            <div class="pricing-header">
+                <h2>Start free, upgrade when you're ready</h2>
+                <p>Unforgotten is free to get started. Upgrade to Premium for the full experience.</p>
             </div>
-
-            <div class="pricing-grid">
+            <div class="pricing-grid reveal-stagger">
                 <article class="pricing-card">
-                    <div class="pricing-header">
-                        <h3>Free</h3>
-                        <div class="price">
-                            <span class="price-amount">$0</span>
-                            <span class="price-period">forever</span>
-                        </div>
-                    </div>
+                    <div class="pricing-plan">Free</div>
+                    <div class="pricing-price">$0<span>/month</span></div>
+                    <p class="pricing-desc">Everything you need to get started</p>
                     <ul class="pricing-features">
-                        <li>Unlimited Medication tracking</li>
-                        <li>Unlimited Appointments</li>
-                        <li>Daily mood tracking</li>
-                        <li>Add 1 family profile</li>
-                        <li>Add 1 To Do List</li>
-                        <li>Add 1 Note</li>
-                        <li>Add 1 Reminders</li>
-                        <li>Add 1 Useful contacts</li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            1 profile
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Medication tracking
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Appointments
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Birthdays &amp; contacts
+                        </li>
                     </ul>
-                    <a href="#download" class="btn btn-secondary">Get Started</a>
+                    <a href="#download" class="pricing-btn pricing-btn--secondary">Get Started</a>
                 </article>
 
-                <article class="pricing-card premium">
+                <article class="pricing-card featured">
                     <div class="pricing-badge">Most Popular</div>
-                    <div class="pricing-header">
-                        <h3>Premium</h3>
-                        <div class="price">
-                            <span class="price-amount">$4.99</span>
-                            <span class="price-period">/month</span>
-                        </div>
-                    </div>
+                    <div class="pricing-plan">Premium</div>
+                    <div class="pricing-price">$4.99<span>/month</span></div>
+                    <p class="pricing-desc">Full access to every feature</p>
                     <ul class="pricing-features">
-                        <li><strong>Everything in Free, plus:</strong></li>
-                        <li>Unlimited profiles</li>
-                        <li>Advanced medication logs</li>
-                        <li>Unlimited To Do Lists</li>
-                        <li>Unlimited Notes</li>
-                        <li>Unlimited Reminders</li>
-                        <li>Unlimited Useful contacts</li>
-                        <li>Custom themes & headers</li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Unlimited profiles
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Everything in Free
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Notes &amp; to-do lists
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Family sharing
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Priority support
+                        </li>
                     </ul>
-                    <a href="#download" class="btn btn-primary">Start Free Trial</a>
+                    <a href="#download" class="pricing-btn pricing-btn--primary">Start Free Trial</a>
                 </article>
 
-                <article class="pricing-card family">
-                    <div class="pricing-header">
-                        <h3>Family Collaboration</h3>
-                        <div class="price">
-                            <span class="price-amount">$7.99</span>
-                            <span class="price-period">/month</span>
-                        </div>
-                    </div>
+                <article class="pricing-card">
+                    <div class="pricing-plan">Family</div>
+                    <div class="pricing-price">$7.99<span>/month</span></div>
+                    <p class="pricing-desc">Collaborate with your whole family</p>
                     <ul class="pricing-features">
-                        <li><strong>Everything in Premium, plus:</strong></li>
-                        <li>Invite unlimited family members</li>
-                        <li>Role-based access control</li>
-                        <li>Owner, Admin, Helper & Viewer roles</li>
-                        <li>Real-time sync across all devices</li>
-                        <li>Priority family support</li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Everything in Premium
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Up to 6 family members
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Role-based access control
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Shared medication logs
+                        </li>
                     </ul>
-                    <a href="#download" class="btn btn-secondary">Start Free Trial</a>
+                    <a href="#download" class="pricing-btn pricing-btn--secondary">Get Started</a>
                 </article>
             </div>
         </div>
     </section>
 
-    <!-- CTA Section -->
-    <section class="cta-section" id="download" aria-labelledby="cta-title">
-        <div class="cta-bg">
-            <div class="cta-gradient"></div>
-        </div>
+    <!-- FAQ Section -->
+    <section class="faq-section section reveal" id="faq">
         <div class="container">
-            <div class="cta-content">
-                <h2 id="cta-title" class="cta-title">Ready to keep what matters close?</h2>
-                <p class="cta-subtitle">Download Unforgotten free and give your family the peace of mind they deserve.</p>
-                <div class="cta-buttons">
-                    <a href="#" class="app-store-btn" aria-label="Download Unforgotten on the App Store">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28" aria-hidden="true">
-                            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-                        </svg>
-                        <div class="store-text">
-                            <span class="store-small">Download on the</span>
-                            <span class="store-large">App Store</span>
-                        </div>
-                    </a>
-                </div>
-                <p class="cta-note">Available for iPhone and iPad. Requires iOS 17 or later.</p>
+            <div class="faq-header">
+                <h2>Frequently Asked Questions</h2>
             </div>
+            <div class="faq-list">
+                <details class="faq-item">
+                    <summary>
+                        <span>Is Unforgotten free to use?</span>
+                        <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+                    <div class="faq-answer">
+                        <p>Yes! Unforgotten offers a free plan with core features including medication tracking, appointments, birthdays, and useful contacts for up to 3 profiles. Premium features like unlimited profiles, notes, to-do lists, and family collaboration are available for $4.99/month or $49.99/year.</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>
+                        <span>Can multiple family members access the same account?</span>
+                        <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+                    <div class="faq-answer">
+                        <p>Yes! With Premium, you can invite family members with different access levels. Owners have full control, Admins can manage everything, Helpers can update medications and appointments, and Viewers have read-only access. This makes it easy for the whole family to stay coordinated.</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>
+                        <span>Does Unforgotten work offline?</span>
+                        <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+                    <div class="faq-answer">
+                        <p>Yes, Unforgotten stores your data locally so you can access it even without an internet connection. Changes sync automatically when you're back online, so you never have to worry about losing information.</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>
+                        <span>Is my data secure?</span>
+                        <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+                    <div class="faq-answer">
+                        <p>Absolutely. Unforgotten uses row-level security to protect your data. Each user can only access their own account's information, and all data is encrypted in transit and at rest. We take your family's privacy very seriously.</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>
+                        <span>What devices does Unforgotten support?</span>
+                        <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+                    <div class="faq-answer">
+                        <p>Unforgotten is available for iPhone and iPad, requiring iOS 17 or later. The app features adaptive layouts that work beautifully on both devices, with larger touch targets and high-contrast themes designed for accessibility.</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>
+                        <span>How do I cancel my subscription?</span>
+                        <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+                    <div class="faq-answer">
+                        <p>You can manage or cancel your subscription at any time through your App Store account settings. Go to Settings > Apple ID > Subscriptions on your iPhone or iPad. Your access will continue until the end of your current billing period.</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>
+                        <span>Can I export my data?</span>
+                        <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+                    <div class="faq-answer">
+                        <p>Yes, you can request an export of all your data at any time. Simply contact us at <a href="mailto:privacy@unforgottenapp.com">privacy@unforgottenapp.com</a> and we'll provide your data in a portable format.</p>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="final-cta section" id="download">
+        <div class="container">
+            <h2>Ready to keep what matters close?</h2>
+            <a href="#" class="hero-cta">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+                Download for iOS
+            </a>
+            <p class="cta-note">Available for iPhone and iPad. Requires iOS 17 or later.</p>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="footer" role="contentinfo">
+    <footer class="footer">
         <div class="container">
             <div class="footer-grid">
                 <div class="footer-brand">
-                    <a href="#" class="footer-logo" aria-label="Unforgotten Home">
-                        <img src="assets/unforgotten-app-logo-stacked-white.png" alt="Unforgotten" class="logo-img-footer">
+                    <a href="#">
+                        <img src="assets/unforgotten-app-logo-stacked-white.png" alt="Unforgotten">
                     </a>
                     <p>Helping families keep what matters close.</p>
                 </div>
-
                 <div class="footer-links">
                     <h4>Product</h4>
                     <a href="#features">Features</a>
-                    <a href="#screenshots">Screenshots</a>
                     <a href="#pricing">Pricing</a>
                     <a href="#download">Download</a>
                 </div>
-
                 <div class="footer-links">
-                    <h4>Support</h4>
-                    <a href="support.html">Help Center</a>
-                    <a href="contact.html">Contact Us</a>
-                    <a href="faq.html">FAQ</a>
-                </div>
-
-                <div class="footer-links">
-                    <h4>Legal</h4>
+                    <h4>Company</h4>
+                    <a href="contact.html">Contact</a>
                     <a href="privacy.html">Privacy Policy</a>
                     <a href="terms.html">Terms of Service</a>
                 </div>
+                <div class="footer-links">
+                    <h4>Support</h4>
+                    <a href="mailto:support@unforgottenapp.com">Email Support</a>
+                    <a href="#faq">FAQ</a>
+                </div>
             </div>
-
             <div class="footer-bottom">
-                <p>&copy; 2025 Unforgotten. Made with care for families everywhere.</p>
+                <p>&copy; 2025 Unforgotten. All rights reserved.</p>
             </div>
         </div>
     </footer>
 
     <script src="script.js"></script>
-    <script>
-        // Initialize Lucide icons after deferred scripts load
-        window.addEventListener('load', function() {
-            try {
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
-            } catch (e) {
-                console.warn('Lucide icons failed to initialize:', e);
-            }
-        });
-    </script>
 </body>
 </html>

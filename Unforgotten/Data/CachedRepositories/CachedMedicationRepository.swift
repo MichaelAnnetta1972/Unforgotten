@@ -59,8 +59,16 @@ final class CachedMedicationRepository {
         let remoteMedications = try await remoteRepository.getMedications(accountId: accountId)
         let remoteIds = Set(remoteMedications.map { $0.id })
 
-        // Update local cache with remote data
+        // Collect IDs of items pending local deletion so we can skip them
+        let pendingDeleteDescriptor = FetchDescriptor<LocalMedication>(
+            predicate: #Predicate { $0.accountId == accountId && $0.locallyDeleted }
+        )
+        let pendingDeleteIds = Set(try modelContext.fetch(pendingDeleteDescriptor).map { $0.id })
+
+        // Update local cache with remote data, skipping items pending local deletion
         for remote in remoteMedications {
+            guard !pendingDeleteIds.contains(remote.id) else { continue }
+
             let remoteId = remote.id
             let existingDescriptor = FetchDescriptor<LocalMedication>(
                 predicate: #Predicate { $0.id == remoteId }
@@ -87,7 +95,9 @@ final class CachedMedicationRepository {
         }
 
         try? modelContext.save()
-        return remoteMedications
+
+        // Filter out medications pending local deletion from results
+        return remoteMedications.filter { !pendingDeleteIds.contains($0.id) }
     }
 
     /// Get medications for a specific profile
@@ -244,12 +254,10 @@ final class CachedMedicationRepository {
                 changeType: .delete
             )
 
-            // Also mark all associated logs as deleted
-            let scheduledStatus = MedicationLogStatus.scheduled.rawValue
+            // Also mark all associated logs as deleted (all statuses, not just scheduled)
             let logDescriptor = FetchDescriptor<LocalMedicationLog>(
                 predicate: #Predicate {
                     $0.medicationId == id &&
-                    $0.status == scheduledStatus &&
                     !$0.locallyDeleted
                 }
             )
@@ -262,6 +270,26 @@ final class CachedMedicationRepository {
                     entityType: "medicationLog",
                     entityId: log.id,
                     accountId: log.accountId,
+                    changeType: .delete
+                )
+            }
+
+            // Also mark associated schedules as deleted
+            let scheduleDescriptor = FetchDescriptor<LocalMedicationSchedule>(
+                predicate: #Predicate {
+                    $0.medicationId == id &&
+                    !$0.locallyDeleted
+                }
+            )
+            let schedules = try modelContext.fetch(scheduleDescriptor)
+            for schedule in schedules {
+                schedule.locallyDeleted = true
+                schedule.markAsModified()
+
+                syncEngine.queueChange(
+                    entityType: "medicationSchedule",
+                    entityId: schedule.id,
+                    accountId: schedule.accountId,
                     changeType: .delete
                 )
             }
@@ -345,6 +373,27 @@ final class CachedMedicationRepository {
         }
 
         throw SupabaseError.notFound
+    }
+
+    /// Delete a schedule
+    func deleteSchedule(id: UUID) async throws {
+        let descriptor = FetchDescriptor<LocalMedicationSchedule>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        if let local = try modelContext.fetch(descriptor).first {
+            local.locallyDeleted = true
+            local.markAsModified()
+
+            syncEngine.queueChange(
+                entityType: "medicationSchedule",
+                entityId: id,
+                accountId: local.accountId,
+                changeType: .delete
+            )
+
+            try modelContext.save()
+        }
     }
 
     // MARK: - Log Operations

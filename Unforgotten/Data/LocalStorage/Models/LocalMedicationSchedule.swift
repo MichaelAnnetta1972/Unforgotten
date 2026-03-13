@@ -185,4 +185,10 @@ final class LocalMedicationSchedule {
         guard let data = daysOfWeek else { return nil }
         return try? JSONDecoder().decode([Int].self, from: data)
     }
+
+    /// Decoded legacy times
+    var decodedLegacyTimes: [String]? {
+        guard let data = legacyTimes else { return nil }
+        return try? JSONDecoder().decode([String].self, from: data)
+    }
 }

@@ -6,10 +6,10 @@ import SwiftUI
 
 enum LiveActivityTheme {
     // Colors
-    static let background = Color(hex: "000000")
+    static let background = Color(hex: "222222")
     static let cardBackground = Color(hex: "4A4A5E")
     //static let cardBackground = Color(hex: "1A1A2E")
-    static let cardBackgroundOpacity: Double = 0.3
+    static let cardBackgroundOpacity: Double = 0.6
     static let accentYellow = Color(hex: "FFC93A")
     static let textPrimary = Color.white
     static let textSecondary = Color(hex: "c1bfbf")
@@ -17,6 +17,7 @@ enum LiveActivityTheme {
     static let calendarBlue = Color(hex: "4A90D9")
     static let birthdayPink = Color(hex: "F25BA5")
     static let countdownPurple = Color(hex: "9B59B6")
+    static let taskGreen = Color(hex: "2ECC71")
 
     // Dimensions
     static let cardCornerRadius: CGFloat = 16

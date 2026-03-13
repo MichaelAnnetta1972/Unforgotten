@@ -3,6 +3,8 @@ import SwiftData
 import UIKit
 import UserNotifications
 import WidgetKit
+import BackgroundTasks
+import ActivityKit
 
 // MARK: - App Delegate for Orientation Lock and Notifications
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -13,7 +15,194 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // Set up notification center delegate early
         UNUserNotificationCenter.current().delegate = NotificationService.shared
+
+        // Register background task for starting the daily summary Live Activity
+        DailySummaryBackgroundTask.register()
+
+        // Register for remote (push) notifications
+        application.registerForRemoteNotifications()
+
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        #if DEBUG
+        print("📲 APNs device token: \(token)")
+        #endif
+        // Store the token in Supabase
+        Task {
+            await DeviceTokenRepository.shared.registerToken(token)
+        }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        #if DEBUG
+        print("📲 Failed to register for remote notifications: \(error)")
+        #endif
+    }
+}
+
+// MARK: - Daily Summary Background Task
+
+/// Handles starting the Lock Screen Live Activity in the background so it's
+/// waiting on the user's Lock Screen when they wake up.
+enum DailySummaryBackgroundTask {
+    static let identifier = "com.bbad.michael.Unforgotten.dailySummaryRefresh"
+
+    /// Register the background task handler. Call once in didFinishLaunching.
+    static func register() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
+            guard let refreshTask = task as? BGAppRefreshTask else { return }
+            handleBackgroundRefresh(task: refreshTask)
+        }
+        #if DEBUG
+        print("📋 Registered daily summary background task")
+        #endif
+    }
+
+    /// Schedule the next background refresh. Call when the app goes to background.
+    static func scheduleNextRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: identifier)
+
+        // Request earliest execution at 2:00 AM tomorrow
+        let calendar = Calendar.current
+        var components = calendar.dateComponents([.year, .month, .day], from: Date())
+        components.hour = 2
+        components.minute = 0
+        components.second = 0
+        if let twoAM = calendar.date(from: components) {
+            // If 2 AM has already passed today, schedule for tomorrow's 2 AM
+            let targetDate = twoAM <= Date()
+                ? calendar.date(byAdding: .day, value: 1, to: twoAM)!
+                : twoAM
+            request.earliestBeginDate = targetDate
+        }
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            #if DEBUG
+            print("📋 Scheduled daily summary background refresh for ~2:00 AM")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📋 Failed to schedule daily summary background refresh: \(error)")
+            #endif
+        }
+    }
+
+    /// Background task handler — starts the Live Activity from cached widget data.
+    private static func handleBackgroundRefresh(task: BGAppRefreshTask) {
+        // Schedule the next refresh immediately so we don't miss tomorrow
+        scheduleNextRefresh()
+
+        // Clear yesterday's suppression so the new day's activity can start
+        DailySummaryLiveActivitySuppression.clearSuppression()
+
+        // Promote pre-cached tomorrow data to today's slot so we have valid data
+        WidgetDataStore.promoteTomorrowToToday()
+
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            task.setTaskCompleted(success: true)
+            return
+        }
+
+        // End any leftover activities from yesterday
+        Task {
+            for activity in Activity<DailySummaryAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+
+            // Build content state from the promoted widget data (no repos needed)
+            let contentState = buildContentStateFromWidgetData()
+            let attributes = DailySummaryAttributes(date: Date())
+            let content = ActivityContent(state: contentState, staleDate: nil)
+
+            do {
+                let activity = try Activity.request(
+                    attributes: attributes,
+                    content: content,
+                    pushType: .token
+                )
+                DailySummaryLiveActivitySuppression.markStartedToday()
+
+                // Upload the push token so the server can send updates
+                Task.detached {
+                    for await tokenData in activity.pushTokenUpdates {
+                        let token = tokenData.map { String(format: "%02x", $0) }.joined()
+                        await LiveActivityTokenRepository.shared.registerToken(token)
+                        break // Only need the first token
+                    }
+                }
+
+                #if DEBUG
+                print("✅ Daily Summary Live Activity started from background task")
+                #endif
+            } catch {
+                #if DEBUG
+                print("❌ Background task failed to start Live Activity: \(error)")
+                #endif
+            }
+
+            task.setTaskCompleted(success: true)
+        }
+
+        // Handle expiration
+        task.expirationHandler = {
+            task.setTaskCompleted(success: false)
+        }
+    }
+
+    /// Build a content state from the shared App Group widget data.
+    /// This avoids needing to initialize AppState or Supabase in the background.
+    private static func buildContentStateFromWidgetData() -> DailySummaryAttributes.ContentState {
+        guard let data = WidgetDataStore.loadBriefingData() else {
+            return DailySummaryAttributes.ContentState(
+                medicationCount: 0,
+                appointments: [],
+                birthdays: [],
+                countdowns: [],
+                taskCount: 0,
+                lastUpdated: Date()
+            )
+        }
+
+        var medicationCount = 0
+        var appointments: [DailySummaryAttributes.AppointmentItem] = []
+        var birthdays: [String] = []
+        var countdowns: [DailySummaryAttributes.CountdownItem] = []
+
+        for item in data.items {
+            switch item.icon {
+            case "pill.fill":
+                medicationCount += 1
+            case "calendar":
+                appointments.append(DailySummaryAttributes.AppointmentItem(
+                    title: item.title,
+                    time: item.subtitle ?? ""
+                ))
+            case "gift.fill":
+                // Extract name from "Name's Birthday" title
+                let name = item.title.replacingOccurrences(of: "'s Birthday", with: "")
+                birthdays.append(name)
+            case "clock.fill":
+                countdowns.append(DailySummaryAttributes.CountdownItem(
+                    title: item.title,
+                    typeName: item.subtitle ?? ""
+                ))
+            default:
+                break
+            }
+        }
+
+        return DailySummaryAttributes.ContentState(
+            medicationCount: medicationCount,
+            appointments: appointments,
+            birthdays: birthdays,
+            countdowns: countdowns,
+            taskCount: 0, // To-do count not stored in widget data
+            lastUpdated: Date()
+        )
     }
 }
 
@@ -24,6 +213,7 @@ struct UnforgottenApp: App {
     @State private var headerOverrides = UserHeaderOverrides()
     @State private var headerStyleManager = HeaderStyleManager()
     @State private var featureVisibility = FeatureVisibilityManager()
+    @State private var showPrivacyOverlay = false
     @Environment(\.scenePhase) private var scenePhase
 
     // MARK: - Local Storage
@@ -84,8 +274,29 @@ struct UnforgottenApp: App {
             .onOpenURL { url in
                 handleDeepLink(url)
             }
+            .overlay {
+                // Privacy screen: blur content when app is in the app switcher
+                if showPrivacyOverlay {
+                    Color.appBackground
+                        .ignoresSafeArea()
+                        .overlay {
+                            Image("unforgotten-logo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 60)
+                                .opacity(0.5)
+                        }
+                        .transition(.opacity)
+                }
+            }
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
+                switch newPhase {
+                case .active:
+                    // Hide privacy overlay
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showPrivacyOverlay = false
+                    }
+
                     // App became active - check for pending notification navigation
                     #if DEBUG
                     print("📱 App became active, checking pending notifications")
@@ -104,10 +315,31 @@ struct UnforgottenApp: App {
                         await appState.refreshDataFromRemote()
                     }
 
-                    // Update widget with latest briefing data
+                    // Update widget and Live Activity with latest briefing data
                     Task {
                         await WidgetBriefingService.shared.updateWidgetData(appState: appState)
+                        await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
                     }
+
+                case .inactive, .background:
+                    // Show privacy overlay to hide sensitive content in app switcher
+                    withAnimation(.easeIn(duration: 0.1)) {
+                        showPrivacyOverlay = true
+                    }
+
+                    // Schedule background task to start tomorrow's Live Activity
+                    DailySummaryBackgroundTask.scheduleNextRefresh()
+
+                    // Pre-cache tomorrow's data, upload to Supabase for server push,
+                    // and schedule fallback notification
+                    Task {
+                        await WidgetBriefingService.shared.cacheTomorrowsData(appState: appState)
+                        await DailySummaryLiveActivityService.shared.uploadBriefingCache(appState: appState)
+                        await NotificationService.shared.scheduleMorningFallbackNotification()
+                    }
+
+                @unknown default:
+                    break
                 }
             }
         }
@@ -143,10 +375,12 @@ struct UnforgottenApp: App {
             appState.pendingNavigateToHome = true
         } else if url.host == "invite" {
             let code = url.lastPathComponent.uppercased()
-            guard code.count == 6, !code.isEmpty, code != "invite" else { return }
+            // Validate: exactly 6 characters from the valid invite code alphabet (A-Z, 2-9, no I/O/0/1)
+            let validCodePattern = /^[A-HJ-NP-Z2-9]{6}$/
+            guard code.wholeMatch(of: validCodePattern) != nil else { return }
 
             #if DEBUG
-            print("🔗 Deep link received: invite code \(code)")
+            print("🔗 Deep link received: invite code")
             #endif
 
             appState.pendingInviteCode = code
@@ -156,6 +390,22 @@ struct UnforgottenApp: App {
                 appState.showInviteAcceptModal = true
             }
             // Otherwise, code will be picked up by OnboardingFriendCodeView
+        } else if url.host == "appointment" {
+            // Deep link to a specific appointment (e.g., from push notification)
+            let idString = url.lastPathComponent
+            guard let appointmentId = UUID(uuidString: idString) else { return }
+            #if DEBUG
+            print("🔗 Deep link received: appointment \(appointmentId)")
+            #endif
+            appState.pendingAppointmentId = appointmentId
+        } else if url.host == "countdown" {
+            // Deep link to a specific countdown (e.g., from push notification)
+            let idString = url.lastPathComponent
+            guard let countdownId = UUID(uuidString: idString) else { return }
+            #if DEBUG
+            print("🔗 Deep link received: countdown \(countdownId)")
+            #endif
+            appState.pendingCountdownId = countdownId
         }
     }
 }
@@ -215,6 +465,11 @@ final class AppState: ObservableObject {
         return allAccounts.first { $0.account.id == currentAccount.id }
     }
 
+    /// Accounts available for switching (excludes viewer role)
+    var switchableAccounts: [AccountWithRole] {
+        allAccounts.filter { $0.role != .viewer }
+    }
+
     /// Whether the current role has full access (owner or admin)
     var hasFullAccess: Bool {
         currentUserRole == .owner || currentUserRole == .admin
@@ -229,6 +484,7 @@ final class AppState: ObservableObject {
     @Published var pendingAppointmentId: UUID?
     @Published var pendingProfileId: UUID?
     @Published var pendingStickyReminderId: UUID?
+    @Published var pendingCountdownId: UUID?
     @Published var pendingNavigateToHome: Bool = false
 
     // MARK: - Invitation Deep Link State
@@ -400,15 +656,46 @@ final class AppState: ObservableObject {
             await rescheduleNotifications()
             // Schedule daily morning briefing trigger
             await NotificationService.shared.scheduleMorningBriefingTrigger()
-            // Cancel any previously scheduled daily summary (feature disabled)
-            NotificationService.shared.cancelDailySummary()
             // Update widget with today's briefing data
             await WidgetBriefingService.shared.updateWidgetData(appState: self)
+            // Start or update Lock Screen Live Activity with today's summary
+            await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: self)
             // Process any pending notifications after app is fully loaded
             // Small delay to ensure views are mounted and ready to observe changes
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             await MainActor.run {
                 NotificationService.shared.processPendingNotifications()
+            }
+        }
+
+        // Start observing auth state changes (token refresh, sign out, etc.)
+        Task {
+            await observeAuthStateChanges()
+        }
+    }
+
+    /// Observe auth state changes to handle token refresh and forced sign-out
+    private func observeAuthStateChanges() async {
+        for await event in authRepository.observeAuthChanges() {
+            switch event {
+            case .signedOut, .userDeleted:
+                #if DEBUG
+                print("🔐 Auth state changed: \(event) — signing out")
+                #endif
+                await signOut()
+            case .tokenRefreshed:
+                #if DEBUG
+                print("🔐 Auth token refreshed")
+                #endif
+            case .signedIn:
+                if !isAuthenticated {
+                    #if DEBUG
+                    print("🔐 Auth state changed: signed in — reloading")
+                    #endif
+                    await checkAuthState()
+                }
+            default:
+                break
             }
         }
     }
@@ -426,14 +713,16 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Auth State
-    func checkAuthState() async {
+    func checkAuthState(appleDisplayName: String? = nil) async {
         isLoading = true
 
         if let user = await authRepository.getCurrentUser() {
             isAuthenticated = true
-            await syncAppUser(userId: user.id, email: user.email ?? "")
+            await syncAppUser(userId: user.id, email: user.email ?? "", appleDisplayName: appleDisplayName)
             await loadAccountData()
             await checkMoodPrompt()
+            // Register any device token that arrived before authentication
+            await DeviceTokenRepository.shared.registerPendingToken()
         } else {
             isAuthenticated = false
             isAppAdmin = false
@@ -445,18 +734,43 @@ final class AppState: ObservableObject {
 
     // MARK: - Sync App User
     /// Ensures the current user exists in app_users table and updates admin status
-    private func syncAppUser(userId: UUID, email: String) async {
+    private func syncAppUser(userId: UUID, email: String, appleDisplayName: String? = nil) async {
         // Always check hardcoded admins first as a baseline
         let isHardcodedAdmin = AppAdminService.shared.isAppAdmin(email: email)
         #if DEBUG
-        print("🔐 Checking admin status for: \(email), hardcoded admin: \(isHardcodedAdmin)")
+        print("🔐 Checking admin status, hardcoded admin: \(isHardcodedAdmin)")
         #endif
 
         do {
             // First ensure the user exists (creates if needed)
             _ = try await appUserRepository.ensureUserExists(userId: userId, email: email)
             // Then always fetch fresh data to get latest complimentary access status
-            if let freshUser = try await appUserRepository.getUser(id: userId) {
+            if var freshUser = try await appUserRepository.getUser(id: userId) {
+                // If the user doesn't have a display name stored yet, try to backfill it
+                if freshUser.displayName == nil {
+                    // Prefer Apple-provided name (only available on first Apple Sign-In)
+                    var nameToSave = appleDisplayName
+
+                    // Fall back to the user's linked profile name (covers existing Apple Sign-In users)
+                    if nameToSave == nil {
+                        let profiles: [Profile] = (try? await SupabaseManager.shared.client
+                            .from(TableName.profiles)
+                            .select()
+                            .eq("linked_user_id", value: userId)
+                            .limit(1)
+                            .execute()
+                            .value) ?? []
+                        if let profile = profiles.first {
+                            nameToSave = profile.displayName
+                        }
+                    }
+
+                    if let nameToSave = nameToSave {
+                        if let updatedUser = try? await appUserRepository.updateDisplayName(userId: userId, displayName: nameToSave) {
+                            freshUser = updatedUser
+                        }
+                    }
+                }
                 currentAppUser = freshUser
                 // User is admin if either hardcoded OR set in database
                 isAppAdmin = freshUser.isAppAdmin || isHardcodedAdmin
@@ -673,6 +987,25 @@ final class AppState: ObservableObject {
             currentUserRole = nil
             isViewingOtherAccount = false
             hasCompletedOnboarding = false
+        }
+    }
+
+    /// Refresh the current user's role from the server (called when realtime detects a role change)
+    func refreshCurrentUserRole() async {
+        guard let account = currentAccount else { return }
+        do {
+            let freshAccounts = try await accountRepository.getAllUserAccounts()
+            allAccounts = freshAccounts
+            if let freshRole = freshAccounts.first(where: { $0.account.id == account.id })?.role {
+                currentUserRole = freshRole
+                #if DEBUG
+                print("📡 Role refreshed: \(freshRole.rawValue) for account \(account.id)")
+                #endif
+            }
+        } catch {
+            #if DEBUG
+            print("📡 Failed to refresh role: \(error)")
+            #endif
         }
     }
 
@@ -893,8 +1226,6 @@ final class AppState: ObservableObject {
     func completeOnboarding(accountName: String, primaryProfileName: String, birthday: Date?, firstAction: OnboardingFirstAction? = nil) async throws {
         #if DEBUG
         print("🔵 Starting onboarding...")
-        print("🔵 Account name: \(accountName)")
-        print("🔵 Profile name: \(primaryProfileName)")
         #endif
 
         // Verify we have a valid authenticated user before proceeding
@@ -980,7 +1311,7 @@ final class AppState: ObservableObject {
         }
 
         #if DEBUG
-        print("📝 Recording mood for account: \(account.id), user: \(userId)")
+        print("📝 Recording mood entry")
         #endif
 
         do {
@@ -1084,10 +1415,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Daily Summary Notification (DISABLED - may revisit later)
-    // The daily summary notification code remains in NotificationService.swift
-    // but is not called. To re-enable, restore scheduleDailySummaryNotification()
-    // and testDailySummaryNotification() methods and add UI controls in Settings.
+    // MARK: - Daily Summary
+    // The daily summary now uses a Lock Screen Live Activity instead of standard notifications.
+    // See DailySummaryLiveActivityService for the implementation.
 
     // MARK: - Sync Sticky Reminder Notifications
     /// Syncs sticky reminders from Supabase and schedules local notifications.
@@ -1331,8 +1661,9 @@ extension AppState: NotificationHandlerDelegate {
                 #if DEBUG
                 print("📱 Marked medication as taken: \(medicationId)")
                 #endif
-                // Update widget with latest data
+                // Update widget and Live Activity with latest data
                 await WidgetBriefingService.shared.updateWidgetData(appState: self)
+                await DailySummaryLiveActivityService.shared.updateDailySummary(appState: self)
             } else {
                 #if DEBUG
                 print("📱 Could not find medication log to mark as taken")
@@ -1389,6 +1720,13 @@ extension AppState: NotificationHandlerDelegate {
     nonisolated func handleStickyReminderTapped(reminderId: UUID) {
         Task { @MainActor in
             pendingStickyReminderId = reminderId
+        }
+    }
+
+    /// Handle tap on shared countdown notification
+    nonisolated func handleCountdownView(countdownId: UUID) {
+        Task { @MainActor in
+            pendingCountdownId = countdownId
         }
     }
 }

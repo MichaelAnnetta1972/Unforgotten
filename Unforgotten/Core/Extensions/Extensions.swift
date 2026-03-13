@@ -92,6 +92,135 @@ extension Date {
         return calendar.dateComponents([.day], from: today, to: nextDate).day ?? 0
     }
 
+    /// Calculate days until the next recurrence based on unit and interval
+    func daysUntilNextRecurrence(unit: RecurrenceUnit, interval: Int) -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let startDate = calendar.startOfDay(for: self)
+
+        // For yearly recurrence with interval 1, use the simpler month/day logic
+        if unit == .year && interval == 1 {
+            return daysUntilNextOccurrence()
+        }
+
+        let calendarComponent: Calendar.Component
+        let effectiveInterval: Int
+
+        switch unit {
+        case .week:
+            calendarComponent = .weekOfYear
+            effectiveInterval = interval
+        case .fortnight:
+            calendarComponent = .weekOfYear
+            effectiveInterval = 2 * interval
+        case .month:
+            calendarComponent = .month
+            effectiveInterval = interval
+        case .year:
+            calendarComponent = .year
+            effectiveInterval = interval
+        }
+
+        // If the event hasn't started yet, return days until the start date
+        if startDate >= today {
+            return calendar.dateComponents([.day], from: today, to: startDate).day ?? 0
+        }
+
+        // Find the next occurrence by stepping forward from the start date
+        var nextDate = startDate
+        while nextDate < today {
+            guard let advanced = calendar.date(byAdding: calendarComponent, value: effectiveInterval, to: nextDate) else {
+                return 0
+            }
+            nextDate = advanced
+        }
+
+        return calendar.dateComponents([.day], from: today, to: nextDate).day ?? 0
+    }
+
+    /// Returns the next occurrence date based on recurrence unit and interval
+    func nextRecurrenceDate(unit: RecurrenceUnit, interval: Int) -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let startDate = calendar.startOfDay(for: self)
+
+        if unit == .year && interval == 1 {
+            return nextOccurrenceDate()
+        }
+
+        let calendarComponent: Calendar.Component
+        let effectiveInterval: Int
+
+        switch unit {
+        case .week:
+            calendarComponent = .weekOfYear
+            effectiveInterval = interval
+        case .fortnight:
+            calendarComponent = .weekOfYear
+            effectiveInterval = 2 * interval
+        case .month:
+            calendarComponent = .month
+            effectiveInterval = interval
+        case .year:
+            calendarComponent = .year
+            effectiveInterval = interval
+        }
+
+        if startDate >= today { return startDate }
+
+        var nextDate = startDate
+        while nextDate < today {
+            guard let advanced = calendar.date(byAdding: calendarComponent, value: effectiveInterval, to: nextDate) else {
+                return self
+            }
+            nextDate = advanced
+        }
+        return nextDate
+    }
+
+    /// Returns all recurrence dates within a given range, stepping from this date
+    func recurrenceDates(unit: RecurrenceUnit, interval: Int, in range: ClosedRange<Date>, endDate: Date? = nil) -> [Date] {
+        let calendar = Calendar.current
+        let startDate = calendar.startOfDay(for: self)
+        let effectiveEnd = endDate.map { min($0, range.upperBound) } ?? range.upperBound
+
+        let calendarComponent: Calendar.Component
+        let effectiveInterval: Int
+
+        switch unit {
+        case .week:
+            calendarComponent = .weekOfYear
+            effectiveInterval = interval
+        case .fortnight:
+            calendarComponent = .weekOfYear
+            effectiveInterval = 2 * interval
+        case .month:
+            calendarComponent = .month
+            effectiveInterval = interval
+        case .year:
+            calendarComponent = .year
+            effectiveInterval = interval
+        }
+
+        var dates: [Date] = []
+        var current = startDate
+
+        // Advance to the range start
+        while current < range.lowerBound {
+            guard let next = calendar.date(byAdding: calendarComponent, value: effectiveInterval, to: current) else { break }
+            current = next
+        }
+
+        // Collect dates within range
+        while current <= effectiveEnd {
+            dates.append(current)
+            guard let next = calendar.date(byAdding: calendarComponent, value: effectiveInterval, to: current) else { break }
+            current = next
+        }
+
+        return dates
+    }
+
     /// Returns the next occurrence of this date (same month/day in the current or next year)
     func nextOccurrenceDate() -> Date {
         let calendar = Calendar.current
@@ -325,6 +454,10 @@ extension Notification.Name {
 
     /// Posted when mood entries have changed
     static let moodEntriesDidChange = Notification.Name("moodEntriesDidChange")
+
+    /// Posted when a member's role has changed in an account
+    /// userInfo keys: "accountId" (UUID), "userId" (UUID), "newRole" (String)
+    static let memberRoleDidChange = Notification.Name("memberRoleDidChange")
 }
 
 // MARK: - Appointment Change Action
@@ -884,6 +1017,19 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - iPad Edit Medical Condition Action Environment Key
+private struct iPadEditMedicalConditionActionKey: EnvironmentKey {
+    static let defaultValue: ((ProfileDetail) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Action to edit a Medical Condition in the full-screen side panel on iPad
+    var iPadEditMedicalConditionAction: ((ProfileDetail) -> Void)? {
+        get { self[iPadEditMedicalConditionActionKey.self] }
+        set { self[iPadEditMedicalConditionActionKey.self] = newValue }
+    }
+}
+
 // MARK: - iPad Settings Panel Actions
 
 private struct iPadShowInviteMemberActionKey: EnvironmentKey {
@@ -919,6 +1065,10 @@ private struct iPadShowAdminPanelActionKey: EnvironmentKey {
 }
 
 private struct iPadShowUpgradeActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private struct iPadShowJoinAccountActionKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
 }
 
@@ -966,6 +1116,11 @@ extension EnvironmentValues {
     var iPadShowUpgradeAction: (() -> Void)? {
         get { self[iPadShowUpgradeActionKey.self] }
         set { self[iPadShowUpgradeActionKey.self] = newValue }
+    }
+
+    var iPadShowJoinAccountAction: (() -> Void)? {
+        get { self[iPadShowJoinAccountActionKey.self] }
+        set { self[iPadShowJoinAccountActionKey.self] = newValue }
     }
 }
 
@@ -1026,6 +1181,10 @@ private struct iPadTodayCountdownActionKey: EnvironmentKey {
     static let defaultValue: ((Countdown) -> Void)? = nil
 }
 
+private struct iPadTodayTaskActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
 extension EnvironmentValues {
     /// Action to navigate to medication detail from Today card on iPad
     var iPadTodayMedicationAction: ((Medication) -> Void)? {
@@ -1049,6 +1208,12 @@ extension EnvironmentValues {
     var iPadTodayCountdownAction: ((Countdown) -> Void)? {
         get { self[iPadTodayCountdownActionKey.self] }
         set { self[iPadTodayCountdownActionKey.self] = newValue }
+    }
+
+    /// Action to navigate to to-do lists from Today card on iPad
+    var iPadTodayTaskAction: (() -> Void)? {
+        get { self[iPadTodayTaskActionKey.self] }
+        set { self[iPadTodayTaskActionKey.self] = newValue }
     }
 }
 

@@ -17,6 +17,7 @@ enum NotificationCategory: String {
     case birthdayReminder = "BIRTHDAY_REMINDER"
     case stickyReminder = "STICKY_REMINDER"
     case morningBriefing = "MORNING_BRIEFING"
+    case sharedItem = "SHARED_ITEM"
 }
 
 // MARK: - Notification Handler Protocol
@@ -27,6 +28,7 @@ protocol NotificationHandlerDelegate: AnyObject {
     func handleBirthdayView(profileId: UUID)
     func handleStickyReminderDismiss(reminderId: UUID) async
     func handleStickyReminderTapped(reminderId: UUID)
+    func handleCountdownView(countdownId: UUID)
 }
 
 // MARK: - Notification Preferences Keys
@@ -47,6 +49,7 @@ final class NotificationService: NSObject {
     var pendingAppointmentId: UUID?
     var pendingProfileId: UUID?
     var pendingStickyReminderId: UUID?
+    var pendingCountdownId: UUID?
 
     private override init() {
         super.init()
@@ -113,6 +116,11 @@ final class NotificationService: NSObject {
         if let reminderId = pendingStickyReminderId {
             pendingStickyReminderId = nil
             delegate.handleStickyReminderTapped(reminderId: reminderId)
+        }
+
+        if let countdownId = pendingCountdownId {
+            pendingCountdownId = nil
+            delegate.handleCountdownView(countdownId: countdownId)
         }
     }
 
@@ -205,7 +213,7 @@ final class NotificationService: NSObject {
         do {
             try await notificationCenter.add(request)
             #if DEBUG
-            print("📱 Scheduled medication reminder for \(medicationName) at \(components.hour ?? 0):\(components.minute ?? 0)")
+            print("📱 Scheduled medication reminder at \(components.hour ?? 0):\(components.minute ?? 0)")
             #endif
         } catch {
             #if DEBUG
@@ -307,7 +315,7 @@ final class NotificationService: NSObject {
         do {
             try await notificationCenter.add(request)
             #if DEBUG
-            print("📱 Scheduled appointment reminder for '\(title)' at \(reminderDate)")
+            print("📱 Scheduled appointment reminder at \(reminderDate)")
             #endif
         } catch {
             #if DEBUG
@@ -324,7 +332,7 @@ final class NotificationService: NSObject {
 
     // MARK: - Birthday Reminders
 
-    /// Schedule birthday reminders (day before and day of)
+    /// Schedule birthday reminders (one week before, day before, and day of)
     func scheduleBirthdayReminder(
         profileId: UUID,
         name: String,
@@ -338,6 +346,45 @@ final class NotificationService: NSObject {
         }
 
         let calendar = Calendar.current
+
+        // MARK: One Week Before Notification
+        let weekBeforeContent = UNMutableNotificationContent()
+        weekBeforeContent.title = "Birthday in One Week!"
+        weekBeforeContent.subtitle = "Press and hold for more details"
+        weekBeforeContent.body = "\(name)'s birthday is in one week. Time to start planning!"
+        applyHidePreviewIfNeeded(weekBeforeContent, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
+        weekBeforeContent.sound = .default
+        weekBeforeContent.categoryIdentifier = NotificationCategory.birthdayReminder.rawValue
+        weekBeforeContent.userInfo = ["profileId": profileId.uuidString]
+
+        // Calculate 7 days before the birthday using Calendar for correct month boundary handling
+        var weekBeforeComponents: DateComponents
+        if let weekBeforeDate = calendar.date(byAdding: .day, value: -7, to: birthday) {
+            weekBeforeComponents = calendar.dateComponents([.month, .day], from: weekBeforeDate)
+        } else {
+            // Fallback: manually subtract 7 days
+            weekBeforeComponents = calendar.dateComponents([.month, .day], from: birthday)
+            if let day = weekBeforeComponents.day {
+                weekBeforeComponents.day = day - 7
+            }
+        }
+        weekBeforeComponents.hour = 9
+        weekBeforeComponents.minute = 0
+
+        let weekBeforeTrigger = UNCalendarNotificationTrigger(dateMatching: weekBeforeComponents, repeats: true)
+        let weekBeforeIdentifier = "birthday-weekbefore-\(profileId.uuidString)"
+        let weekBeforeRequest = UNNotificationRequest(identifier: weekBeforeIdentifier, content: weekBeforeContent, trigger: weekBeforeTrigger)
+
+        do {
+            try await notificationCenter.add(weekBeforeRequest)
+            #if DEBUG
+            print("📱 Scheduled birthday reminder (one week before birthday)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("Failed to schedule week-before birthday reminder: \(error)")
+            #endif
+        }
 
         // MARK: Day Before Notification
         let dayBeforeContent = UNMutableNotificationContent()
@@ -377,7 +424,7 @@ final class NotificationService: NSObject {
         do {
             try await notificationCenter.add(dayBeforeRequest)
             #if DEBUG
-            print("📱 Scheduled birthday reminder for \(name) (day before birthday)")
+            print("📱 Scheduled birthday reminder (day before birthday)")
             #endif
         } catch {
             #if DEBUG
@@ -407,7 +454,7 @@ final class NotificationService: NSObject {
         do {
             try await notificationCenter.add(dayOfRequest)
             #if DEBUG
-            print("📱 Scheduled birthday reminder for \(name) (day of birthday)")
+            print("📱 Scheduled birthday reminder (day of birthday)")
             #endif
         } catch {
             #if DEBUG
@@ -419,6 +466,7 @@ final class NotificationService: NSObject {
     /// Cancel birthday reminders
     func cancelBirthdayReminder(profileId: UUID) {
         let identifiers = [
+            "birthday-weekbefore-\(profileId.uuidString)",
             "birthday-daybefore-\(profileId.uuidString)",
             "birthday-dayof-\(profileId.uuidString)"
         ]
@@ -500,7 +548,7 @@ final class NotificationService: NSObject {
                 do {
                     try await notificationCenter.add(request)
                     #if DEBUG
-                    print("📱 Scheduled recurring advance countdown reminder for '\(title)'")
+                    print("📱 Scheduled recurring advance countdown reminder")
                     #endif
                 } catch {
                     #if DEBUG
@@ -524,7 +572,7 @@ final class NotificationService: NSObject {
                     do {
                         try await notificationCenter.add(request)
                         #if DEBUG
-                        print("📱 Scheduled one-time advance countdown reminder for '\(title)' at \(reminderDate)")
+                        print("📱 Scheduled one-time advance countdown reminder")
                         #endif
                     } catch {
                         #if DEBUG
@@ -558,7 +606,7 @@ final class NotificationService: NSObject {
             do {
                 try await notificationCenter.add(dayOfRequest)
                 #if DEBUG
-                print("📱 Scheduled recurring day-of countdown reminder for '\(title)'")
+                print("📱 Scheduled recurring day-of countdown reminder")
                 #endif
             } catch {
                 #if DEBUG
@@ -583,7 +631,7 @@ final class NotificationService: NSObject {
                 do {
                     try await notificationCenter.add(dayOfRequest)
                     #if DEBUG
-                    print("📱 Scheduled one-time day-of countdown reminder for '\(title)' at \(dayOfDate)")
+                    print("📱 Scheduled one-time day-of countdown reminder")
                     #endif
                 } catch {
                     #if DEBUG
@@ -662,7 +710,7 @@ final class NotificationService: NSObject {
             do {
                 try await notificationCenter.add(request)
                 #if DEBUG
-                print("📱 Scheduled repeating sticky reminder '\(reminder.title)' every \(reminder.repeatInterval.displayName)")
+                print("📱 Scheduled repeating sticky reminder every \(reminder.repeatInterval.displayName)")
                 #endif
             } catch {
                 #if DEBUG
@@ -852,12 +900,26 @@ final class NotificationService: NSObject {
             options: []
         )
 
+        // Shared item category (push notification when someone shares with you)
+        let viewSharedItemAction = UNNotificationAction(
+            identifier: "VIEW_SHARED_ITEM",
+            title: "View",
+            options: [.foreground]
+        )
+        let sharedItemCategory = UNNotificationCategory(
+            identifier: "SHARED_ITEM",
+            actions: [viewSharedItemAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         notificationCenter.setNotificationCategories([
             medicationCategory,
             appointmentCategory,
             birthdayCategory,
             stickyCategory,
-            morningBriefingCategory
+            morningBriefingCategory,
+            sharedItemCategory
         ])
     }
 
@@ -896,7 +958,7 @@ final class NotificationService: NSObject {
         do {
             try await notificationCenter.add(request)
             #if DEBUG
-            print("📱 Scheduled snooze reminder for \(medicationName) in 10 minutes")
+            print("📱 Scheduled snooze reminder in 10 minutes")
             #endif
         } catch {
             #if DEBUG
@@ -1146,12 +1208,64 @@ final class NotificationService: NSObject {
         }
     }
 
-    /// Cancel the daily summary notification
+    /// Cancel the daily summary notification and fallback
     func cancelDailySummary() {
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["daily-summary"])
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: [
+            "daily-summary",
+            "morning-fallback"
+        ])
         #if DEBUG
-        print("📱 Cancelled daily summary notification")
+        print("📱 Cancelled daily summary and fallback notifications")
         #endif
+    }
+
+    // MARK: - Morning Fallback Notification
+
+    /// Schedule a reliable fallback notification for 7:00 AM daily.
+    /// Unlike BGAppRefreshTask, local notifications are guaranteed to fire.
+    /// This ensures the user always gets a morning reminder even if the
+    /// background task or Live Activity didn't start overnight.
+    func scheduleMorningFallbackNotification() async {
+        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["morning-fallback"])
+
+        guard await isNotificationAllowed(), dailySummaryEnabled else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Good Morning"
+        content.body = "Open Unforgotten to see what's on your schedule today."
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.morningBriefing.rawValue
+        content.userInfo = ["type": "morning_fallback"]
+        content.interruptionLevel = .timeSensitive
+        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
+
+        if let attachment = createLogoAttachment() {
+            content.attachments = [attachment]
+        }
+
+        // Trigger at 7:00 AM every day
+        var dateComponents = DateComponents()
+        dateComponents.hour = 7
+        dateComponents.minute = 0
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+
+        let request = UNNotificationRequest(
+            identifier: "morning-fallback",
+            content: content,
+            trigger: trigger
+        )
+
+        do {
+            try await notificationCenter.add(request)
+            #if DEBUG
+            print("📱 Scheduled morning fallback notification for 7:00 AM daily")
+            #endif
+        } catch {
+            #if DEBUG
+            print("📱 Failed to schedule morning fallback notification: \(error)")
+            #endif
+        }
     }
 
     /// Schedule a test daily summary notification that fires in 10 seconds
@@ -1390,10 +1504,19 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             print("📱 Morning briefing notification tapped")
             #endif
 
+        case NotificationCategory.sharedItem.rawValue:
+            handleSharedItemNotification(userInfo: userInfo)
+
         default:
-            #if DEBUG
-            print("📱 Unknown notification category: \(categoryIdentifier)")
-            #endif
+            // Check if this is a push notification with deep link data (may arrive without category on some OS versions)
+            if let eventType = userInfo["event_type"] as? String,
+               let eventId = userInfo["event_id"] as? String {
+                handleSharedItemNavigation(eventType: eventType, eventId: eventId)
+            } else {
+                #if DEBUG
+                print("📱 Unknown notification category: \(categoryIdentifier)")
+                #endif
+            }
         }
     }
 
@@ -1537,6 +1660,47 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             pendingProfileId = profileId
             #if DEBUG
             print("📱 Stored pending profile ID (delegate not ready)")
+            #endif
+        }
+    }
+
+    /// Handle shared item push notification tap
+    private func handleSharedItemNotification(userInfo: [AnyHashable: Any]) {
+        guard let eventType = userInfo["event_type"] as? String,
+              let eventId = userInfo["event_id"] as? String else {
+            #if DEBUG
+            print("📱 Missing event_type or event_id in shared item notification")
+            #endif
+            return
+        }
+
+        handleSharedItemNavigation(eventType: eventType, eventId: eventId)
+    }
+
+    /// Navigate to a shared item by event type and ID
+    private func handleSharedItemNavigation(eventType: String, eventId: String) {
+        guard let eventUUID = UUID(uuidString: eventId) else { return }
+
+        #if DEBUG
+        print("📱 Navigating to shared \(eventType): \(eventId)")
+        #endif
+
+        switch eventType {
+        case "appointment":
+            if let delegate = delegate {
+                delegate.handleAppointmentView(appointmentId: eventUUID)
+            } else {
+                pendingAppointmentId = eventUUID
+            }
+        case "countdown":
+            if let delegate = delegate {
+                delegate.handleCountdownView(countdownId: eventUUID)
+            } else {
+                pendingCountdownId = eventUUID
+            }
+        default:
+            #if DEBUG
+            print("📱 Unknown shared event type: \(eventType)")
             #endif
         }
     }

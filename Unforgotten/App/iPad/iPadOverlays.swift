@@ -301,6 +301,8 @@ struct iPadSidePanelOverlay: View {
     @Binding var addImportantAccountProfile: Profile?
     @Binding var showAddMedicalCondition: Bool
     @Binding var addMedicalConditionProfile: Profile?
+    @Binding var showEditMedicalCondition: Bool
+    @Binding var editMedicalConditionDetail: ProfileDetail?
     @Binding var showAddGiftIdea: Bool
     @Binding var addGiftIdeaProfile: Profile?
     @Binding var showEditGiftIdea: Bool
@@ -328,6 +330,7 @@ struct iPadSidePanelOverlay: View {
     @Binding var showSettingsEditAccountName: Bool
     @Binding var showSettingsAdminPanel: Bool
     @Binding var showSettingsUpgrade: Bool
+    @Binding var showSettingsJoinAccount: Bool
     @Binding var showAddCountdown: Bool
     @Binding var showEditCountdown: Bool
     @Binding var countdownToEdit: Countdown?
@@ -339,11 +342,11 @@ struct iPadSidePanelOverlay: View {
         showAddProfile || showAddMedication || showAddAppointment ||
         showAddContact || showAddNote || showEditNote || showAddToDoList || showAddStickyReminder || showEditStickyReminder || showViewStickyReminder || showViewToDoList ||
         showEditProfile || showEditMedication || showEditAppointment || showEditUsefulContact ||
-        showEditImportantAccount || showAddImportantAccount || showAddMedicalCondition || showAddGiftIdea || showEditGiftIdea || showAddClothingSize || showEditClothingSize ||
+        showEditImportantAccount || showAddImportantAccount || showAddMedicalCondition || showEditMedicalCondition || showAddGiftIdea || showEditGiftIdea || showAddClothingSize || showEditClothingSize ||
         showAddHobbySection || showAddActivitySection || showAddHobbyItem || showAddActivityItem ||
         showSettingsInviteMember || showSettingsManageMembers || showSettingsMoodHistory ||
         showSettingsAppearance || showSettingsFeatureVisibility || showSettingsSwitchAccount || showSettingsEditAccountName ||
-        showSettingsAdminPanel || showSettingsUpgrade || showAddCountdown || showEditCountdown
+        showSettingsAdminPanel || showSettingsUpgrade || showSettingsJoinAccount || showAddCountdown || showEditCountdown
     }
 
     /// Dismiss action for side panel environment
@@ -386,6 +389,8 @@ struct iPadSidePanelOverlay: View {
             addImportantAccountProfile = nil
             showAddMedicalCondition = false
             addMedicalConditionProfile = nil
+            showEditMedicalCondition = false
+            editMedicalConditionDetail = nil
             showAddGiftIdea = false
             addGiftIdeaProfile = nil
             showEditGiftIdea = false
@@ -413,6 +418,7 @@ struct iPadSidePanelOverlay: View {
             showSettingsEditAccountName = false
             showSettingsAdminPanel = false
             showSettingsUpgrade = false
+            showSettingsJoinAccount = false
             showAddCountdown = false
             showEditCountdown = false
             countdownToEdit = nil
@@ -469,6 +475,11 @@ struct iPadSidePanelOverlay: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isAnyPanelShowing)
         .task(id: showAddToDoList) {
             if showAddToDoList {
+                await toDoListsViewModel.loadData(appState: appState)
+            }
+        }
+        .task(id: showViewToDoList) {
+            if !showViewToDoList {
                 await toDoListsViewModel.loadData(appState: appState)
             }
         }
@@ -629,6 +640,16 @@ struct iPadSidePanelOverlay: View {
                 }
             )
             .environmentObject(appState)
+        } else if showEditMedicalCondition, let detail = editMedicalConditionDetail {
+            EditMedicalConditionView(
+                detail: detail,
+                onDismiss: { dismissAll() },
+                onSave: { updatedDetail in
+                    dismissAll()
+                    NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": updatedDetail.profileId])
+                }
+            )
+            .environmentObject(appState)
         } else if showAddGiftIdea, let profile = addGiftIdeaProfile {
             AddProfileDetailView(
                 profile: profile,
@@ -706,6 +727,7 @@ struct iPadSidePanelOverlay: View {
                 profile: profile,
                 category: .hobbies,
                 sectionName: section,
+                existingItems: [],
                 onDismiss: { dismissAll() },
                 onItemAdded: { _ in
                     // Item added, notification will trigger refresh
@@ -717,6 +739,7 @@ struct iPadSidePanelOverlay: View {
                 profile: profile,
                 category: .activities,
                 sectionName: section,
+                existingItems: [],
                 onDismiss: { dismissAll() },
                 onItemAdded: { _ in
                     // Item added, notification will trigger refresh
@@ -757,6 +780,10 @@ struct iPadSidePanelOverlay: View {
                 .environment(\.sidePanelDismiss, panelDismissAction)
         } else if showSettingsUpgrade {
             UpgradeView(isEmbedded: true)
+                .environmentObject(appState)
+                .environment(\.sidePanelDismiss, panelDismissAction)
+        } else if showSettingsJoinAccount {
+            JoinAccountView()
                 .environmentObject(appState)
                 .environment(\.sidePanelDismiss, panelDismissAction)
         } else if showAddCountdown {

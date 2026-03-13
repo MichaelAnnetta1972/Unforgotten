@@ -147,7 +147,9 @@ final class CachedToDoRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedToDoRepo] Remote createList failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -197,7 +199,9 @@ final class CachedToDoRepository {
                 try modelContext.save()
                 return local.toRemote(with: list.items)
             } catch {
+                #if DEBUG
                 print("[CachedToDoRepo] Remote updateList failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -241,7 +245,9 @@ final class CachedToDoRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedToDoRepo] Remote deleteList failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -281,7 +287,9 @@ final class CachedToDoRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedToDoRepo] Remote createItem failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -332,7 +340,9 @@ final class CachedToDoRepository {
                 try modelContext.save()
                 return local.toRemote()
             } catch {
+                #if DEBUG
                 print("[CachedToDoRepo] Remote updateItem failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -372,7 +382,9 @@ final class CachedToDoRepository {
                 try modelContext.save()
                 return local.toRemote()
             } catch {
+                #if DEBUG
                 print("[CachedToDoRepo] Remote toggleItemCompletion failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -410,7 +422,9 @@ final class CachedToDoRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedToDoRepo] Remote deleteItem failed: \(error). Saving locally.")
+                #endif
             }
         }
 

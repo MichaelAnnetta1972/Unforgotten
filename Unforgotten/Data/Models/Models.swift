@@ -562,7 +562,7 @@ struct ProfileDetail: Codable, Identifiable, Equatable {
     let id: UUID
     let accountId: UUID
     let profileId: UUID
-    let category: DetailCategory
+    var category: DetailCategory
     var label: String
     var value: String
     var status: String?
@@ -758,17 +758,14 @@ enum IntakeInstruction: String, Codable, CaseIterable {
     case emptyStomach = "empty_stomach"
     case beforeMeals = "before_meals"
     case afterMeals = "after_meals"
-    case withWater = "with_water"
-    case withFood = "with_food"
+
 
     var displayName: String {
         switch self {
-        case .withMeals: return "With Meals"
         case .emptyStomach: return "Empty Stomach"
+        case .withMeals: return "With Meals"
         case .beforeMeals: return "Before Meals"
         case .afterMeals: return "After Meals"
-        case .withWater: return "With Water"
-        case .withFood: return "With Food"
         }
     }
 }
@@ -941,7 +938,7 @@ enum ScheduleType: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .scheduled: return "Scheduled"
+        case .scheduled: return "Schedule"
         case .asNeeded: return "As Needed"
         }
     }
@@ -1957,6 +1954,34 @@ enum CountdownType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Recurrence Unit
+enum RecurrenceUnit: String, Codable, CaseIterable, Identifiable {
+    case week
+    case fortnight
+    case month
+    case year
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .week: return "Week"
+        case .fortnight: return "Fortnight"
+        case .month: return "Month"
+        case .year: return "Year"
+        }
+    }
+
+    var pluralName: String {
+        switch self {
+        case .week: return "Weeks"
+        case .fortnight: return "Fortnights"
+        case .month: return "Months"
+        case .year: return "Years"
+        }
+    }
+}
+
 // MARK: - Countdown
 /// A custom countdown event for tracking anniversaries, holidays, tasks, and other important dates
 struct Countdown: Codable, Identifiable, Equatable, Hashable {
@@ -1974,6 +1999,9 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
     var groupId: UUID?
     var reminderOffsetMinutes: Int?
     var isRecurring: Bool
+    var recurrenceUnit: RecurrenceUnit?
+    var recurrenceInterval: Int?
+    var recurrenceEndDate: Date?
     let createdAt: Date
     var updatedAt: Date
 
@@ -1992,6 +2020,9 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         case groupId = "group_id"
         case reminderOffsetMinutes = "reminder_offset_minutes"
         case isRecurring = "is_recurring"
+        case recurrenceUnit = "recurrence_unit"
+        case recurrenceInterval = "recurrence_interval"
+        case recurrenceEndDate = "recurrence_end_date"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -2012,6 +2043,9 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         groupId: UUID? = nil,
         reminderOffsetMinutes: Int? = nil,
         isRecurring: Bool = false,
+        recurrenceUnit: RecurrenceUnit? = nil,
+        recurrenceInterval: Int? = nil,
+        recurrenceEndDate: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -2029,6 +2063,9 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         self.groupId = groupId
         self.reminderOffsetMinutes = reminderOffsetMinutes
         self.isRecurring = isRecurring
+        self.recurrenceUnit = recurrenceUnit
+        self.recurrenceInterval = recurrenceInterval
+        self.recurrenceEndDate = recurrenceEndDate
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -2050,6 +2087,9 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         reminderOffsetMinutes = try container.decodeIfPresent(Int.self, forKey: .reminderOffsetMinutes)
         isRecurring = try container.decodeIfPresent(Bool.self, forKey: .isRecurring) ?? false
+        recurrenceUnit = try container.decodeIfPresent(RecurrenceUnit.self, forKey: .recurrenceUnit)
+        recurrenceInterval = try container.decodeIfPresent(Int.self, forKey: .recurrenceInterval)
+        recurrenceEndDate = try container.decodeIfPresent(Date.self, forKey: .recurrenceEndDate)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
@@ -2118,23 +2158,56 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
         }
     }
 
+    /// Whether the recurrence has ended (end date is in the past)
+    var recurrenceHasEnded: Bool {
+        guard isRecurring, let endDate = recurrenceEndDate else { return false }
+        return endDate < Date()
+    }
+
     /// Calculate days until the next occurrence of this countdown
     var daysUntilNextOccurrence: Int {
-        if isRecurring {
-            return date.daysUntilNextOccurrence()
+        if isRecurring && !recurrenceHasEnded {
+            let unit = recurrenceUnit ?? .year
+            let interval = recurrenceInterval ?? 1
+            return date.daysUntilNextRecurrence(unit: unit, interval: interval)
         } else {
             let calendar = Calendar.current
             let today = calendar.startOfDay(for: Date())
             let eventDate = calendar.startOfDay(for: date)
             let components = calendar.dateComponents([.day], from: today, to: eventDate)
-            return max(0, components.day ?? 0)
+            return components.day ?? 0
         }
     }
 
     /// Whether this countdown has already passed (for non-recurring countdowns)
     var hasPassed: Bool {
-        if isRecurring { return false }
-        return date < Date()
+        if isRecurring && !recurrenceHasEnded { return false }
+        return daysUntilNextOccurrence < 0
+    }
+
+    /// Human-readable recurrence description
+    var recurrenceDescription: String? {
+        guard isRecurring else { return nil }
+        let unit = recurrenceUnit ?? .year
+        let interval = recurrenceInterval ?? 1
+        var description: String
+        if interval == 1 {
+            switch unit {
+            case .week: description = "Repeats weekly"
+            case .fortnight: description = "Repeats fortnightly"
+            case .month: description = "Repeats monthly"
+            case .year: description = "Repeats yearly"
+            }
+        } else {
+            description = "Repeats every \(interval) \(unit.pluralName.lowercased())"
+        }
+        if let endDate = recurrenceEndDate {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            description += " until \(formatter.string(from: endDate))"
+        }
+        return description
     }
 }
 
@@ -2232,9 +2305,12 @@ struct AccountMemberWithUser: Identifiable, Equatable {
     var email: String { user.email }
     var role: MemberRole { member.role }
 
-    /// Display name for the member (uses email since app_users doesn't have display name)
+    /// Display name for the member (prefers stored display name, falls back to email prefix)
     var displayName: String {
-        // Extract name part from email (before @) and capitalize it
+        if let name = user.displayName, !name.isEmpty {
+            return name
+        }
+        // Fall back to extracting name part from email (before @) and capitalize it
         let emailName = user.email.components(separatedBy: "@").first ?? user.email
         return emailName.capitalized
     }
@@ -2444,6 +2520,7 @@ enum MealType: String, Codable, CaseIterable, Identifiable {
     case breakfast
     case lunch
     case dinner
+    case dessert
 
     var id: String { rawValue }
 
@@ -2452,6 +2529,7 @@ enum MealType: String, Codable, CaseIterable, Identifiable {
         case .breakfast: return "Breakfast"
         case .lunch: return "Lunch"
         case .dinner: return "Dinner"
+        case .dessert: return "Dessert"
         }
     }
 
@@ -2460,6 +2538,7 @@ enum MealType: String, Codable, CaseIterable, Identifiable {
         case .breakfast: return "sunrise.fill"
         case .lunch: return "sun.max.fill"
         case .dinner: return "moon.stars.fill"
+        case .dessert: return "birthday.cake.fill"
         }
     }
 
@@ -2468,6 +2547,7 @@ enum MealType: String, Codable, CaseIterable, Identifiable {
         case .breakfast: return .orange
         case .lunch: return .yellow
         case .dinner: return .indigo
+        case .dessert: return .pink
         }
     }
 }

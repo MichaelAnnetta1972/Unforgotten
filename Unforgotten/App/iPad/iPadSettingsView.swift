@@ -26,6 +26,7 @@ struct iPadSettingsContentView: View {
     @Environment(\.iPadShowEditAccountNameAction) private var iPadShowEditAccountNameAction
     @Environment(\.iPadShowAdminPanelAction) private var iPadShowAdminPanelAction
     @Environment(\.iPadShowUpgradeAction) private var iPadShowUpgradeAction
+    @Environment(\.iPadShowJoinAccountAction) private var iPadShowJoinAccountAction
 
     let onClose: () -> Void
 
@@ -182,7 +183,7 @@ struct iPadSettingsContentView: View {
                             }
 
                             // Switch Account (only show if multiple accounts)
-                            if appState.allAccounts.count > 1 {
+                            if appState.switchableAccounts.count > 1 {
                                 SettingsPanelButtonRow(
                                     icon: "arrow.left.arrow.right",
                                     title: "Switch Account",
@@ -190,6 +191,15 @@ struct iPadSettingsContentView: View {
                                 ) {
                                     iPadShowSwitchAccountAction?()
                                 }
+                            }
+
+                            // Join an Account
+                            SettingsPanelButtonRow(
+                                icon: "person.badge.plus",
+                                title: "Join an Account",
+                                isSelected: false
+                            ) {
+                                iPadShowJoinAccountAction?()
                             }
                         }
 

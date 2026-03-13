@@ -1,17 +1,26 @@
 {
   "images" : [
     {
-      "filename" : "cozy-luxury-terrace-twilight-with-warm-fire-pit-inviting-armchairs.jpg",
-      "idiom" : "universal",
+      "filename" : "1027647.jpg",
+      "idiom" : "iphone",
       "scale" : "1x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "2x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "3x"
+    },
+    {
+      "filename" : "1027647 copy.jpg",
+      "idiom" : "ipad",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "ipad",
+      "scale" : "2x"
     }
   ],
   "info" : {

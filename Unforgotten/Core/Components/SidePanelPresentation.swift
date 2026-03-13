@@ -119,7 +119,7 @@ private struct SlidePanelWrapper<Content: View>: View {
     var body: some View {
         content()
             .frame(width: panelWidth, height: panelHeight, alignment: .top)
-            .background(Color.appBackgroundLight)
+            .background(Color.appBackground)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
             .padding(.top, 40)
@@ -319,12 +319,12 @@ struct SidePanelContainer<Content: View>: View {
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
-            .background(Color.appBackgroundLight)
+            .background(Color.appBackground)
 
             // Content
             content()
         }
-        .background(Color.appBackgroundLight)
+        .background(Color.appBackground)
     }
 }
 

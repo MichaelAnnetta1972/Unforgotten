@@ -10,6 +10,7 @@ protocol InvitationRepositoryProtocol {
     func acceptInvitationWithSync(invitation: AccountInvitation, userId: UUID, acceptorProfileId: UUID?, acceptorAccountId: UUID?, existingProfileId: UUID?) async throws -> ProfileSyncResult
     func revokeInvitation(id: UUID) async throws
     func acceptInvitation(invitation: AccountInvitation, userId: UUID) async throws
+    func getAccountNameForInvitation(code: String) async throws -> String?
 }
 
 // MARK: - Protocol defaults
@@ -85,7 +86,7 @@ final class InvitationRepository: InvitationRepositoryProtocol {
             sharingClothing: sharingPreferences[.clothing] ?? true,
             sharingHobby: sharingPreferences[.hobby] ?? true,
             sharingActivityIdea: sharingPreferences[.activityIdea] ?? true,
-            sharingImportantAccounts: sharingPreferences[.importantAccounts] ?? true
+            sharingImportantAccounts: sharingPreferences[.importantAccounts] ?? false
         )
 
         let invitation: AccountInvitation = try await supabase
@@ -101,13 +102,31 @@ final class InvitationRepository: InvitationRepositoryProtocol {
 
     // MARK: - Revoke Invitation
     func revokeInvitation(id: UUID) async throws {
-        let update = InvitationStatusUpdate(status: .revoked)
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            throw SupabaseError.notAuthenticated
+        }
 
-        try await supabase
-            .from(TableName.accountInvitations)
-            .update(update)
-            .eq("id", value: id)
-            .execute()
+        // Use RPC to revoke and clean up any partial acceptance data
+        do {
+            _ = try await supabase.rpc(
+                "revoke_invitation_with_cleanup",
+                params: [
+                    "p_invitation_id": id.uuidString,
+                    "p_user_id": userId.uuidString
+                ]
+            ).execute()
+        } catch {
+            #if DEBUG
+            print("RPC revoke_invitation_with_cleanup failed: \(error). Falling back to status update.")
+            #endif
+            // Fallback: just update the status directly
+            let update = InvitationStatusUpdate(status: .revoked)
+            try await supabase
+                .from(TableName.accountInvitations)
+                .update(update)
+                .eq("id", value: id)
+                .execute()
+        }
     }
 
     // MARK: - Accept Invitation
@@ -238,11 +257,34 @@ final class InvitationRepository: InvitationRepositoryProtocol {
         return result
     }
 
+    // MARK: - Get Account Name for Invitation
+    /// Fetches the account display name for an invitation code via RPC (bypasses RLS)
+    func getAccountNameForInvitation(code: String) async throws -> String? {
+        struct AccountNameResult: Codable {
+            let success: Bool
+            let displayName: String?
+            let error: String?
+
+            enum CodingKeys: String, CodingKey {
+                case success
+                case displayName = "display_name"
+                case error
+            }
+        }
+
+        let result: AccountNameResult = try await supabase.rpc(
+            "get_account_name_for_invitation",
+            params: ["p_invite_code": code.uppercased()]
+        ).execute().value
+
+        return result.success ? result.displayName : nil
+    }
+
     // MARK: - Generate Invite Code
     private func generateInviteCode() -> String {
         // Generate a 6-character alphanumeric code (excluding confusing characters)
         let characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // No I, O, 0, 1
-        return String((0..<6).map { _ in characters.randomElement()! })
+        return String((0..<6).compactMap { _ in characters.randomElement() })
     }
 }
 

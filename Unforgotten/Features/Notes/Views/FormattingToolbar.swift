@@ -332,9 +332,9 @@ struct KeyboardToolbar: View {
 
             Spacer()
 
-            Button("Done") {
-                onDismiss()
-            }
+            // Button("Done") {
+            //     onDismiss()
+            // }
             .font(.system(size: 16, weight: .semibold))
             .foregroundColor(accentColor)
             .padding(.trailing, 8)

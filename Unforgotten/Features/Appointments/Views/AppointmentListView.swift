@@ -248,6 +248,7 @@ struct AppointmentListView: View {
                                             } label: {
                                                 Label("Delete", systemImage: "trash")
                                             }
+                                            .tint(.medicalRed)
                                         } else if appointment.accountId != appState.currentAccount?.id {
                                             // Shared appointment - allow removing from user's view
                                             Button(role: .destructive) {
@@ -256,6 +257,7 @@ struct AppointmentListView: View {
                                             } label: {
                                                 Label("Remove", systemImage: "eye.slash")
                                             }
+                                            .tint(.medicalRed)
                                         }
                                     }
                                     .listRowBackground(Color.clear)
@@ -288,9 +290,9 @@ struct AppointmentListView: View {
                         // Empty state
                         if filteredAppointments.isEmpty && !viewModel.isLoading {
                             VStack(spacing: 16) {
-                                Image(systemName: "calendar.badge.clock")
-                                    .font(.system(size: 60))
-                                    .foregroundColor(.textSecondary)
+                                // Image(systemName: "calendar.badge.clock")
+                                //     .font(.system(size: 60))
+                                //     .foregroundColor(.textSecondary)
 
                                 Text(activeTypeFilter.map { "No \($0.displayName.lowercased()) appointments" } ?? "No Appointments")
                                     .font(.appTitle)
@@ -314,7 +316,7 @@ struct AppointmentListView: View {
                                             showAddAppointment = true
                                         }
                                     }
-                                    .padding(.horizontal, 32)
+                                    .padding(.horizontal, 22)
                                     .padding(.top, 8)
                                 }
                             }
@@ -876,7 +878,7 @@ struct AppointmentDetailView: View {
                                 }
                             }
                             .padding(AppDimensions.cardPadding)
-                            .background(appAccentColor.opacity(0.15))
+                            .background(Color.cardBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
 
                             DetailItemCard(label: "Date", value: dateFormatter.string(from: appointment.date))
@@ -1072,7 +1074,7 @@ struct AppointmentDetailView: View {
                 .foregroundColor(.textSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
-                .background(Color.cardBackgroundSoft)
+                .background(Color.cardBackground)
                 .cornerRadius(12)
         }
         .padding(AppDimensions.cardPadding)
@@ -1282,9 +1284,9 @@ struct AddAppointmentView: View {
 
                     // Type selection
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Type")
+                        Text("TYPE")
                             .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                            .foregroundColor(appAccentColor)
 
                         AppointmentTypePicker(selectedType: $selectedType)
                     }
@@ -1294,7 +1296,7 @@ struct AddAppointmentView: View {
                         VStack(spacing: 0) {
                             Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
                                 .font(.appBodyMedium)
-                                .foregroundColor(.accentYellow)
+                                .foregroundColor(appAccentColor)
                                 .padding(.top, 12)
 
                             DatePicker(
@@ -1310,8 +1312,12 @@ struct AddAppointmentView: View {
                             .clipped()
                         }
                         .padding(.horizontal)
-                        .background(Color.cardBackgroundSoft)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        )
 
                         // Show limit info for free users
                         if !hasPremiumAccess {
@@ -1326,7 +1332,7 @@ struct AddAppointmentView: View {
                     HStack {
                         Toggle("Include time", isOn: $hasTime)
                             .tint(appAccentColor)
-
+                            .font(.appBody)
                         if hasTime {
                             Spacer()
                             DatePicker(
@@ -1340,8 +1346,12 @@ struct AddAppointmentView: View {
                         }
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     AppTextField(placeholder: "Location (optional)", text: $location)
                     AppTextField(placeholder: "Notes (optional)", text: $notes)
@@ -1354,9 +1364,10 @@ struct AddAppointmentView: View {
                                 .foregroundColor(.textPrimary)
                         }
                         .tint(appAccentColor)
+                        .padding(.horizontal)
 
                         if !reminderAtEvent {
-                            HStack(spacing: 12) {
+                            HStack(spacing: 0) {
                                 Text("Remind me")
                                     .font(.appBody)
                                     .foregroundColor(.textPrimary)
@@ -1382,10 +1393,15 @@ struct AddAppointmentView: View {
                                     .foregroundColor(.textPrimary)
                             }
                         }
+
                     }
-                    .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .padding(.vertical)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Repeat appointment
                     VStack(spacing: 12) {
@@ -1423,8 +1439,12 @@ struct AddAppointmentView: View {
                         }
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
 
                 }
@@ -1487,8 +1507,12 @@ struct AddAppointmentView: View {
                         .foregroundColor(.textSecondary)
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                )
             }
             .buttonStyle(PlainButtonStyle())
         } else {
@@ -1510,13 +1534,23 @@ struct AddAppointmentView: View {
 
                 Spacer()
 
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(.accentYellow)
+                // Image(systemName: "crown.fill")
+                //     .font(.system(size: 14))
+                //     .foregroundColor(.accentYellow)
+                    Image("unforgotten-icon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 45)
+                        .cornerRadius(8)
+
             }
             .padding()
-            .background(Color.cardBackgroundSoft)
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+            )
             .opacity(0.7)
         }
     }
@@ -1601,6 +1635,14 @@ struct AddAppointmentView: View {
                         accountId: account.id,
                         eventType: .appointment,
                         eventId: appointment.id,
+                        memberUserIds: Array(selectedMemberIds)
+                    )
+                    // Send push notification to shared members
+                    await PushNotificationService.shared.sendShareNotification(
+                        eventType: .appointment,
+                        eventId: appointment.id,
+                        eventTitle: appointment.title,
+                        sharedByName: appState.currentAppUser?.displayName ?? "Someone",
                         memberUserIds: Array(selectedMemberIds)
                     )
                 } catch {
@@ -1769,9 +1811,9 @@ struct EditAppointmentView: View {
                 }
                 // Type selection
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Type")
+                    Text("TYPE")
                         .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                        .foregroundColor(appAccentColor)
 
                     AppointmentTypePicker(selectedType: $selectedType)
                 }
@@ -1781,7 +1823,7 @@ struct EditAppointmentView: View {
                     VStack(spacing: 0) {
                         Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
                             .font(.appBodyMedium)
-                            .foregroundColor(.accentYellow)
+                            .foregroundColor(appAccentColor)
                             .padding(.top, 12)
 
                         DatePicker(
@@ -1797,8 +1839,12 @@ struct EditAppointmentView: View {
                         .clipped()
                     }
                     .padding(.horizontal)
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Show limit info for free users
                     if !hasPremiumAccess {
@@ -1829,8 +1875,12 @@ struct EditAppointmentView: View {
                     }
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                )
 
                 AppTextField(placeholder: "Location", text: $location)
                 AppTextField(placeholder: "Notes", text: $notes)
@@ -1838,7 +1888,7 @@ struct EditAppointmentView: View {
                 // Reminder picker
                 VStack(spacing: 12) {
                     Toggle(isOn: $reminderAtEvent) {
-                        Text("At time of event")
+                        Text("Remind me at time of event")
                             .font(.appBody)
                             .foregroundColor(.textPrimary)
                     }
@@ -1881,8 +1931,12 @@ struct EditAppointmentView: View {
                     }
                 }
                 .padding(.vertical)
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                )
 
                 // Repeat appointment
                 VStack(spacing: 12) {
@@ -1918,8 +1972,12 @@ struct EditAppointmentView: View {
                     }
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                )
 
 
 
@@ -1998,8 +2056,12 @@ struct EditAppointmentView: View {
                         .foregroundColor(.textSecondary)
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                )
             }
             .buttonStyle(PlainButtonStyle())
         } else {
@@ -2021,13 +2083,23 @@ struct EditAppointmentView: View {
 
                 Spacer()
 
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(.accentYellow)
+                // Image(systemName: "crown.fill")
+                //     .font(.system(size: 14))
+                //     .foregroundColor(.accentYellow)
+
+                    Image("unforgotten-icon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 45)
+                        .cornerRadius(8)
             }
             .padding()
-            .background(Color.cardBackgroundSoft)
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+            )
             .opacity(0.7)
         }
     }
@@ -2132,6 +2204,14 @@ struct EditAppointmentView: View {
                     accountId: accountId,
                     eventType: .appointment,
                     eventId: appointmentId,
+                    memberUserIds: Array(selectedMemberIds)
+                )
+                // Send push notification to shared members
+                await PushNotificationService.shared.sendShareNotification(
+                    eventType: .appointment,
+                    eventId: appointmentId,
+                    eventTitle: title,
+                    sharedByName: appState.currentAppUser?.displayName ?? "Someone",
                     memberUserIds: Array(selectedMemberIds)
                 )
             }
@@ -2852,7 +2932,7 @@ struct AppointmentTypeFilterButton: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(isSelected ? color.opacity(0.3) : Color.cardBackgroundSoft)
+            .background(isSelected ? color.opacity(0.3) : Color.cardBackground)
             .foregroundColor(isSelected ? color : .textSecondary)
             .cornerRadius(AppDimensions.pillCornerRadius)
             .overlay(
@@ -2904,7 +2984,7 @@ struct AppointmentTypeBadge: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
-            .background(isSelected ? appAccentColor.opacity(0.3) : Color.cardBackgroundSoft)
+            .background(isSelected ? appAccentColor.opacity(0.3) : Color.cardBackground)
             .foregroundColor(isSelected ? appAccentColor : .textSecondary)
             .cornerRadius(AppDimensions.pillCornerRadius)
             .overlay(

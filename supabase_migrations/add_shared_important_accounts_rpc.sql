@@ -33,11 +33,15 @@ BEGIN
 
     v_sync_connection_id := v_sync.id;
 
-    -- Determine the source profile (the original, not the synced copy)
+    -- Determine the source profile (the original person this synced copy represents)
+    -- acceptor_synced_profile_id is the copy of the ACCEPTOR in the inviter's account
+    --   → so the source is the acceptor's original profile
+    -- inviter_synced_profile_id is the copy of the INVITER in the acceptor's account
+    --   → so the source is the inviter's original profile
     IF v_sync.acceptor_synced_profile_id = v_synced_profile_id THEN
-        v_source_profile_id := v_sync.inviter_source_profile_id;
-    ELSIF v_sync.inviter_synced_profile_id = v_synced_profile_id THEN
         v_source_profile_id := v_sync.acceptor_source_profile_id;
+    ELSIF v_sync.inviter_synced_profile_id = v_synced_profile_id THEN
+        v_source_profile_id := v_sync.inviter_source_profile_id;
     ELSE
         RETURN;  -- Should not happen
     END IF;

@@ -206,6 +206,7 @@ struct UsefulContactsListView: View {
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
+                                    .tint(.medicalRed)
                                 }
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -239,7 +240,7 @@ struct UsefulContactsListView: View {
                         if viewModel.contacts.isEmpty {
                             // No contacts at all
                             EmptyStateView(
-                                icon: "phone.fill",
+                                // icon: "phone.fill",
                                 title: "No contacts yet",
                                 message: "Add useful contacts like doctors, plumbers, and services",
                                 buttonTitle: "Add Contact",

@@ -4,6 +4,7 @@ import Supabase
 // MARK: - Countdown Repository Protocol
 protocol CountdownRepositoryProtocol {
     func getCountdowns(accountId: UUID) async throws -> [Countdown]
+    func getCountdownsInRange(accountId: UUID, startDate: Date, endDate: Date) async throws -> [Countdown]
     func getUpcomingCountdowns(accountId: UUID, days: Int) async throws -> [Countdown]
     func getCountdown(id: UUID) async throws -> Countdown
     func getCountdownsByIds(_ ids: [UUID]) async throws -> [Countdown]
@@ -74,6 +75,45 @@ final class CountdownRepository: CountdownRepositoryProtocol {
 
         // Sort by next occurrence
         return allCountdowns.sorted { $0.daysUntilNextOccurrence < $1.daysUntilNextOccurrence }
+    }
+
+    // MARK: - Get Countdowns In Range
+    func getCountdownsInRange(accountId: UUID, startDate: Date, endDate: Date) async throws -> [Countdown] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let startString = dateFormatter.string(from: startDate)
+        let endString = dateFormatter.string(from: endDate)
+
+        // Fetch non-recurring countdowns in the date range
+        let countdowns: [Countdown] = try await supabase
+            .from(TableName.countdowns)
+            .select()
+            .eq("account_id", value: accountId)
+            .gte("date", value: startString)
+            .lte("date", value: endString)
+            .order("date")
+            .execute()
+            .value
+
+        // Also fetch all recurring countdowns (their original date may be in the past)
+        let recurringCountdowns: [Countdown] = try await supabase
+            .from(TableName.countdowns)
+            .select()
+            .eq("account_id", value: accountId)
+            .eq("is_recurring", value: true)
+            .execute()
+            .value
+
+        // Combine and deduplicate
+        var allCountdowns = countdowns
+        for recurring in recurringCountdowns {
+            if !allCountdowns.contains(where: { $0.id == recurring.id }) {
+                allCountdowns.append(recurring)
+            }
+        }
+
+        return allCountdowns.sorted { $0.date < $1.date }
     }
 
     // MARK: - Get Single Countdown
@@ -147,7 +187,10 @@ final class CountdownRepository: CountdownRepositoryProtocol {
             imageUrl: countdown.imageUrl,
             groupId: countdown.groupId,
             reminderOffsetMinutes: countdown.reminderOffsetMinutes,
-            isRecurring: countdown.isRecurring
+            isRecurring: countdown.isRecurring,
+            recurrenceUnit: countdown.recurrenceUnit,
+            recurrenceInterval: countdown.recurrenceInterval,
+            recurrenceEndDate: countdown.recurrenceEndDate
         )
 
         let updated: Countdown = try await supabase
@@ -220,6 +263,9 @@ struct CountdownInsert: Encodable {
     let groupId: UUID?
     let reminderOffsetMinutes: Int?
     let isRecurring: Bool
+    let recurrenceUnit: RecurrenceUnit?
+    let recurrenceInterval: Int?
+    let recurrenceEndDate: Date?
 
     enum CodingKeys: String, CodingKey {
         case accountId = "account_id"
@@ -235,6 +281,9 @@ struct CountdownInsert: Encodable {
         case groupId = "group_id"
         case reminderOffsetMinutes = "reminder_offset_minutes"
         case isRecurring = "is_recurring"
+        case recurrenceUnit = "recurrence_unit"
+        case recurrenceInterval = "recurrence_interval"
+        case recurrenceEndDate = "recurrence_end_date"
     }
 
     init(
@@ -250,7 +299,10 @@ struct CountdownInsert: Encodable {
         imageUrl: String? = nil,
         groupId: UUID? = nil,
         reminderOffsetMinutes: Int? = nil,
-        isRecurring: Bool = false
+        isRecurring: Bool = false,
+        recurrenceUnit: RecurrenceUnit? = nil,
+        recurrenceInterval: Int? = nil,
+        recurrenceEndDate: Date? = nil
     ) {
         self.accountId = accountId
         self.title = title
@@ -265,6 +317,9 @@ struct CountdownInsert: Encodable {
         self.groupId = groupId
         self.reminderOffsetMinutes = reminderOffsetMinutes
         self.isRecurring = isRecurring
+        self.recurrenceUnit = recurrenceUnit
+        self.recurrenceInterval = recurrenceInterval
+        self.recurrenceEndDate = recurrenceEndDate
     }
 
     // Custom encoding to handle date fields for PostgreSQL timestamptz
@@ -294,6 +349,13 @@ struct CountdownInsert: Encodable {
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(reminderOffsetMinutes, forKey: .reminderOffsetMinutes)
         try container.encode(isRecurring, forKey: .isRecurring)
+        try container.encodeIfPresent(recurrenceUnit, forKey: .recurrenceUnit)
+        try container.encodeIfPresent(recurrenceInterval, forKey: .recurrenceInterval)
+        if let recurrenceEndDate = recurrenceEndDate {
+            try container.encode(dateFormatter.string(from: recurrenceEndDate), forKey: .recurrenceEndDate)
+        } else {
+            try container.encodeNil(forKey: .recurrenceEndDate)
+        }
     }
 }
 
@@ -311,6 +373,9 @@ private struct CountdownUpdate: Encodable {
     let groupId: UUID?
     let reminderOffsetMinutes: Int?
     let isRecurring: Bool
+    let recurrenceUnit: RecurrenceUnit?
+    let recurrenceInterval: Int?
+    let recurrenceEndDate: Date?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -325,6 +390,9 @@ private struct CountdownUpdate: Encodable {
         case groupId = "group_id"
         case reminderOffsetMinutes = "reminder_offset_minutes"
         case isRecurring = "is_recurring"
+        case recurrenceUnit = "recurrence_unit"
+        case recurrenceInterval = "recurrence_interval"
+        case recurrenceEndDate = "recurrence_end_date"
     }
 
     // Custom encoding to handle date fields for PostgreSQL timestamptz
@@ -353,6 +421,13 @@ private struct CountdownUpdate: Encodable {
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(reminderOffsetMinutes, forKey: .reminderOffsetMinutes)
         try container.encode(isRecurring, forKey: .isRecurring)
+        try container.encodeIfPresent(recurrenceUnit, forKey: .recurrenceUnit)
+        try container.encodeIfPresent(recurrenceInterval, forKey: .recurrenceInterval)
+        if let recurrenceEndDate = recurrenceEndDate {
+            try container.encode(dateFormatter.string(from: recurrenceEndDate), forKey: .recurrenceEndDate)
+        } else {
+            try container.encodeNil(forKey: .recurrenceEndDate)
+        }
     }
 }
 
@@ -366,6 +441,9 @@ struct CountdownGroupUpdate: Encodable {
     let imageUrl: String?
     let reminderOffsetMinutes: Int?
     let isRecurring: Bool
+    let recurrenceUnit: RecurrenceUnit?
+    let recurrenceInterval: Int?
+    let recurrenceEndDate: Date?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -376,5 +454,30 @@ struct CountdownGroupUpdate: Encodable {
         case imageUrl = "image_url"
         case reminderOffsetMinutes = "reminder_offset_minutes"
         case isRecurring = "is_recurring"
+        case recurrenceUnit = "recurrence_unit"
+        case recurrenceInterval = "recurrence_interval"
+        case recurrenceEndDate = "recurrence_end_date"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encode(hasTime, forKey: .hasTime)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(customType, forKey: .customType)
+        try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try container.encodeIfPresent(reminderOffsetMinutes, forKey: .reminderOffsetMinutes)
+        try container.encode(isRecurring, forKey: .isRecurring)
+        try container.encodeIfPresent(recurrenceUnit, forKey: .recurrenceUnit)
+        try container.encodeIfPresent(recurrenceInterval, forKey: .recurrenceInterval)
+        if let recurrenceEndDate = recurrenceEndDate {
+            let dateFormatter = DateFormatter()
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            try container.encode(dateFormatter.string(from: recurrenceEndDate), forKey: .recurrenceEndDate)
+        } else {
+            try container.encodeNil(forKey: .recurrenceEndDate)
+        }
     }
 }

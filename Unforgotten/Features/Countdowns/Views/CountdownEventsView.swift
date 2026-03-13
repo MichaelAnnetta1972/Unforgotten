@@ -25,6 +25,7 @@ struct CountdownEventsView: View {
     @State private var searchText = ""
     @State private var selectedType: CountdownType?
     @State private var selectedCustomTypeName: String?
+    @State private var collapseMultiDay = true
 
     /// Whether the current user can add/edit items
     private var canEdit: Bool {
@@ -84,9 +85,26 @@ struct CountdownEventsView: View {
         selectedType != nil || selectedCustomTypeName != nil
     }
 
+    /// Whether any multi-day (grouped) events exist in the current data
+    private var hasMultiDayEvents: Bool {
+        viewModel.countdowns.contains { $0.groupId != nil }
+    }
+
+    /// Map of groupId → total day count for multi-day events
+    private var groupDayCounts: [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for cd in viewModel.countdowns {
+            if let gid = cd.groupId {
+                counts[gid, default: 0] += 1
+            }
+        }
+        return counts
+    }
+
     /// Countdowns filtered by search text and selected type
     private var filteredCountdowns: [Countdown] {
-        var results = viewModel.countdowns
+        // Exclude past non-recurring events
+        var results = viewModel.countdowns.filter { !$0.hasPassed }
 
         if let customName = selectedCustomTypeName {
             results = results.filter { $0.type == .custom && $0.customType == customName }
@@ -96,6 +114,15 @@ struct CountdownEventsView: View {
 
         if !searchText.isEmpty {
             results = results.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        }
+
+        // Collapse multi-day groups to show only the earliest day
+        if collapseMultiDay {
+            var seenGroups: Set<UUID> = []
+            results = results.filter { cd in
+                guard let gid = cd.groupId else { return true }
+                return seenGroups.insert(gid).inserted
+            }
         }
 
         return results
@@ -204,6 +231,22 @@ struct CountdownEventsView: View {
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
                                 .tint(appAccentColor)
+
+                                // Collapse multi-day events toggle
+                                if hasMultiDayEvents {
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.25)) {
+                                            collapseMultiDay.toggle()
+                                        }
+                                    } label: {
+                                        Image(systemName: collapseMultiDay ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(collapseMultiDay ? appAccentColor : .textSecondary)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.cardBackground)
+                                            .cornerRadius(AppDimensions.cardCornerRadius)
+                                    }
+                                }
                             }
                         }
 
@@ -227,7 +270,8 @@ struct CountdownEventsView: View {
 
                                         CountdownEventCard(
                                             countdown: countdown,
-                                            isShared: countdown.accountId != appState.currentAccount?.id
+                                            isShared: viewModel.sharedEventIds.contains(countdown.id),
+                                            multiDayCount: collapseMultiDay ? countdown.groupId.flatMap { groupDayCounts[$0] } : nil
                                         )
                                     }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -237,6 +281,7 @@ struct CountdownEventsView: View {
                                             } label: {
                                                 Label(countdown.groupId != nil ? "Delete Day" : "Delete", systemImage: "trash")
                                             }
+                                            .tint(.medicalRed)
                                             if countdown.groupId != nil {
                                                 Button(role: .destructive) {
                                                     groupToDelete = countdown
@@ -252,6 +297,7 @@ struct CountdownEventsView: View {
                                             } label: {
                                                 Label("Remove", systemImage: "eye.slash")
                                             }
+                                            .tint(.medicalRed)
                                         }
                                     }
                                     .listRowBackground(Color.clear)
@@ -292,28 +338,29 @@ struct CountdownEventsView: View {
                         // Empty state - no countdowns at all
                         if viewModel.countdowns.isEmpty && !viewModel.isLoading {
                             VStack(spacing: 16) {
-                                Image(systemName: "timer")
-                                    .font(.system(size: 60))
-                                    .foregroundColor(.textSecondary)
+                                // Image(systemName: "timer")
+                                //     .font(.system(size: 60))
+                                //     .foregroundColor(.textSecondary)
 
                                 Text("No Events")
                                     .font(.appTitle)
                                     .foregroundColor(.textPrimary)
 
-                                Text("Create events to track important dates like anniversaries, holidays, and more")
+                                Text("Create events to track important dates")
                                     .font(.appBody)
                                     .foregroundColor(.textSecondary)
                                     .multilineTextAlignment(.center)
 
                                 if canEdit {
                                     PrimaryButton(
-                                        title: "Add Countdown",
+                                        title: "Add an Event",
                                         backgroundColor: appAccentColor
                                     ) {
                                         openAddCountdown()
                                     }
                                     .padding(.horizontal, 32)
                                     .padding(.top, 8)
+                                    .frame(width: isiPad ? 200 : nil)
                                 }
                             }
                             .padding(.top, 40)
@@ -442,6 +489,7 @@ struct CountdownEventsView: View {
 struct CountdownEventCard: View {
     let countdown: Countdown
     var isShared: Bool = false
+    var multiDayCount: Int? = nil
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.appAccentColor) private var appAccentColor
 
@@ -452,6 +500,9 @@ struct CountdownEventCard: View {
             return "Today!"
         } else if days == 1 {
             return "1 day"
+        } else if days < 0 {
+            let absDays = abs(days)
+            return absDays == 1 ? "1 day ago" : "\(absDays) days ago"
         } else {
             return "\(days) days"
         }
@@ -469,7 +520,7 @@ struct CountdownEventCard: View {
 
             // Middle - Title and type/date info
             VStack(alignment: .leading, spacing: 6) {
-                // Title with recurring indicator (wraps to multiple lines)
+                // Title with indicators (wraps to multiple lines)
                 HStack(alignment: .top, spacing: 6) {
                     Text(countdown.title)
                         .font(.appCardTitle)
@@ -480,7 +531,7 @@ struct CountdownEventCard: View {
                     if isShared {
                         Image(systemName: "person.2.fill")
                             .font(.system(size: 12))
-                            .foregroundColor(.textMuted)
+                            .foregroundColor(appAccentColor)
                     }
 
                     // Recurring indicator
@@ -510,6 +561,20 @@ struct CountdownEventCard: View {
                         .padding(.vertical, 6)
                         .background(Color.cardBackgroundLight)
                         .cornerRadius(16)
+
+                    // Multi-day count pill (shown when collapsed)
+                    if let dayCount = multiDayCount, dayCount > 1 {
+                        Text("\(dayCount) days")
+                            .font(.appCaption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(appAccentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(appAccentColor.opacity(0.15))
+                            .cornerRadius(16)
+                    }
+
+
                     Text(countdown.formattedDateShort)
                         .font(.appCaption)
                         .foregroundColor(.textSecondary)
@@ -529,6 +594,7 @@ struct CountdownEventCard: View {
 @MainActor
 class CountdownEventsViewModel: ObservableObject {
     @Published var countdowns: [Countdown] = []
+    @Published var sharedEventIds: Set<UUID> = []
     @Published var isLoading = false
     @Published var error: String?
 
@@ -552,6 +618,9 @@ class CountdownEventsViewModel: ObservableObject {
             }
 
             countdowns = allCountdowns
+
+            // Load shared event IDs (events shared by me or to me)
+            await loadSharedEventIds(appState: appState, accountId: account.id)
         } catch {
             if !error.isCancellation {
                 self.error = error.localizedDescription
@@ -559,6 +628,25 @@ class CountdownEventsViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Load IDs of countdown events that are shared (by me or from others)
+    private func loadSharedEventIds(appState: AppState, accountId: UUID) async {
+        var ids: Set<UUID> = []
+
+        // Events from other accounts are shared to me
+        for cd in countdowns where cd.accountId != accountId {
+            ids.insert(cd.id)
+        }
+
+        // Events I've shared with others
+        if let shares = try? await appState.familyCalendarRepository.getAllSharesForAccount(accountId: accountId) {
+            for share in shares where share.eventType == .countdown {
+                ids.insert(share.eventId)
+            }
+        }
+
+        sharedEventIds = ids
     }
 
     /// Refresh data from the remote server (called when realtime notification received)

@@ -35,7 +35,7 @@ struct AccountSwitcherView: View {
             // Account List
             ScrollView {
                 VStack(spacing: 8) {
-                    ForEach(appState.allAccounts) { accountWithRole in
+                    ForEach(appState.switchableAccounts) { accountWithRole in
                         AccountRow(
                             accountWithRole: accountWithRole,
                             isSelected: appState.currentAccount?.id == accountWithRole.account.id,
@@ -176,7 +176,7 @@ struct AccountHeaderButton: View {
                 }
 
                 // Dropdown indicator (only show if multiple accounts)
-                if appState.allAccounts.count > 1 {
+                if appState.switchableAccounts.count > 1 {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.textSecondary)
@@ -331,7 +331,7 @@ struct AccountSwitcherModal: View {
 
                         // Account List
                         VStack(spacing: 8) {
-                            ForEach(appState.allAccounts) { accountWithRole in
+                            ForEach(appState.switchableAccounts) { accountWithRole in
                                 AccountRow(
                                     accountWithRole: accountWithRole,
                                     isSelected: appState.currentAccount?.id == accountWithRole.account.id,

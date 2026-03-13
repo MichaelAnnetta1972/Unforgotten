@@ -149,7 +149,9 @@ final class CachedStickyReminderRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedStickyReminderRepo] Remote createReminder failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -205,7 +207,9 @@ final class CachedStickyReminderRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedStickyReminderRepo] Remote updateReminder failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -242,7 +246,9 @@ final class CachedStickyReminderRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedStickyReminderRepo] Remote dismissReminder failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -280,7 +286,9 @@ final class CachedStickyReminderRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedStickyReminderRepo] Remote reactivateReminder failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -315,7 +323,9 @@ final class CachedStickyReminderRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedStickyReminderRepo] Remote deleteReminder failed: \(error). Saving locally.")
+                #endif
             }
         }
 

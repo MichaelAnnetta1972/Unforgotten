@@ -92,7 +92,11 @@ struct ToDoListsView: View {
                         }
                         .padding(AppDimensions.cardPadding)
                         .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        )
 
                         Menu {
                             Button {
@@ -146,6 +150,7 @@ struct ToDoListsView: View {
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
+                                    .tint(.medicalRed)
                                 }
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -237,9 +242,9 @@ struct ToDoListsView: View {
     // MARK: - Empty State
     private var emptyStateView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "checklist")
-                .font(.system(size: 60))
-                .foregroundColor(.textSecondary)
+            // Image(systemName: "checklist")
+            //     .font(.system(size: 60))
+            //     .foregroundColor(.textSecondary)
 
             if let selectedType {
                 // Filtered empty state (no lists match filter)

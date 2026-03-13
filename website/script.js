@@ -1,123 +1,36 @@
 /**
- * Unforgotten Marketing Website
- * JavaScript functionality for navigation, animations, and interactions
+ * Unforgotten — Minimal Dark Redesign
+ * JavaScript: parallax, video toggle, scroll reveals, navigation
  */
 
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
-    initScrollEffects();
     initMobileMenu();
-    initGalleryTabs();
-    initGalleryNavigation();
+    initHeroParallax();
+    initDeviceToggle();
+    initScrollReveal();
     initSmoothScrolling();
-    initRevealAnimations();
-    initHeroVideo();
+    initFAQAccordion();
+    initAnalytics();
 });
 
 /**
- * Hero phone video handling
- * Shows fallback content if video fails to load
- */
-function initHeroVideo() {
-    const video = document.querySelector('.phone-video');
-    const fallback = document.querySelector('.phone-screen-fallback');
-
-    if (!video) return;
-
-    // Initially hide fallback - let video try to load
-    if (fallback) {
-        fallback.style.display = 'none';
-    }
-
-    // Handle video load error - show fallback
-    video.addEventListener('error', (e) => {
-        console.log('Video error:', e);
-        showFallback();
-    });
-
-    // Also listen for source errors
-    const sources = video.querySelectorAll('source');
-    sources.forEach(source => {
-        source.addEventListener('error', () => {
-            console.log('Source error for:', source.src);
-            showFallback();
-        });
-    });
-
-    // Handle video loaded successfully - ensure fallback is hidden
-    video.addEventListener('loadeddata', () => {
-        console.log('Video loaded successfully');
-        video.classList.remove('video-error');
-        if (fallback) {
-            fallback.style.display = 'none';
-        }
-    });
-
-    video.addEventListener('canplay', () => {
-        console.log('Video can play');
-        video.classList.remove('video-error');
-        if (fallback) {
-            fallback.style.display = 'none';
-        }
-    });
-
-    // Try to play video
-    video.play().catch((err) => {
-        console.log('Autoplay failed:', err);
-        // Don't show fallback for autoplay policy errors - video will still show
-        // Only show fallback if there's actually no video to display
-    });
-
-    function showFallback() {
-        video.classList.add('video-error');
-        if (fallback) {
-            fallback.style.display = 'flex';
-        }
-    }
-
-    // Pause video when not in viewport (performance)
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                video.play().catch(() => {
-                    // Autoplay may fail due to browser policy, that's ok
-                });
-            } else {
-                video.pause();
-            }
-        });
-    }, { threshold: 0.25 });
-
-    observer.observe(video);
-}
-
-/**
- * Navigation scroll effects
+ * Navigation — frosted glass on scroll
  */
 function initNavigation() {
     const nav = document.getElementById('nav');
-    let lastScroll = 0;
+    if (!nav) return;
+
+    // Skip scroll behavior for solid nav (sub-pages)
+    if (nav.classList.contains('nav--solid')) return;
 
     window.addEventListener('scroll', () => {
-        const currentScroll = window.pageYOffset;
-
-        // Add scrolled class when past hero
-        if (currentScroll > 100) {
+        if (window.pageYOffset > 80) {
             nav.classList.add('scrolled');
         } else {
             nav.classList.remove('scrolled');
         }
-
-        // Optional: Hide nav on scroll down, show on scroll up
-        // Disabled for simplicity, but can be enabled:
-        // if (currentScroll > lastScroll && currentScroll > 200) {
-        //     nav.style.transform = 'translateY(-100%)';
-        // } else {
-        //     nav.style.transform = 'translateY(0)';
-        // }
-
-        lastScroll = currentScroll;
-    });
+    }, { passive: true });
 }
 
 /**
@@ -125,25 +38,163 @@ function initNavigation() {
  */
 function initMobileMenu() {
     const toggle = document.querySelector('.nav-mobile-toggle');
-    const mobileMenu = document.getElementById('mobileMenu');
-    const mobileLinks = mobileMenu?.querySelectorAll('a');
+    const menu = document.getElementById('mobileMenu');
 
-    if (!toggle || !mobileMenu) return;
+    if (!toggle || !menu) return;
 
     toggle.addEventListener('click', () => {
         toggle.classList.toggle('active');
-        mobileMenu.classList.toggle('active');
-        document.body.style.overflow = mobileMenu.classList.contains('active') ? 'hidden' : '';
+        menu.classList.toggle('active');
+        document.body.style.overflow = menu.classList.contains('active') ? 'hidden' : '';
+
+        // Update aria-expanded
+        const expanded = toggle.classList.contains('active');
+        toggle.setAttribute('aria-expanded', expanded);
     });
 
     // Close menu when clicking a link
-    mobileLinks?.forEach(link => {
+    menu.querySelectorAll('a').forEach(link => {
         link.addEventListener('click', () => {
             toggle.classList.remove('active');
-            mobileMenu.classList.remove('active');
+            menu.classList.remove('active');
             document.body.style.overflow = '';
+            toggle.setAttribute('aria-expanded', 'false');
         });
     });
+}
+
+/**
+ * Hero parallax — phones drift up, center phone scales
+ *
+ * Uses a wrapper div for the drift (translateY) so individual phone
+ * CSS transforms (fan positioning) are not overridden.
+ * The center phone (3rd child) gets an additional scale via JS.
+ */
+function initHeroParallax() {
+    const hero = document.getElementById('hero');
+    const wrapper = document.getElementById('heroPhonesWrapper');
+    const phonesContainer = document.getElementById('heroPhones');
+
+    if (!hero || !wrapper || !phonesContainer) return;
+
+    const centerPhone = phonesContainer.children[2]; // 3rd phone = center
+    let ticking = false;
+
+    // Store the base CSS transform for the center phone
+    const baseScale = 1.08; // matches CSS: width/height = phone * 1.08
+
+    function updateParallax() {
+        const scrollY = window.pageYOffset;
+        const heroHeight = hero.offsetHeight;
+
+        // Only animate while hero is in/near view
+        if (scrollY > heroHeight + 200) {
+            ticking = false;
+            return;
+        }
+
+        // Progress: 0 at top, 1 when hero fully scrolled past
+        const progress = Math.min(Math.max(scrollY / heroHeight, 0), 1);
+
+        // Phones drift upward as user scrolls (max 80px)
+        const drift = progress * 80;
+        wrapper.style.transform = `translateY(-${drift}px)`;
+
+        // Center phone scales up slightly (additional 8% on top of its base)
+        if (centerPhone) {
+            const extraScale = 1 + progress * 0.08;
+            centerPhone.style.transform = `translateX(-50%) translateY(0px) scale(${extraScale})`;
+        }
+
+        ticking = false;
+    }
+
+    window.addEventListener('scroll', () => {
+        if (!ticking) {
+            requestAnimationFrame(updateParallax);
+            ticking = true;
+        }
+    }, { passive: true });
+}
+
+/**
+ * Device toggle — switch between iPhone and iPad video
+ */
+function initDeviceToggle() {
+    const toggles = document.querySelectorAll('.device-toggle');
+    const iphoneFrame = document.getElementById('iphoneFrame');
+    const ipadFrame = document.getElementById('ipadFrame');
+    const iphoneVideo = document.getElementById('iphoneVideo');
+    const ipadVideo = document.getElementById('ipadVideo');
+
+    if (!toggles.length || !iphoneFrame || !ipadFrame) return;
+
+    toggles.forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            const device = toggle.dataset.device;
+
+            // Update active toggle
+            toggles.forEach(t => t.classList.remove('active'));
+            toggle.classList.add('active');
+
+            if (device === 'iphone') {
+                iphoneFrame.classList.remove('hidden');
+                ipadFrame.classList.add('hidden');
+                if (iphoneVideo) iphoneVideo.play().catch(() => {});
+                if (ipadVideo) ipadVideo.pause();
+            } else {
+                ipadFrame.classList.remove('hidden');
+                iphoneFrame.classList.add('hidden');
+                if (ipadVideo) ipadVideo.play().catch(() => {});
+                if (iphoneVideo) iphoneVideo.pause();
+            }
+        });
+    });
+
+    // Auto-play visible video when section enters viewport
+    const section = document.querySelector('.device-section');
+    if (section) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const activeDevice = document.querySelector('.device-toggle.active')?.dataset.device;
+                    if (activeDevice === 'iphone' && iphoneVideo) {
+                        iphoneVideo.play().catch(() => {});
+                    } else if (ipadVideo) {
+                        ipadVideo.play().catch(() => {});
+                    }
+                } else {
+                    if (iphoneVideo) iphoneVideo.pause();
+                    if (ipadVideo) ipadVideo.pause();
+                }
+            });
+        }, { threshold: 0.3 });
+
+        observer.observe(section);
+    }
+}
+
+/**
+ * Scroll reveal — fade-up animation on scroll via IntersectionObserver
+ */
+function initScrollReveal() {
+    const revealElements = document.querySelectorAll('.reveal');
+    const staggerElements = document.querySelectorAll('.reveal-stagger');
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, {
+        threshold: 0.12,
+        rootMargin: '0px 0px -60px 0px'
+    });
+
+    revealElements.forEach(el => observer.observe(el));
+    staggerElements.forEach(el => observer.observe(el));
 }
 
 /**
@@ -151,7 +202,7 @@ function initMobileMenu() {
  */
 function initSmoothScrolling() {
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function(e) {
+        anchor.addEventListener('click', function (e) {
             const href = this.getAttribute('href');
             if (href === '#') return;
 
@@ -160,11 +211,26 @@ function initSmoothScrolling() {
 
             if (target) {
                 const navHeight = document.getElementById('nav')?.offsetHeight || 0;
-                const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 20;
+                const y = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 20;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+            }
+        });
+    });
+}
 
-                window.scrollTo({
-                    top: targetPosition,
-                    behavior: 'smooth'
+/**
+ * FAQ accordion — close other items when one opens
+ */
+function initFAQAccordion() {
+    const faqItems = document.querySelectorAll('.faq-item');
+
+    faqItems.forEach(item => {
+        item.addEventListener('toggle', () => {
+            if (item.open) {
+                faqItems.forEach(other => {
+                    if (other !== item && other.open) {
+                        other.open = false;
+                    }
                 });
             }
         });
@@ -172,304 +238,12 @@ function initSmoothScrolling() {
 }
 
 /**
- * Scroll-triggered reveal animations
+ * Analytics tracking (placeholder)
  */
-function initRevealAnimations() {
-    const revealElements = document.querySelectorAll('.reveal');
-
-    if (!revealElements.length) {
-        // If no .reveal elements exist, add them to key sections
-        addRevealClasses();
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('visible');
-                // Optional: unobserve after reveal
-                // observer.unobserve(entry.target);
-            }
-        });
-    }, {
-        threshold: 0.1,
-        rootMargin: '0px 0px -50px 0px'
-    });
-
-    document.querySelectorAll('.reveal').forEach(el => {
-        observer.observe(el);
-    });
-}
-
-/**
- * Add reveal classes to elements that should animate on scroll
- */
-function addRevealClasses() {
-    const selectors = [
-        '.section-header',
-        '.problem-text',
-        '.problem-stats',
-        '.feature-card',
-        '.step',
-        '.designed-text',
-        '.designed-visual',
-        '.testimonial-card',
-        '.pricing-card',
-        '.gallery-header',
-        '.cta-content'
-    ];
-
-    selectors.forEach(selector => {
-        document.querySelectorAll(selector).forEach((el, index) => {
-            el.classList.add('reveal');
-            el.style.setProperty('--child-index', index);
+function initAnalytics() {
+    document.querySelectorAll('.hero-cta, .nav-cta, .pricing-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            console.log(`[Analytics] CTA click: ${btn.textContent.trim()}`);
         });
     });
 }
-
-/**
- * Parallax and scroll effects
- */
-function initScrollEffects() {
-    const hero = document.querySelector('.hero');
-    const shapes = document.querySelectorAll('.shape');
-
-    if (!hero || !shapes.length) return;
-
-    window.addEventListener('scroll', () => {
-        const scrolled = window.pageYOffset;
-        const heroHeight = hero.offsetHeight;
-
-        // Only apply effects while in hero section
-        if (scrolled < heroHeight) {
-            const progress = scrolled / heroHeight;
-
-            shapes.forEach((shape, index) => {
-                const speed = 0.3 + (index * 0.1);
-                shape.style.transform = `translate(${scrolled * speed * 0.1}px, ${scrolled * speed}px)`;
-            });
-        }
-    });
-}
-
-/**
- * Gallery tab switching (iPhone/iPad views)
- */
-function initGalleryTabs() {
-    const tabs = document.querySelectorAll('.gallery-tab');
-    const galleries = document.querySelectorAll('.gallery-track');
-
-    if (!tabs.length) return;
-
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const target = tab.dataset.target;
-
-            // Update active tab
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-
-            // Show corresponding gallery
-            galleries.forEach(gallery => {
-                if (gallery.dataset.device === target) {
-                    gallery.style.display = 'flex';
-                } else {
-                    gallery.style.display = 'none';
-                }
-            });
-
-            // Update navigation button states for the new gallery
-            updateGalleryNavButtons();
-        });
-    });
-}
-
-/**
- * Gallery navigation arrows
- */
-function initGalleryNavigation() {
-    const prevBtn = document.querySelector('.gallery-nav-prev');
-    const nextBtn = document.querySelector('.gallery-nav-next');
-
-    if (!prevBtn || !nextBtn) return;
-
-    // Get the currently visible gallery track
-    function getActiveTrack() {
-        const tracks = document.querySelectorAll('.gallery-track');
-        for (const track of tracks) {
-            const computedDisplay = window.getComputedStyle(track).display;
-            if (computedDisplay !== 'none') {
-                return track;
-            }
-        }
-        return tracks[0];
-    }
-
-    // Scroll by one item width
-    function scrollGallery(direction) {
-        const track = getActiveTrack();
-        if (!track) return;
-
-        const item = track.querySelector('.gallery-item');
-        if (!item) return;
-
-        const scrollAmount = item.offsetWidth + 24; // item width + gap
-        const newScrollLeft = track.scrollLeft + (direction * scrollAmount);
-
-        track.scrollTo({
-            left: newScrollLeft,
-            behavior: 'smooth'
-        });
-    }
-
-    prevBtn.addEventListener('click', () => scrollGallery(-1));
-    nextBtn.addEventListener('click', () => scrollGallery(1));
-
-    // Update button states based on scroll position
-    function updateNavButtons() {
-        const track = getActiveTrack();
-        if (!track) return;
-
-        const isAtStart = track.scrollLeft <= 10;
-        const isAtEnd = track.scrollLeft >= track.scrollWidth - track.clientWidth - 10;
-
-        prevBtn.disabled = isAtStart;
-        nextBtn.disabled = isAtEnd;
-    }
-
-    // Listen to scroll events on all tracks
-    document.querySelectorAll('.gallery-track').forEach(track => {
-        track.addEventListener('scroll', updateNavButtons);
-    });
-
-    // Initial state
-    updateNavButtons();
-
-    // Expose update function globally for tab switching
-    window.updateGalleryNavButtons = updateNavButtons;
-}
-
-/**
- * Update gallery nav buttons (called from tab switch)
- */
-function updateGalleryNavButtons() {
-    if (window.updateGalleryNavButtons) {
-        // Small delay to let the display change take effect
-        setTimeout(window.updateGalleryNavButtons, 50);
-    }
-}
-
-/**
- * Animate numbers on scroll (for statistics)
- */
-function initCounterAnimation() {
-    const counters = document.querySelectorAll('.stat-number');
-
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                animateCounter(entry.target);
-                observer.unobserve(entry.target);
-            }
-        });
-    }, { threshold: 0.5 });
-
-    counters.forEach(counter => {
-        observer.observe(counter);
-    });
-}
-
-function animateCounter(element) {
-    const text = element.textContent;
-    const hasM = text.includes('M');
-    const hasPercent = text.includes('%');
-
-    let target = parseFloat(text.replace(/[^0-9.]/g, ''));
-    let current = 0;
-    const duration = 2000;
-    const step = target / (duration / 16);
-
-    const animate = () => {
-        current += step;
-        if (current < target) {
-            let display = current.toFixed(hasM ? 1 : 0);
-            if (hasM) display += 'M';
-            if (hasPercent) display += '%';
-            element.textContent = display;
-            requestAnimationFrame(animate);
-        } else {
-            element.textContent = text;
-        }
-    };
-
-    animate();
-}
-
-/**
- * Preload critical images
- */
-function preloadImages(urls) {
-    urls.forEach(url => {
-        const img = new Image();
-        img.src = url;
-    });
-}
-
-/**
- * Handle gallery horizontal scroll with touch/mouse
- */
-function initGalleryDrag() {
-    const tracks = document.querySelectorAll('.gallery-track');
-
-    tracks.forEach(track => {
-        let isDown = false;
-        let startX;
-        let scrollLeft;
-
-        track.addEventListener('mousedown', (e) => {
-            isDown = true;
-            track.style.cursor = 'grabbing';
-            startX = e.pageX - track.offsetLeft;
-            scrollLeft = track.scrollLeft;
-        });
-
-        track.addEventListener('mouseleave', () => {
-            isDown = false;
-            track.style.cursor = 'grab';
-        });
-
-        track.addEventListener('mouseup', () => {
-            isDown = false;
-            track.style.cursor = 'grab';
-        });
-
-        track.addEventListener('mousemove', (e) => {
-            if (!isDown) return;
-            e.preventDefault();
-            const x = e.pageX - track.offsetLeft;
-            const walk = (x - startX) * 2;
-            track.scrollLeft = scrollLeft - walk;
-        });
-    });
-}
-
-// Initialize counter animation on load
-document.addEventListener('DOMContentLoaded', () => {
-    initCounterAnimation();
-    initGalleryDrag();
-});
-
-/**
- * Analytics helper (placeholder for actual analytics)
- */
-function trackEvent(category, action, label) {
-    // Replace with actual analytics implementation
-    // Example: gtag('event', action, { event_category: category, event_label: label });
-    console.log(`[Analytics] ${category}: ${action} - ${label}`);
-}
-
-// Track CTA clicks
-document.querySelectorAll('.btn-primary, .app-store-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        trackEvent('CTA', 'click', btn.textContent.trim());
-    });
-});

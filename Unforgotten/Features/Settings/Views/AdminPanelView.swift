@@ -89,7 +89,7 @@ struct AdminPanelView: View {
             } else if filteredUsers.isEmpty {
                 Spacer()
                 EmptyStateView(
-                    icon: "person.2.slash",
+                    //icon: "person.2.slash",
                     title: "No users found",
                     message: searchText.isEmpty ? "No users in the system yet" : "No users match your search"
                 )
@@ -115,7 +115,7 @@ struct AdminPanelView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.textSecondary)
 
-            TextField("Search by email...", text: $searchText)
+            TextField("Search by name or email...", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.appBody)
                 .foregroundColor(.textPrimary)
@@ -167,7 +167,8 @@ struct AdminPanelView: View {
             return viewModel.users
         }
         return viewModel.users.filter { user in
-            user.email.localizedCaseInsensitiveContains(searchText)
+            user.email.localizedCaseInsensitiveContains(searchText) ||
+            (user.displayName?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
     }
 }
@@ -195,12 +196,19 @@ struct AdminUserRow: View {
                         .foregroundColor(user.isAppAdmin ? .black : .textSecondary)
                 }
 
-                // Email
+                // Name / Email
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(user.email)
+                    Text(user.displayName ?? user.email)
                         .font(.appBodyMedium)
                         .foregroundColor(.textPrimary)
                         .lineLimit(1)
+
+                    if user.displayName != nil {
+                        Text(user.email)
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                    }
 
                     // Status badges
                     HStack(spacing: 6) {
@@ -293,7 +301,29 @@ class AdminPanelViewModel: ObservableObject {
         isLoading = true
 
         do {
-            users = try await appState.appUserRepository.getAllUsers()
+            var loadedUsers = try await appState.appUserRepository.getAllUsers()
+
+            // For users without a display name, try to find their name from linked profiles
+            for i in loadedUsers.indices where loadedUsers[i].displayName == nil {
+                let userId = loadedUsers[i].id
+                let profiles: [Profile] = (try? await SupabaseManager.shared.client
+                    .from(TableName.profiles)
+                    .select()
+                    .eq("linked_user_id", value: userId)
+                    .limit(1)
+                    .execute()
+                    .value) ?? []
+                if let profile = profiles.first {
+                    loadedUsers[i].displayName = profile.displayName
+                    // Also backfill the display name in the database for future use
+                    _ = try? await appState.appUserRepository.updateDisplayName(
+                        userId: userId,
+                        displayName: profile.displayName
+                    )
+                }
+            }
+
+            users = loadedUsers
         } catch {
             errorMessage = "Failed to load users: \(error.localizedDescription)"
             showError = true

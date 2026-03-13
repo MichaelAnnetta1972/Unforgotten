@@ -42,9 +42,9 @@ struct ToDoListDetailView: View {
             Color.appBackgroundLight.ignoresSafeArea()
 
             ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: AppDimensions.cardSpacing) {
-                        // Close button row
+                List {
+                    // Close button row
+                    Section {
                         HStack {
                             Spacer()
                             Button(action: { dismiss() }) {
@@ -56,15 +56,18 @@ struct ToDoListDetailView: View {
                                     .clipShape(Circle())
                             }
                         }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                        .padding(.top, AppDimensions.screenPadding)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: AppDimensions.screenPadding, leading: AppDimensions.screenPadding, bottom: 0, trailing: AppDimensions.screenPadding))
+                    }
 
-                        // Title Edit Field with Type Icon and Delete Button
+                    // Title Edit Field with Type Icon and Delete Button
+                    Section {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
-                                Text("List Title")
+                                Text("LIST TITLE")
                                     .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                                    .foregroundColor(appAccentColor)
 
                                 Spacer()
 
@@ -103,25 +106,23 @@ struct ToDoListDetailView: View {
                                             .foregroundColor(viewModel.selectedType != nil ? appAccentColor : .textSecondary)
                                     }
                                     .tint(appAccentColor)
-
-                                    Button(action: { showDeleteConfirmation = true }) {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 18))
-                                            .foregroundColor(.red)
-                                    }
                                 }
                             }
                             .padding(AppDimensions.cardPadding)
                             .background(Color.appBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
                         }
-                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                    }
 
-                        // Due Date
+                    // Due Date
+                    Section {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Due Date")
+                            Text("DUE DATE")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                                .foregroundColor(appAccentColor)
 
                             HStack {
                                 if let date = viewModel.dueDate {
@@ -163,7 +164,7 @@ struct ToDoListDetailView: View {
                                 VStack(spacing: 0) {
                                     Text((viewModel.dueDate ?? Date()).formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
                                         .font(.appBodyMedium)
-                                        .foregroundColor(.accentYellow)
+                                        .foregroundColor(appAccentColor)
                                         .padding(.top, 12)
 
                                     DatePicker("", selection: Binding(
@@ -182,63 +183,80 @@ struct ToDoListDetailView: View {
                                 .cornerRadius(AppDimensions.cardCornerRadius)
                             }
                         }
-                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                    }
 
-                        // To Do Items
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Items")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                                .padding(.horizontal, AppDimensions.screenPadding)
+                    // To Do Items
+                    Section {
+                        Text("ITEMS")
+                            .font(.appCaption)
+                            .foregroundColor(appAccentColor)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: 0, trailing: AppDimensions.screenPadding))
 
-                            LazyVStack(spacing: 12) {
-                                ForEach(viewModel.sortedItems) { item in
-                                    ToDoItemCard(
-                                        item: item,
-                                        focusedItemId: $focusedItemId,
-                                        onToggle: {
-                                            withAnimation(.easeInOut(duration: 0.3)) {
-                                                viewModel.toggleItem(item)
-                                            }
-                                        },
-                                        onTextChange: { newText in
-                                            viewModel.updateItemText(item, text: newText)
-                                        },
-                                        onDelete: { viewModel.deleteItem(item) }
-                                    )
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-                                    .id(item.id)
-                                }
-                                .animation(.easeInOut(duration: 0.3), value: viewModel.sortedItems.map { $0.id })
-
-                                // iPad inline add button - placed after items to avoid overlap with bottom nav
-                                if isiPad && !showKeyboardToolbar {
-                                    HStack {
-                                        Spacer()
-                                        Button(action: {
-                                            showKeyboardToolbar = true
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                newItemFocused = true
-                                            }
-                                        }) {
-                                            Image(systemName: "plus")
-                                                .font(.title2.weight(.semibold))
-                                                .foregroundColor(.white)
-                                                .frame(width: 56, height: 56)
-                                                .background(appAccentColor)
-                                                .clipShape(Circle())
-                                                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                                        }
+                        ForEach(viewModel.sortedItems) { item in
+                            ToDoItemCard(
+                                item: item,
+                                focusedItemId: $focusedItemId,
+                                onToggle: {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        viewModel.toggleItem(item)
                                     }
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-                                    .padding(.top, 8)
+                                },
+                                onTextChange: { newText in
+                                    viewModel.updateItemText(item, text: newText)
+                                }
+                            )
+                            .id(item.id)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    viewModel.deleteItem(item)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .tint(.medicalRed)
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.sortedItems.map { $0.id })
+
+                        // iPad inline add button - placed after items to avoid overlap with bottom nav
+                        if isiPad && !showKeyboardToolbar {
+                            HStack {
+                                Spacer()
+                                Button(action: {
+                                    showKeyboardToolbar = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        newItemFocused = true
+                                    }
+                                }) {
+                                    Image(systemName: "plus")
+                                        .font(.title2.weight(.semibold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 56, height: 56)
+                                        .background(appAccentColor)
+                                        .clipShape(Circle())
+                                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                                 }
                             }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 8, leading: AppDimensions.screenPadding, bottom: 0, trailing: AppDimensions.screenPadding))
                         }
-
-                        Spacer().frame(height: isiPad ? 150 : 300)
                     }
+
+                    // Bottom spacer
+                    Spacer().frame(height: isiPad ? 150 : 300)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .scrollIndicators(.hidden)
                 .onChange(of: focusedItemId) { _, newValue in
                     if let itemId = newValue {
@@ -435,7 +453,11 @@ struct KeyboardToolbarView: View {
                 .padding(.horizontal, AppDimensions.cardPadding)
                 .padding(.vertical, 12)
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                )
                 .focused(isFocused)
                 .onSubmit(onSubmit)
 

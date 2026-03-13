@@ -22,6 +22,7 @@ struct SettingsView: View {
     @Environment(\.iPadShowEditAccountNameAction) private var iPadShowEditAccountNameAction
     @Environment(\.iPadShowAdminPanelAction) private var iPadShowAdminPanelAction
     @Environment(\.iPadShowUpgradeAction) private var iPadShowUpgradeAction
+    @Environment(\.iPadShowJoinAccountAction) private var iPadShowJoinAccountAction
 
     @State private var showManageMembers = false
     @State private var showMoodHistory = false
@@ -31,6 +32,7 @@ struct SettingsView: View {
     @State private var showSwitchAccount = false
     @State private var showEditAccountName = false
     @State private var showAdminPanel = false
+    @State private var showJoinAccount = false
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
     @State private var userEmail: String = ""
@@ -204,13 +206,13 @@ struct SettingsView: View {
                                 )
                             }
 
-                            if let role = appState.currentUserRole {
-                                SettingsRow(
-                                    icon: "person.badge.shield.checkmark",
-                                    title: "Your Role",
-                                    value: role.displayName
-                                )
-                            }
+                            // if let role = appState.currentUserRole {
+                            //     SettingsRow(
+                            //         icon: "person.badge.shield.checkmark",
+                            //         title: "Your Role",
+                            //         value: role.displayName
+                            //     )
+                            // }
 
                             if !userEmail.isEmpty {
                                 SettingsRow(
@@ -237,7 +239,7 @@ struct SettingsView: View {
                         }
 
                         // Switch Account (only show if multiple accounts)
-                        if appState.allAccounts.count > 1 {
+                        if appState.switchableAccounts.count > 1 {
                             SettingsButtonRow(
                                 icon: "arrow.left.arrow.right",
                                 title: "Switch Account",
@@ -250,6 +252,19 @@ struct SettingsView: View {
                                 }
                             )
                         }
+
+                        // Join an Account
+                        SettingsButtonRow(
+                            icon: "person.badge.plus",
+                            title: "Join an Account",
+                            action: {
+                                if let action = iPadShowJoinAccountAction {
+                                    action()
+                                } else {
+                                    showJoinAccount = true
+                                }
+                            }
+                        )
                     }
 
                     
@@ -351,6 +366,9 @@ struct SettingsView: View {
         .sidePanel(isPresented: $showAdminPanel) {
             AdminPanelView()
         }
+        .sidePanel(isPresented: $showJoinAccount) {
+            JoinAccountView()
+        }
         .sidePanel(isPresented: $showPrivacyPolicy) {
             PrivacyPolicyView()
         }
@@ -379,12 +397,13 @@ struct SettingsView: View {
 struct SettingsSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
-    
+    @Environment(\.appAccentColor) private var appAccentColor
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.appCaption)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(appAccentColor)
                 .padding(.horizontal, AppDimensions.screenPadding)
             
             VStack(spacing: 1) {
@@ -666,7 +685,7 @@ struct MoodHistoryView: View {
 
                     if viewModel.entries.isEmpty && !viewModel.isLoading {
                         EmptyStateView(
-                            icon: "face.smiling",
+                            //icon: "face.smiling",
                             title: "No mood entries yet",
                             message: "Start tracking your mood to see history here"
                         )
@@ -908,7 +927,7 @@ struct ManageMembersView: View {
 
                     if viewModel.membersWithEmail.isEmpty && viewModel.pendingInvitations.isEmpty && !viewModel.isLoading {
                         EmptyStateView(
-                            icon: "person.2",
+                            //icon: "person.2",
                             title: "No members yet",
                             message: "Invite family members to share access to this account"
                         )
@@ -969,7 +988,7 @@ struct MemberRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(memberWithEmail.email)
+                    Text(memberWithEmail.displayName ?? memberWithEmail.email)
                         .font(.appBody)
                         .foregroundColor(.textPrimary)
 
@@ -1056,6 +1075,7 @@ struct InvitationRow: View {
 struct MemberWithEmail: Identifiable {
     let member: AccountMember
     let email: String
+    let displayName: String?
     let isCurrentUser: Bool
 
     var id: UUID { member.id }
@@ -1084,15 +1104,23 @@ class ManageMembersViewModel: ObservableObject {
             let currentUserId = await SupabaseManager.shared.currentUserId
             let currentUserEmail = await SupabaseManager.shared.currentUser?.email
 
+            // Fetch AppUser for current user to get display name
+            var currentAppUser: AppUser?
+            if let currentUserId = currentUserId {
+                currentAppUser = try? await appState.appUserRepository.getUser(id: currentUserId)
+            }
+
             // Build members with email
             var result: [MemberWithEmail] = []
             for member in members {
                 let isCurrentUser = member.userId == currentUserId
                 var email = "Unknown"
+                var displayName: String?
 
                 if isCurrentUser, let userEmail = currentUserEmail {
                     // Current user - use their auth email
                     email = userEmail
+                    displayName = currentAppUser?.displayName
                 } else {
                     // Other member - find their email from accepted invitation using acceptedBy field
                     if let acceptedInvitation = allInvitations.first(where: {
@@ -1112,11 +1140,35 @@ class ManageMembersViewModel: ObservableObject {
                             email = acceptedInvitation.email
                         }
                     }
+
+                    // Try to fetch display name and email from app_users table
+                    if let otherUser = try? await appState.appUserRepository.getUser(id: member.userId) {
+                        displayName = otherUser.displayName
+                        // Use app_users email as fallback (e.g. for owner who was never invited)
+                        if email == "Unknown" {
+                            email = otherUser.email
+                        }
+                    }
+                }
+
+                // If still no display name, try to find it from linked profile
+                if displayName == nil {
+                    let profiles: [Profile] = (try? await SupabaseManager.shared.client
+                        .from(TableName.profiles)
+                        .select()
+                        .eq("linked_user_id", value: member.userId)
+                        .limit(1)
+                        .execute()
+                        .value) ?? []
+                    if let profile = profiles.first {
+                        displayName = profile.displayName
+                    }
                 }
 
                 result.append(MemberWithEmail(
                     member: member,
                     email: email,
+                    displayName: displayName,
                     isCurrentUser: isCurrentUser
                 ))
             }
@@ -1221,7 +1273,7 @@ struct SwitchAccountView: View {
 
                     // Account List
                     VStack(spacing: 8) {
-                        ForEach(appState.allAccounts) { accountWithRole in
+                        ForEach(appState.switchableAccounts) { accountWithRole in
                             AccountSwitchRow(
                                 accountWithRole: accountWithRole,
                                 isSelected: appState.currentAccount?.id == accountWithRole.account.id,
@@ -1438,9 +1490,9 @@ struct UpgradeSettingsSection: View {
             } label: {
                 VStack(spacing: 16) {
                     HStack(spacing: 12) {
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(appAccentColor)
+                        // Image(systemName: "crown.fill")
+                        //     .font(.system(size: 28))
+                        //     .foregroundColor(appAccentColor)
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Upgrade Your Plan")
@@ -1480,10 +1532,10 @@ struct UpgradeSettingsSection: View {
                             Text("Family Plus $7.99")
                         }
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.purple)
+                        .foregroundColor(.medicalRed)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.purple.opacity(0.15))
+                        .background(Color.medicalRed.opacity(0.15))
                         .cornerRadius(8)
 
                         Spacer()
@@ -1566,7 +1618,7 @@ struct UpgradeView: View {
     }
 
     private var tierColor: Color {
-        selectedTier == .premium ? appAccentColor : .purple
+        selectedTier == .premium ? appAccentColor : .medicalRed
     }
 
     var body: some View {
@@ -1619,9 +1671,9 @@ struct UpgradeView: View {
                 VStack(spacing: 20) {
                     // Header
                     VStack(spacing: 12) {
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(tierColor)
+                        // Image(systemName: "crown.fill")
+                        //     .font(.system(size: 60))
+                        //     .foregroundColor(tierColor)
 
                         Text("Upgrade Your Plan")
                             .font(.appLargeTitle)
@@ -1749,7 +1801,7 @@ struct UpgradeView: View {
                     Text("Premium")
                         .font(.appBodyMedium)
                         .foregroundColor(selectedTier == .premium ? .textPrimary : .textSecondary)
-                    Text("$4.99/mo")
+                    Text("$5.99/mo")
                         .font(.appCaption)
                         .foregroundColor(selectedTier == .premium ? appAccentColor : .textMuted)
                 }
@@ -1770,13 +1822,13 @@ struct UpgradeView: View {
                     Text("Family Plus")
                         .font(.appBodyMedium)
                         .foregroundColor(selectedTier == .familyPlus ? .textPrimary : .textSecondary)
-                    Text("$7.99/mo")
+                    Text("$9.99/mo")
                         .font(.appCaption)
-                        .foregroundColor(selectedTier == .familyPlus ? .purple : .textMuted)
+                        .foregroundColor(selectedTier == .familyPlus ? .medicalRed : .textMuted)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(selectedTier == .familyPlus ? Color.purple.opacity(0.15) : Color.clear)
+                .background(selectedTier == .familyPlus ? Color.medicalRed.opacity(0.15) : Color.clear)
                 .cornerRadius(12)
             }
         }
@@ -1794,28 +1846,28 @@ struct UpgradeView: View {
                 if selectedTier == .premium {
                     upgradePricingCard(
                         title: "Monthly",
-                        price: "$4.99/month",
+                        price: "$5.99/month",
                         isSelected: true,
                         isBestValue: false
                     )
                     upgradePricingCard(
                         title: "Annual",
                         price: "$39.99/year",
-                        subtitle: "Save 33%",
+                        subtitle: "Save 44%",
                         isSelected: false,
                         isBestValue: true
                     )
                 } else {
                     upgradePricingCard(
                         title: "Monthly",
-                        price: "$7.99/month",
+                        price: "$9.99/month",
                         isSelected: true,
                         isBestValue: false
                     )
                     upgradePricingCard(
                         title: "Annual",
-                        price: "$63.99/year",
-                        subtitle: "Save 33%",
+                        price: "$69.99/year",
+                        subtitle: "Save 42%",
                         isSelected: false,
                         isBestValue: true
                     )
@@ -1831,7 +1883,7 @@ struct UpgradeView: View {
                         upgradePricingCard(
                             title: isAnnual ? "Annual" : "Monthly",
                             price: product.displayPrice + (isAnnual ? "/year" : "/month"),
-                            subtitle: isAnnual ? "Save 33%" : nil,
+                            subtitle: isAnnual ? "Save over 40%" : nil,
                             isSelected: isSelected,
                             isBestValue: isAnnual
                         )

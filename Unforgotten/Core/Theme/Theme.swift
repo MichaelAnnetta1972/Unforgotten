@@ -40,6 +40,25 @@ extension Color {
     }
 }
 
+// MARK: - Color to Hex String
+extension Color {
+    /// Convert a Color to its 6-character uppercase hex string representation (e.g. "FF9F0A")
+    func toHex() -> String {
+        let uiColor = UIColor(self)
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(
+            format: "%02X%02X%02X",
+            Int(round(r * 255)),
+            Int(round(g * 255)),
+            Int(round(b * 255))
+        )
+    }
+}
+
 // MARK: - App Colors
 extension Color {
     // Background colors
@@ -96,7 +115,7 @@ extension Font {
     static let appLargeTitle = Font.system(size: 28, weight: .bold)
     static let appTitle = Font.system(size: 22, weight: .semibold)
     static let appTitle2 = Font.system(size: 20, weight: .semibold)
-    static let appCardTitle = Font.system(size: 18, weight: .semibold)
+    static let appCardTitle = Font.system(size: 17, weight: .semibold)
     static let appBody = Font.system(size: 17, weight: .regular)
     static let appBodyMedium = Font.system(size: 17, weight: .medium)
     static let appCaption = Font.system(size: 13, weight: .medium)

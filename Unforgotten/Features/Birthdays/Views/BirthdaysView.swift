@@ -10,6 +10,16 @@ struct BirthdaysView: View {
     @StateObject private var viewModel = BirthdaysViewModel()
     @State private var showSettings = false
     @State private var showAddProfile = false
+    @State private var showUpgradePrompt = false
+    @State private var friendProfileCount = 0
+
+    /// Check if user can add more friend profiles
+    private var canAddProfile: Bool {
+        PremiumLimitsManager.shared.canCreateFriendProfile(
+            appState: appState,
+            currentCount: friendProfileCount
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -26,7 +36,13 @@ struct BirthdaysView: View {
                         showHomeButton: iPadHomeAction != nil,
                         homeAction: iPadHomeAction,
                         showAddButton: true,
-                        addAction: { showAddProfile = true }
+                        addAction: {
+                            if canAddProfile {
+                                showAddProfile = true
+                            } else {
+                                showUpgradePrompt = true
+                            }
+                        }
                     )
 
                     // Content
@@ -84,11 +100,16 @@ struct BirthdaysView: View {
             AddProfileView { newProfile in
                 Task {
                     await viewModel.loadData(appState: appState)
+                    await loadFriendProfileCount()
                 }
             }
         }
+        .sheet(isPresented: $showUpgradePrompt) {
+            UpgradeView()
+        }
         .task {
             await viewModel.loadData(appState: appState)
+            await loadFriendProfileCount()
         }
         .refreshable {
             await viewModel.loadData(appState: appState)
@@ -96,11 +117,13 @@ struct BirthdaysView: View {
         .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
             Task {
                 await viewModel.loadData(appState: appState)
+                await loadFriendProfileCount()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .profilesDidChange)) { _ in
             Task {
                 await viewModel.loadData(appState: appState)
+                await loadFriendProfileCount()
             }
         }
         .alert("Error", isPresented: .init(
@@ -112,6 +135,16 @@ struct BirthdaysView: View {
             if let error = viewModel.error {
                 Text(error)
             }
+        }
+    }
+
+    private func loadFriendProfileCount() async {
+        guard let account = appState.currentAccount else { return }
+        do {
+            let profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+            friendProfileCount = profiles.filter { $0.type != .primary }.count
+        } catch {
+            // Non-critical — keep existing count
         }
     }
 }

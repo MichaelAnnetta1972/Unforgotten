@@ -58,10 +58,12 @@ final class SupabaseManager {
             }
 
             // Format 4: Date-only (e.g., "1947-07-31")
+            // Use local timezone so the decoded Date represents midnight local time,
+            // preventing the date from shifting by a day when displayed
             let dateOnlyFormatter = DateFormatter()
             dateOnlyFormatter.dateFormat = "yyyy-MM-dd"
             dateOnlyFormatter.locale = Locale(identifier: "en_US_POSIX")
-            dateOnlyFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+            dateOnlyFormatter.timeZone = TimeZone.current
             if let date = dateOnlyFormatter.date(from: dateString) {
                 return date
             }
@@ -180,6 +182,9 @@ enum TableName {
     static let profileSharingPreferences = "profile_sharing_preferences"
     static let recipes = "recipes"
     static let plannedMeals = "planned_meals"
+    static let deviceTokens = "device_tokens"
+    static let liveActivityTokens = "live_activity_tokens"
+    static let morningBriefingCache = "morning_briefing_cache"
 }
 
 // MARK: - Supabase Error
@@ -191,8 +196,9 @@ enum SupabaseError: LocalizedError {
     case invalidData
     case uploadFailed
     case networkError(Error)
+    case customError(String)
     case unknown(Error)
-    
+
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
@@ -209,6 +215,8 @@ enum SupabaseError: LocalizedError {
             return "Failed to upload file."
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
+        case .customError(let message):
+            return message
         case .unknown(let error):
             return "An error occurred: \(error.localizedDescription)"
         }

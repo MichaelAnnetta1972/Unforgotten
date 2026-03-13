@@ -71,7 +71,9 @@
       "Bash(brew install:*)",
       "Bash(sw_vers:*)",
       "Bash(npm install:*)",
-      "WebFetch(domain:reteno.com)"
+      "WebFetch(domain:reteno.com)",
+      "WebFetch(domain:9to5mac.com)",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\"; grep -n \"\"\\\\.background\\(Color\\\\.cardBackgroundSoft\\)\"\" {}')"
     ],
     "deny": [],
     "ask": []

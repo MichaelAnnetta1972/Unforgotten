@@ -236,7 +236,9 @@ final class CachedAppointmentRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedAppointmentRepo] Remote createAppointment failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -315,7 +317,9 @@ final class CachedAppointmentRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedAppointmentRepo] Remote updateAppointment failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -353,7 +357,9 @@ final class CachedAppointmentRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedAppointmentRepo] Remote toggleCompletion failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -388,7 +394,9 @@ final class CachedAppointmentRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedAppointmentRepo] Remote deleteAppointment failed: \(error). Saving locally.")
+                #endif
             }
         }
 

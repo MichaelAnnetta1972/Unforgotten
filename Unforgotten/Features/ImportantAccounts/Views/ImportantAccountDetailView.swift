@@ -144,7 +144,7 @@ struct ImportantAccountDetailView: View {
                     if let category = account.category {
                         HStack {
                             Image(systemName: category.icon)
-                                .foregroundColor(category.color)
+                                .foregroundColor(appAccentColor)
                                 .frame(width: 20)
 
                             VStack(alignment: .leading, spacing: 4) {
@@ -304,6 +304,14 @@ struct DetailRowCard: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             showCopied = false
+        }
+
+        // Auto-clear clipboard after 60 seconds for security
+        let copiedValue = value
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+            if UIPasteboard.general.string == copiedValue {
+                UIPasteboard.general.string = ""
+            }
         }
     }
 }

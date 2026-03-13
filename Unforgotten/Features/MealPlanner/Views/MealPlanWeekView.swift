@@ -142,9 +142,9 @@ struct MealPlanWeekView: View {
 
                 ForEach(visibleMealTypes) { mealType in
                     HStack(spacing: 4) {
-                        Image(systemName: mealType.icon)
-                            .font(.system(size: 12))
-                            .foregroundColor(appAccentColor)
+                        // Image(systemName: mealType.icon)
+                        //     .font(.system(size: 12))
+                        //     .foregroundColor(appAccentColor)
                         Text(mealType.displayName)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.textSecondary)
@@ -226,6 +226,7 @@ struct MealPlanWeekView: View {
         case .breakfast: return 0.1
         case .lunch: return 0.15
         case .dinner: return 0.2
+        case .dessert: return 0.25
         }
     }
 

@@ -6,6 +6,7 @@ import Supabase
 struct AppUser: Codable, Identifiable, Equatable {
     let id: UUID
     let email: String
+    var displayName: String?
     var isAppAdmin: Bool
     var hasComplimentaryAccess: Bool
     let createdAt: Date
@@ -14,6 +15,7 @@ struct AppUser: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id
         case email
+        case displayName = "display_name"
         case isAppAdmin = "is_app_admin"
         case hasComplimentaryAccess = "has_complimentary_access"
         case createdAt = "created_at"
@@ -30,6 +32,7 @@ protocol AppUserRepositoryProtocol {
     func setAppAdmin(userId: UUID, isAdmin: Bool) async throws -> AppUser
     func setComplimentaryAccess(userId: UUID, hasAccess: Bool) async throws -> AppUser
     func ensureUserExists(userId: UUID, email: String) async throws -> AppUser
+    func updateDisplayName(userId: UUID, displayName: String) async throws -> AppUser
 }
 
 // MARK: - App User Repository Implementation
@@ -143,18 +146,36 @@ final class AppUserRepository: AppUserRepositoryProtocol {
 
         return user
     }
+
+    // MARK: - Update Display Name
+    func updateDisplayName(userId: UUID, displayName: String) async throws -> AppUser {
+        let update = AppUserDisplayNameUpdate(displayName: displayName)
+
+        let user: AppUser = try await supabase
+            .from(TableName.appUsers)
+            .update(update)
+            .eq("id", value: userId)
+            .select()
+            .single()
+            .execute()
+            .value
+
+        return user
+    }
 }
 
 // MARK: - Insert/Update Types
 private struct AppUserInsert: Encodable {
     let id: UUID
     let email: String
+    var displayName: String?
     let isAppAdmin: Bool
     let hasComplimentaryAccess: Bool
 
     enum CodingKeys: String, CodingKey {
         case id
         case email
+        case displayName = "display_name"
         case isAppAdmin = "is_app_admin"
         case hasComplimentaryAccess = "has_complimentary_access"
     }
@@ -173,5 +194,13 @@ private struct AppUserComplimentaryUpdate: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case hasComplimentaryAccess = "has_complimentary_access"
+    }
+}
+
+private struct AppUserDisplayNameUpdate: Encodable {
+    let displayName: String
+
+    enum CodingKeys: String, CodingKey {
+        case displayName = "display_name"
     }
 }

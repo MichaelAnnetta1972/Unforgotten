@@ -109,6 +109,7 @@ struct StickyReminderListView: View {
                                             } label: {
                                                 Label("Delete", systemImage: "trash")
                                             }
+                                            .tint(.medicalRed)
                                         }
                                     }
                                     .listRowBackground(Color.clear)
@@ -153,6 +154,7 @@ struct StickyReminderListView: View {
                                             } label: {
                                                 Label("Delete", systemImage: "trash")
                                             }
+                                            .tint(.medicalRed)
                                         }
                                     }
                                     .listRowBackground(Color.clear)
@@ -252,9 +254,9 @@ struct StickyReminderListView: View {
     // MARK: - Empty State
     private var emptyStateView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "bell.badge")
-                .font(.system(size: 60))
-                .foregroundColor(.textSecondary)
+            // Image(systemName: "bell.badge")
+            //     .font(.system(size: 60))
+            //     .foregroundColor(.textSecondary)
 
             Text("No Sticky Reminders")
                 .font(.appTitle)

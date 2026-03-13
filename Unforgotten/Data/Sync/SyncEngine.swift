@@ -181,8 +181,9 @@ final class SyncEngine: ObservableObject {
         var changesCount = 0
 
         for remote in remoteProfiles {
+            let remoteId = remote.id
             let descriptor = FetchDescriptor<LocalProfile>(
-                predicate: #Predicate { $0.id == remote.id }
+                predicate: #Predicate { $0.id == remoteId }
             )
 
             let localProfiles = try modelContext.fetch(descriptor)
@@ -190,12 +191,20 @@ final class SyncEngine: ObservableObject {
             if let local = localProfiles.first {
                 // Skip profiles that have been locally deleted — don't resurrect them
                 if local.locallyDeleted {
+                    // Still remove duplicates
+                    for duplicate in localProfiles.dropFirst() {
+                        modelContext.delete(duplicate)
+                    }
                     continue
                 }
                 // Merge: last-write-wins
                 if remote.updatedAt > local.updatedAt {
                     local.update(from: remote)
                     changesCount += 1
+                }
+                // Remove any duplicates with the same ID
+                for duplicate in localProfiles.dropFirst() {
+                    modelContext.delete(duplicate)
                 }
             } else {
                 // Insert new
@@ -260,6 +269,7 @@ final class SyncEngine: ObservableObject {
     // MARK: - Medication Sync
     private func syncMedications(accountId: UUID) async throws -> Int {
         let remoteMedications = try await medicationRepository.getMedications(accountId: accountId)
+        let remoteIds = Set(remoteMedications.map { $0.id })
         var changesCount = 0
 
         for remote in remoteMedications {
@@ -277,6 +287,37 @@ final class SyncEngine: ObservableObject {
             } else {
                 let newLocal = LocalMedication(from: remote)
                 modelContext.insert(newLocal)
+                changesCount += 1
+            }
+        }
+
+        // Clean up locally-deleted medications that are no longer on the remote
+        // (meaning the remote delete was successful)
+        let deletedDescriptor = FetchDescriptor<LocalMedication>(
+            predicate: #Predicate { $0.accountId == accountId && $0.locallyDeleted }
+        )
+        let locallyDeletedMeds = try modelContext.fetch(deletedDescriptor)
+        for local in locallyDeletedMeds {
+            if !remoteIds.contains(local.id) {
+                // Remote confirmed deletion — also clean up associated local logs and schedules
+                let medId = local.id
+                let logDescriptor = FetchDescriptor<LocalMedicationLog>(
+                    predicate: #Predicate { $0.medicationId == medId }
+                )
+                let orphanedLogs = try modelContext.fetch(logDescriptor)
+                for log in orphanedLogs {
+                    modelContext.delete(log)
+                }
+
+                let scheduleDescriptor = FetchDescriptor<LocalMedicationSchedule>(
+                    predicate: #Predicate { $0.medicationId == medId }
+                )
+                let orphanedSchedules = try modelContext.fetch(scheduleDescriptor)
+                for schedule in orphanedSchedules {
+                    modelContext.delete(schedule)
+                }
+
+                modelContext.delete(local)
                 changesCount += 1
             }
         }
@@ -349,15 +390,26 @@ final class SyncEngine: ObservableObject {
                 let localLogs = try modelContext.fetch(descriptor)
 
                 if let local = localLogs.first {
-                    // For logs, remote always wins (server generates them)
-                    local.update(from: remote)
-                    changesCount += 1
+                    // Only update non-deleted logs; skip locally-deleted ones
+                    if !local.locallyDeleted {
+                        local.update(from: remote)
+                        changesCount += 1
+                    }
                 } else {
                     let newLocal = LocalMedicationLog(from: remote)
                     modelContext.insert(newLocal)
                     changesCount += 1
                 }
             }
+        }
+
+        // Clean up locally-deleted logs (log deletions are handled via regeneration, not push queue)
+        let deletedLogDescriptor = FetchDescriptor<LocalMedicationLog>(
+            predicate: #Predicate { $0.accountId == accountId && $0.locallyDeleted }
+        )
+        let deletedLogs = try modelContext.fetch(deletedLogDescriptor)
+        for log in deletedLogs {
+            modelContext.delete(log)
         }
 
         try modelContext.save()
@@ -529,9 +581,10 @@ final class SyncEngine: ObservableObject {
     private func syncMoodEntries(accountId: UUID) async throws -> Int {
         guard let userId = await SupabaseManager.shared.currentUserId else { return 0 }
 
-        // Sync recent mood entries (last 30 days)
-        let calendar = Calendar.current
-        let startDate = calendar.date(byAdding: .day, value: -30, to: Date())!
+        // Sync recent mood entries (last 30 days) using UTC calendar for consistency
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let startDate = utcCalendar.date(byAdding: .day, value: -30, to: utcCalendar.startOfDay(for: Date()))!
 
         let remoteMoods = try await moodRepository.getEntries(
             accountId: accountId,
@@ -634,6 +687,8 @@ final class SyncEngine: ObservableObject {
             try await pushPlannedMealChange(change, type: changeType)
         case "importantAccount":
             try await pushImportantAccountChange(change, type: changeType)
+        case "moodEntry":
+            try await pushMoodEntryChange(change, type: changeType)
         default:
             #if DEBUG
             print("🔄 Unknown entity type: \(change.entityType)")
@@ -1102,6 +1157,35 @@ final class SyncEngine: ObservableObject {
         local.isSynced = true
     }
 
+    private func pushMoodEntryChange(_ change: PendingChange, type: PendingChange.ChangeType?) async throws {
+        let entityId = change.entityId
+        let descriptor = FetchDescriptor<LocalMoodEntry>(
+            predicate: #Predicate { $0.id == entityId }
+        )
+
+        guard let local = try modelContext.fetch(descriptor).first else { return }
+
+        switch type {
+        case .create:
+            let insert = MoodEntryInsert(
+                accountId: local.accountId,
+                userId: local.userId,
+                date: local.date,
+                rating: local.rating,
+                note: local.note
+            )
+            _ = try await moodRepository.createEntry(insert)
+        case .update:
+            _ = try await moodRepository.updateEntry(id: local.id, rating: local.rating, note: local.note)
+        case .delete:
+            break
+        default:
+            break
+        }
+
+        local.isSynced = true
+    }
+
     // MARK: - Recipe Sync
     private func syncRecipes(accountId: UUID) async throws -> Int {
         let remoteRecipes = try await mealPlannerRepository.getRecipes(accountId: accountId)
@@ -1234,20 +1318,28 @@ final class SyncEngine: ObservableObject {
 
             for schedule in schedules {
                 guard schedule.schedule == .scheduled else { continue }
-                guard let entries = schedule.decodedScheduleEntries else { continue }
 
                 // Check if schedule has started by this date
-                guard calendar.startOfDay(for: schedule.startDate) <= targetDay else { continue }
+                let scheduleStartDay = calendar.startOfDay(for: schedule.startDate)
+                guard scheduleStartDay <= targetDay else { continue }
 
                 // Check if schedule has ended before this date
                 if let endDate = schedule.endDate, calendar.startOfDay(for: endDate) < targetDay { continue }
 
-                for entry in entries {
-                    // Check if this entry is active for the target day
-                    guard entry.daysOfWeek.contains(dayOfWeek) else { continue }
+                // Get active entries using sequential duration logic (matching remote behavior)
+                let activeEntries = getActiveEntriesForDate(
+                    entries: schedule.decodedScheduleEntries,
+                    scheduleStartDate: schedule.startDate,
+                    targetDate: date,
+                    dayOfWeek: dayOfWeek,
+                    legacyTimes: schedule.decodedLegacyTimes,
+                    legacyDaysOfWeek: schedule.decodedDaysOfWeek,
+                    doseDescription: schedule.doseDescription
+                )
 
+                for (timeString, _) in activeEntries {
                     // Parse time and create scheduled datetime
-                    let timeComponents = entry.time.split(separator: ":")
+                    let timeComponents = timeString.split(separator: ":")
                     guard timeComponents.count >= 2,
                           let hour = Int(timeComponents[0]),
                           let minute = Int(timeComponents[1]) else { continue }
@@ -1258,12 +1350,12 @@ final class SyncEngine: ObservableObject {
 
                     guard let scheduledAt = calendar.date(from: components) else { continue }
 
-                    // Check if log already exists
+                    // Check if log already exists (only count non-deleted logs)
                     let medIdForLog = medication.id
                     let scheduledAtForLog = scheduledAt
                     let logDescriptor = FetchDescriptor<LocalMedicationLog>(
                         predicate: #Predicate {
-                            $0.medicationId == medIdForLog && $0.scheduledAt == scheduledAtForLog
+                            $0.medicationId == medIdForLog && $0.scheduledAt == scheduledAtForLog && !$0.locallyDeleted
                         }
                     )
 
@@ -1285,6 +1377,36 @@ final class SyncEngine: ObservableObject {
         }
 
         try modelContext.save()
+    }
+
+    /// Gets active schedule entries for a specific date.
+    /// Matches the logic in MedicationRepository.getActiveEntriesForDate.
+    private func getActiveEntriesForDate(
+        entries: [ScheduleEntry]?,
+        scheduleStartDate: Date,
+        targetDate: Date,
+        dayOfWeek: Int,
+        legacyTimes: [String]?,
+        legacyDaysOfWeek: [Int]?,
+        doseDescription: String?
+    ) -> [(time: String, dosage: String?)] {
+        // If we have schedule entries, filter by day of week
+        if let entries = entries, !entries.isEmpty {
+            let sortedEntries = entries.sorted { $0.sortOrder < $1.sortOrder }
+            return sortedEntries.compactMap { entry in
+                entry.daysOfWeek.contains(dayOfWeek) ? (time: entry.time, dosage: entry.dosage) : nil
+            }
+        }
+
+        // Legacy: Use times array with global days of week
+        if let times = legacyTimes {
+            if let daysOfWeek = legacyDaysOfWeek, !daysOfWeek.contains(dayOfWeek) {
+                return []
+            }
+            return times.map { (time: $0, dosage: doseDescription) }
+        }
+
+        return []
     }
 
     // MARK: - Sync Metadata

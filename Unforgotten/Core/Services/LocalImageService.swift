@@ -48,10 +48,10 @@ final class LocalImageService {
         // Resize image if needed
         let resizedImage = resizeImage(image, maxDimension: 800)
 
-        guard let data = resizedImage.jpegData(compressionQuality: 0.8) else { return nil }
+        guard let data = resizedImage.jpegDataStrippingMetadata(compressionQuality: 0.8) else { return nil }
 
         do {
-            try data.write(to: fileURL)
+            try data.write(to: fileURL, options: .completeFileProtection)
             return fileName
         } catch {
             #if DEBUG
@@ -88,10 +88,10 @@ final class LocalImageService {
 
         let resizedImage = resizeImage(image, maxDimension: 800)
 
-        guard let data = resizedImage.jpegData(compressionQuality: 0.8) else { return nil }
+        guard let data = resizedImage.jpegDataStrippingMetadata(compressionQuality: 0.8) else { return nil }
 
         do {
-            try data.write(to: fileURL)
+            try data.write(to: fileURL, options: .completeFileProtection)
             return fileName
         } catch {
             #if DEBUG

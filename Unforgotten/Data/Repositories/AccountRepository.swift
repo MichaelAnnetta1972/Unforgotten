@@ -212,18 +212,85 @@ final class AccountRepository: AccountRepositoryProtocol {
     
     // MARK: - Update Member Role
     func updateMemberRole(memberId: UUID, role: MemberRole) async throws -> AccountMember {
-        let update = AccountMemberUpdate(role: role)
-        
-        let member: AccountMember = try await supabase
-            .from(TableName.accountMembers)
-            .update(update)
-            .eq("id", value: memberId)
-            .select()
-            .single()
-            .execute()
-            .value
-        
-        return member
+        // Use RPC to bypass RLS (needed when updating roles across account boundaries)
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            throw SupabaseError.notAuthenticated
+        }
+
+        struct RoleUpdateResult: Codable {
+            let success: Bool
+            let memberId: UUID?
+            let accountId: UUID?
+            let userId: UUID?
+            let role: String?
+            let error: String?
+
+            enum CodingKeys: String, CodingKey {
+                case success
+                case memberId = "member_id"
+                case accountId = "account_id"
+                case userId = "user_id"
+                case role
+                case error
+            }
+        }
+
+        do {
+            let result: RoleUpdateResult = try await supabase.rpc(
+                "update_member_role",
+                params: [
+                    "p_member_id": memberId.uuidString,
+                    "p_new_role": role.rawValue,
+                    "p_user_id": userId.uuidString
+                ]
+            ).execute().value
+
+            if !result.success {
+                throw SupabaseError.customError(result.error ?? "Failed to update role")
+            }
+
+            // Try to fetch the updated member directly
+            let members: [AccountMember] = try await supabase
+                .from(TableName.accountMembers)
+                .select()
+                .eq("id", value: memberId)
+                .limit(1)
+                .execute()
+                .value
+
+            if let member = members.first {
+                return member
+            }
+
+            // RLS may block the SELECT — construct from RPC result
+            if let mId = result.memberId, let aId = result.accountId, let uId = result.userId {
+                return AccountMember(id: mId, accountId: aId, userId: uId, role: role, createdAt: Date())
+            }
+
+            throw SupabaseError.customError("Member not found after update")
+        } catch let error as SupabaseError {
+            throw error
+        } catch {
+            #if DEBUG
+            print("RPC update_member_role failed: \(error). Falling back to direct update.")
+            #endif
+            // Fallback: direct table update (works when RLS allows it)
+            let update = AccountMemberUpdate(role: role)
+
+            let members: [AccountMember] = try await supabase
+                .from(TableName.accountMembers)
+                .update(update)
+                .eq("id", value: memberId)
+                .select()
+                .execute()
+                .value
+
+            guard let member = members.first else {
+                throw SupabaseError.customError("Member not found")
+            }
+
+            return member
+        }
     }
     
     // MARK: - Remove Member

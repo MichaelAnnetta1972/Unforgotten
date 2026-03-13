@@ -2,16 +2,25 @@
   "images" : [
     {
       "filename" : "blank-notebook-sketch-pencil-delicate-pink-cherry-blossom-adorning-table-all-bathed-beautiful-light-shadow-from-top-angle-perfect-desktop-background.jpg",
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "1x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "2x"
     },
     {
-      "idiom" : "universal",
+      "idiom" : "iphone",
       "scale" : "3x"
+    },
+    {
+      "filename" : "blank-notebook-sketch-pencil-delicate-pink-cherry-blossom-adorning-table-all-bathed-beautiful-light-shadow-from-top-angle-perfect-desktop-background 1.jpg",
+      "idiom" : "ipad",
+      "scale" : "1x"
+    },
+    {
+      "idiom" : "ipad",
+      "scale" : "2x"
     }
   ],
   "info" : {

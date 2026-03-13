@@ -22,11 +22,11 @@ struct NoteRowView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // Title row
                     HStack(alignment: .center, spacing: 6) {
-                        if note.isPinned {
-                            Image(systemName: "pin.fill")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(appAccentColor)
-                        }
+                        // if note.isPinned {
+                        //     Image(systemName: "pin.fill")
+                        //         .font(.system(size: 10, weight: .medium))
+                        //         .foregroundColor(appAccentColor)
+                        // }
 
                         Text(note.displayTitle)
                             .font(.appCardTitle)
@@ -66,6 +66,7 @@ struct NoteRowView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+            .tint(.medicalRed)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
@@ -73,7 +74,7 @@ struct NoteRowView: View {
             } label: {
                 Label(
                     note.isPinned ? "Unpin" : "Pin",
-                    systemImage: note.isPinned ? "pin.slash" : "pin"
+                    systemImage: note.isPinned ? "pin" : "pin"
                 )
             }
             .tint(appAccentColor)

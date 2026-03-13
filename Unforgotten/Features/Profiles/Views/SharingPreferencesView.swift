@@ -3,6 +3,10 @@ import SwiftUI
 // MARK: - Sharing Preferences View
 /// Standalone view for managing what a connected user can see on your profile.
 /// Shown from the Profile Detail screen for synced (connected) profiles.
+///
+/// Supports bidirectional role management:
+/// - Inviter sees: "Their Role in Your Account" (editable)
+/// - Acceptor sees: "Your Role in Their Account" (read-only) + "Their Role in Your Account" (editable)
 struct SharingPreferencesView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccentColor) private var appAccentColor
@@ -13,11 +17,23 @@ struct SharingPreferencesView: View {
     @State private var sharingPreferences: [SharingCategoryKey: Bool] = [:]
     @State private var isSharingLoading: SharingCategoryKey? = nil
     @State private var myPrimaryProfileId: UUID? = nil
-    @State private var memberRole: MemberRole?
-    @State private var accountMemberId: UUID?
-    @State private var isRoleLoading = false
     @State private var errorMessage: String?
     @State private var showUpgradePrompt = false
+
+    // Role management state — "their role in MY account"
+    @State private var theirRoleInMyAccount: MemberRole?
+    @State private var theirMemberIdInMyAccount: UUID?
+    @State private var canEditTheirRole = false
+    @State private var isTheirRoleLoading = false
+
+    // Role display state — "my role in THEIR account" (read-only for acceptor)
+    @State private var myRoleInTheirAccount: MemberRole?
+
+    // Sync context
+    @State private var iAmInviter = false
+    @State private var syncRecord: ProfileSync?
+    @State private var connectedUserName: String = ""
+
     /// Whether the current user's subscription supports assigning Admin/Helper roles
     private var hasFamilyAccess: Bool {
         PremiumLimitsManager.shared.hasFamilyAccess(appState: appState)
@@ -59,65 +75,17 @@ struct SharingPreferencesView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
-                    // Role selector
-                    if let currentRole = memberRole {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("MEMBER ROLE")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                    // MARK: - Role Sections
 
-                            ForEach([MemberRole.admin, .helper, .viewer], id: \.self) { role in
-                                Button {
-                                    // Admin and Helper require Family Plus subscription
-                                    if role != .viewer && !hasFamilyAccess {
-                                        showUpgradePrompt = true
-                                    } else {
-                                        Task { await updateMemberRole(to: role) }
-                                    }
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(role.displayName)
-                                                .font(.appBodyMedium)
-                                                .foregroundColor(.textPrimary)
-                                            Text(role.description)
-                                                .font(.appCaption)
-                                                .foregroundColor(.textSecondary)
-                                        }
-                                        Spacer()
-                                        if isRoleLoading {
-                                            ProgressView()
-                                                .tint(.textSecondary)
-                                        } else {
-                                            Image(systemName: currentRole == role ? "checkmark.circle.fill" : "circle")
-                                                .foregroundColor(currentRole == role ? appAccentColor : .textSecondary)
-                                        }
-                                    }
-                                    .padding()
-                                    .background(currentRole == role ? appAccentColor.opacity(0.1) : Color.cardBackgroundSoft)
-                                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                            .stroke(currentRole == role ? appAccentColor : Color.clear, lineWidth: 2)
-                                    )
-                                }
-                                .disabled(isRoleLoading)
-                            }
-                        }
-                        .padding(.top, 8)
+                    // For acceptor: show their read-only role in inviter's account first
+                    if !iAmInviter, let myRole = myRoleInTheirAccount {
+                        myRoleInfoSection(role: myRole)
                     }
 
-                    // Explanation
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("SHARING PREFERENCES")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        Text("Control what \(profile.preferredName ?? profile.fullName) can see on your profile. Turning off a category will hide that data from this user.")
-                            .font(.appBody)
-                            .foregroundColor(.textSecondary)
+                    // Editable role section: "Their Role in Your Account"
+                    if let theirRole = theirRoleInMyAccount {
+                        editableRoleSection(currentRole: theirRole)
                     }
-                    .padding(.top, 8)
 
                     // Error message
                     if let error = errorMessage {
@@ -125,6 +93,19 @@ struct SharingPreferencesView: View {
                             .font(.appCaption)
                             .foregroundColor(.medicalRed)
                     }
+
+                    // MARK: - Sharing Preferences Section
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("SHARING PREFERENCES")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+
+                        Text("Control what \(connectedUserName) can see on your profile. Turning off a category will hide that data from this user.")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .padding(.top, 8)
 
                     // Category toggles
                     ForEach(SharingCategoryKey.allCases, id: \.self) { category in
@@ -175,13 +156,109 @@ struct SharingPreferencesView: View {
         }
         .background(Color.appBackgroundLight)
         .task {
-            await loadMemberRole()
+            connectedUserName = profile.preferredName ?? profile.fullName
+            await loadSyncContext()
             await loadMyPrimaryProfile()
             await loadSharingPreferences()
         }
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
         }
+    }
+
+    // MARK: - Role UI Components
+
+    /// Read-only info section showing the current user's role in the connected user's account
+    @ViewBuilder
+    private func myRoleInfoSection(role: MemberRole) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("YOUR ROLE IN THEIR ACCOUNT")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+
+            HStack {
+                Image(systemName: "person.badge.shield.checkmark")
+                    .font(.system(size: 16))
+                    .foregroundColor(appAccentColor)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(role.displayName)
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+                    Text(role.description)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .background(Color.cardBackgroundSoft)
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+
+            Text("\(connectedUserName) controls this role. Contact them if you need different access.")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+        }
+        .padding(.top, 8)
+    }
+
+    /// Editable role selector for the connected user's role in the current user's account
+    @ViewBuilder
+    private func editableRoleSection(currentRole: MemberRole) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(iAmInviter ? "\(connectedUserName.uppercased())'S ROLE IN YOUR ACCOUNT" : "THEIR ROLE IN YOUR ACCOUNT")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+
+            if !iAmInviter {
+                Text("Grant \(connectedUserName) access to help manage your account.")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+            }
+
+            ForEach([MemberRole.admin, .helper, .viewer], id: \.self) { role in
+                Button {
+                    guard canEditTheirRole else {
+                        errorMessage = "You don't have permission to change roles."
+                        return
+                    }
+                    if role != .viewer && !hasFamilyAccess {
+                        showUpgradePrompt = true
+                    } else {
+                        Task { await updateTheirRole(to: role) }
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(role.displayName)
+                                .font(.appBodyMedium)
+                                .foregroundColor(.textPrimary)
+                            Text(role.description)
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+                        Spacer()
+                        if isTheirRoleLoading {
+                            ProgressView()
+                                .tint(.textSecondary)
+                        } else {
+                            Image(systemName: currentRole == role ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(currentRole == role ? appAccentColor : .textSecondary)
+                        }
+                    }
+                    .padding()
+                    .background(currentRole == role ? appAccentColor.opacity(0.1) : Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(currentRole == role ? appAccentColor : Color.clear, lineWidth: 2)
+                    )
+                }
+                .disabled(isTheirRoleLoading)
+            }
+        }
+        .padding(.top, 8)
     }
 
     // MARK: - Helpers
@@ -211,53 +288,86 @@ struct SharingPreferencesView: View {
         }
     }
 
-    private func loadMemberRole() async {
+    /// Load sync context to determine inviter/acceptor relationship and set up both role sections
+    private func loadSyncContext() async {
         guard let connectedUserId = profile.linkedUserId ?? profile.sourceUserId,
               let syncConnectionId = profile.syncConnectionId,
-              let myAccountId = appState.currentAccount?.id else { return }
+              let myAccountId = appState.currentAccount?.id,
+              let myUserId = await SupabaseManager.shared.currentUserId else { return }
 
         do {
-            // The connected user should be a member of MY account (reciprocal membership)
-            if let member = try await appState.accountRepository.getAccountMember(accountId: myAccountId, userId: connectedUserId) {
-                await MainActor.run {
-                    memberRole = member.role
-                    accountMemberId = member.id
-                }
-                return
-            }
-
-            // Fallback: check the inviter's account (for connections created before reciprocal membership)
             guard let sync = try await appState.profileSyncRepository.getSyncById(id: syncConnectionId) else { return }
+            syncRecord = sync
+            iAmInviter = sync.isInviter(myUserId)
 
-            let fallbackAccountId = sync.inviterAccountId
-            if fallbackAccountId != myAccountId,
-               let member = try await appState.accountRepository.getAccountMember(accountId: fallbackAccountId, userId: connectedUserId) {
-                await MainActor.run {
-                    memberRole = member.role
-                    accountMemberId = member.id
+            if iAmInviter {
+                // I'm the inviter — the connected user (acceptor) is a member of MY account
+                // Load their role in my account (editable)
+                if let member = try await appState.accountRepository.getAccountMember(accountId: sync.inviterAccountId, userId: connectedUserId) {
+                    await MainActor.run {
+                        theirRoleInMyAccount = member.role
+                        theirMemberIdInMyAccount = member.id
+                        canEditTheirRole = true
+                    }
+                }
+            } else {
+                // I'm the acceptor
+                // 1. Load MY role in THEIR account (read-only display)
+                if let myMember = try await appState.accountRepository.getAccountMember(accountId: sync.inviterAccountId, userId: myUserId) {
+                    await MainActor.run {
+                        myRoleInTheirAccount = myMember.role
+                    }
+                }
+
+                // 2. Load THEIR role in MY account (editable — bidirectional)
+                if let theirMember = try await appState.accountRepository.getAccountMember(accountId: myAccountId, userId: connectedUserId) {
+                    await MainActor.run {
+                        theirRoleInMyAccount = theirMember.role
+                        theirMemberIdInMyAccount = theirMember.id
+                        canEditTheirRole = true
+                    }
                 }
             }
         } catch {
             #if DEBUG
-            print("Failed to load member role: \(error)")
+            print("Failed to load sync context: \(error)")
             #endif
         }
     }
 
-    private func updateMemberRole(to newRole: MemberRole) async {
-        guard let memberId = accountMemberId else { return }
+    private func updateTheirRole(to newRole: MemberRole) async {
+        guard let memberId = theirMemberIdInMyAccount,
+              let connectedUserId = connectedUserId else { return }
 
-        isRoleLoading = true
+        isTheirRoleLoading = true
         do {
             let updated = try await appState.accountRepository.updateMemberRole(memberId: memberId, role: newRole)
             await MainActor.run {
-                memberRole = updated.role
-                isRoleLoading = false
+                theirRoleInMyAccount = updated.role
+                isTheirRoleLoading = false
+                errorMessage = nil
             }
+
+            // Send push notification to the connected user
+            let accountName = appState.currentAccount?.displayName ?? "your account"
+            let myName: String
+            if let accountId = appState.currentAccount?.id,
+               let primaryProfile = try? await appState.profileRepository.getPrimaryProfile(accountId: accountId) {
+                myName = primaryProfile.preferredName ?? primaryProfile.fullName
+            } else {
+                myName = "Someone"
+            }
+
+            await PushNotificationService.shared.sendRoleChangeNotification(
+                targetUserId: connectedUserId,
+                newRole: newRole,
+                accountName: accountName,
+                changedByName: myName
+            )
         } catch {
             await MainActor.run {
                 errorMessage = "Failed to update role: \(error.localizedDescription)"
-                isRoleLoading = false
+                isTheirRoleLoading = false
             }
         }
     }

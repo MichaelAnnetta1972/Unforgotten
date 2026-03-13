@@ -114,10 +114,31 @@ final class CachedCountdownRepository {
 
         let countdowns = try modelContext.fetch(descriptor)
 
-        // Filter by days until next occurrence
+        // Filter by days until next occurrence (exclude past non-recurring events)
         return countdowns
-            .filter { $0.daysUntilNextOccurrence <= days }
+            .filter { $0.daysUntilNextOccurrence >= 0 && $0.daysUntilNextOccurrence <= days }
             .map { (local: LocalCountdown) in local.toRemote() }
+    }
+
+    /// Get countdowns within a date range (plus all recurring countdowns)
+    func getCountdownsInRange(accountId: UUID, startDate: Date, endDate: Date) async throws -> [Countdown] {
+        let descriptor = FetchDescriptor<LocalCountdown>(
+            predicate: #Predicate {
+                $0.accountId == accountId &&
+                !$0.locallyDeleted &&
+                (($0.date >= startDate && $0.date <= endDate) || $0.isRecurring)
+            },
+            sortBy: [SortDescriptor<LocalCountdown>(\.date)]
+        )
+
+        let localCountdowns = try modelContext.fetch(descriptor)
+
+        // If cache is empty and we're online, fall back to remote
+        if localCountdowns.isEmpty && networkMonitor.isConnected {
+            return try await remoteRepository.getCountdownsInRange(accountId: accountId, startDate: startDate, endDate: endDate)
+        }
+
+        return localCountdowns.map { (local: LocalCountdown) in local.toRemote() }
     }
 
     // MARK: - Get Countdowns By IDs (for shared events from other accounts)
@@ -169,7 +190,10 @@ final class CachedCountdownRepository {
             imageUrl: insert.imageUrl,
             groupId: insert.groupId,
             reminderOffsetMinutes: insert.reminderOffsetMinutes,
-            isRecurring: insert.isRecurring
+            isRecurring: insert.isRecurring,
+            recurrenceUnit: insert.recurrenceUnit,
+            recurrenceInterval: insert.recurrenceInterval,
+            recurrenceEndDate: insert.recurrenceEndDate
         )
     }
 
@@ -187,7 +211,10 @@ final class CachedCountdownRepository {
         imageUrl: String? = nil,
         groupId: UUID? = nil,
         reminderOffsetMinutes: Int? = nil,
-        isRecurring: Bool = false
+        isRecurring: Bool = false,
+        recurrenceUnit: RecurrenceUnit? = nil,
+        recurrenceInterval: Int? = nil,
+        recurrenceEndDate: Date? = nil
     ) async throws -> Countdown {
         // When online, try remote first with local fallback
         if networkMonitor.isConnected {
@@ -205,7 +232,10 @@ final class CachedCountdownRepository {
                     imageUrl: imageUrl,
                     groupId: groupId,
                     reminderOffsetMinutes: reminderOffsetMinutes,
-                    isRecurring: isRecurring
+                    isRecurring: isRecurring,
+                    recurrenceUnit: recurrenceUnit,
+                    recurrenceInterval: recurrenceInterval,
+                    recurrenceEndDate: recurrenceEndDate
                 )
                 let remote = try await remoteRepository.createCountdown(insert)
                 let local = LocalCountdown(from: remote)
@@ -213,7 +243,9 @@ final class CachedCountdownRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedCountdownRepo] Remote createCountdown failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -233,6 +265,9 @@ final class CachedCountdownRepository {
             groupId: groupId,
             reminderOffsetMinutes: reminderOffsetMinutes,
             isRecurring: isRecurring,
+            recurrenceUnit: recurrenceUnit?.rawValue,
+            recurrenceInterval: recurrenceInterval,
+            recurrenceEndDate: recurrenceEndDate,
             isSynced: false
         )
         modelContext.insert(local)
@@ -276,6 +311,9 @@ final class CachedCountdownRepository {
         imageUrl: String?,
         reminderOffsetMinutes: Int?,
         isRecurring: Bool,
+        recurrenceUnit: RecurrenceUnit? = nil,
+        recurrenceInterval: Int? = nil,
+        recurrenceEndDate: Date? = nil,
         useRemoteFirst: Bool = false
     ) async throws -> [Countdown] {
         let groupId = UUID()
@@ -305,7 +343,10 @@ final class CachedCountdownRepository {
                 imageUrl: imageUrl,
                 groupId: groupId,
                 reminderOffsetMinutes: currentDay == startDay ? reminderOffsetMinutes : nil,
-                isRecurring: isRecurring
+                isRecurring: isRecurring,
+                recurrenceUnit: isRecurring ? recurrenceUnit : nil,
+                recurrenceInterval: isRecurring ? recurrenceInterval : nil,
+                recurrenceEndDate: isRecurring ? recurrenceEndDate : nil
             )
 
             let countdown: Countdown
@@ -356,7 +397,9 @@ final class CachedCountdownRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedCountdownRepo] Remote updateCountdown failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -391,7 +434,9 @@ final class CachedCountdownRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedCountdownRepo] Remote deleteCountdown failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -427,7 +472,9 @@ final class CachedCountdownRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedCountdownRepo] Remote deleteCountdownsByGroupId failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -472,7 +519,9 @@ final class CachedCountdownRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedCountdownRepo] Remote updateCountdownGroupFields failed: \(error). Saving locally.")
+                #endif
             }
         }
 

@@ -128,9 +128,9 @@ final class PremiumLimitsManager: ObservableObject {
         return currentCount < FreeTierLimits.countdowns
     }
 
-    /// Check if user can invite family members (available to all tiers)
+    /// Check if user can invite family members (requires Premium or Family Plus)
     func canInviteMembers(appState: AppState) -> Bool {
-        return true
+        return hasPremiumAccess(appState: appState)
     }
 
     /// Check if user can join another account (available to all tiers)
@@ -249,13 +249,20 @@ struct PremiumUpgradePrompt: View {
         VStack(spacing: 24) {
             // Icon
             ZStack {
-                Circle()
-                    .fill(appAccentColor.opacity(0.15))
-                    .frame(width: 80, height: 80)
+                // Circle()
+                //     .fill(appAccentColor.opacity(0.15))
+                //     .frame(width: 80, height: 80)
 
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(appAccentColor)
+                // Image(systemName: "crown.fill")
+                //     .font(.system(size: 36))
+                //     .foregroundColor(appAccentColor)
+
+            Image("unforgotten-icon")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
             }
 
             // Title and message
@@ -371,9 +378,15 @@ struct PremiumFeatureLockBanner: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "crown.fill")
-                .font(.system(size: 20))
-                .foregroundColor(appAccentColor)
+            // Image(systemName: "crown.fill")
+            //     .font(.system(size: 20))
+            //     .foregroundColor(appAccentColor)
+
+            Image("unforgotten-icon")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Free limit reached")

@@ -71,7 +71,7 @@ struct AddPlannedMealView: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.white)
                                 .frame(width: 48, height: 48)
-                                .background(Circle().fill(appAccentColor))
+                                .background(Circle().fill(Color.white.opacity(0.15)))
                         }
                         .disabled(selectedRecipe == nil || isLoading)
                         .opacity(selectedRecipe == nil ? 0.5 : 1)
@@ -83,9 +83,9 @@ struct AddPlannedMealView: View {
                         VStack(spacing: 20) {
                             // Date picker
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Date")
+                                Text("DATE")
                                     .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                                    .foregroundColor(appAccentColor)
 
                                 DatePicker("", selection: $selectedDate, displayedComponents: .date)
                                     .datePickerStyle(.wheel)
@@ -98,38 +98,39 @@ struct AddPlannedMealView: View {
 
                             // Meal type picker
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Meal")
+                                Text("MEAL")
                                     .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                                    .foregroundColor(appAccentColor)
 
-                                HStack(spacing: 0) {
+                                FlowLayout(spacing: 8) {
                                     ForEach(MealType.allCases) { type in
                                         Button {
                                             withAnimation(.easeInOut(duration: 0.2)) {
                                                 selectedMealType = type
                                             }
                                         } label: {
-                                            Text(type.displayName)
-                                                .font(.appCardTitle)
-                                                .foregroundColor(selectedMealType == type ? .black : .textSecondary)
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 12)
-                                                .background(
-                                                    selectedMealType == type ? appAccentColor : Color.clear
-                                                )
+                                            HStack(spacing: 4) {
+                                                // Image(systemName: type.icon)
+                                                //     .font(.system(size: 12))
+                                                Text(type.displayName)
+                                                    .font(.system(size: 12, weight: .medium))
+                                            }
+                                            .foregroundColor(selectedMealType == type ? .black : .textSecondary)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(selectedMealType == type ? appAccentColor : Color.cardBackground)
+                                            .cornerRadius(AppDimensions.cardCornerRadius)
                                         }
                                     }
                                 }
-                                .background(Color.cardBackgroundSoft)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
                             }
 
                             // Recipe selection
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Recipe")
+                                    Text("RECIPE")
                                         .font(.appCaption)
-                                        .foregroundColor(.textSecondary)
+                                        .foregroundColor(appAccentColor)
 
                                     Spacer()
 
@@ -197,7 +198,11 @@ struct AddPlannedMealView: View {
             }
             .padding(12)
             .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+            )
 
             if isLoadingRecipes {
                 ProgressView()

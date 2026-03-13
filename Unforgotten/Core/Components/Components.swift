@@ -254,7 +254,6 @@ struct GiftItemCard: View {
     let label: String
     let status: GiftStatus
     let onStatusChange: ((GiftStatus) -> Void)?
-    let onDelete: (() -> Void)?
 
     @Environment(\.appAccentColor) private var appAccentColor
     @State private var showMenu = false
@@ -289,11 +288,10 @@ struct GiftItemCard: View {
         }
     }
 
-    init(label: String, status: GiftStatus = .idea, onStatusChange: ((GiftStatus) -> Void)? = nil, onDelete: (() -> Void)? = nil) {
+    init(label: String, status: GiftStatus = .idea, onStatusChange: ((GiftStatus) -> Void)? = nil) {
         self.label = label
         self.status = status
         self.onStatusChange = onStatusChange
-        self.onDelete = onDelete
     }
 
     var body: some View {
@@ -340,14 +338,6 @@ struct GiftItemCard: View {
                 } label: {
                     Label("Given", systemImage: "gift")
                 }
-
-                Divider()
-
-                Button(role: .destructive) {
-                    onDelete?()
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .medium))
@@ -370,15 +360,13 @@ struct MedicalConditionCard: View {
     let isSynced: Bool
     let sourceName: String?
     let action: (() -> Void)?
-    let onDelete: (() -> Void)?
 
-    init(type: String, condition: String, isSynced: Bool = false, sourceName: String? = nil, action: (() -> Void)? = nil, onDelete: (() -> Void)? = nil) {
+    init(type: String, condition: String, isSynced: Bool = false, sourceName: String? = nil, action: (() -> Void)? = nil) {
         self.type = type
         self.condition = condition
         self.isSynced = isSynced
         self.sourceName = sourceName
         self.action = action
-        self.onDelete = onDelete
     }
 
     var body: some View {
@@ -413,17 +401,6 @@ struct MedicalConditionCard: View {
             }
 
             Spacer()
-
-            if let onDelete = onDelete {
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 16))
-                        .foregroundColor(.red.opacity(0.8))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
@@ -1542,7 +1519,8 @@ struct AppTextField: View {
     @Binding var text: String
     var isSecure: Bool = false
     var keyboardType: UIKeyboardType = .default
-    
+    var maxLength: Int = 500
+
     var body: some View {
         Group {
             if isSecure {
@@ -1556,12 +1534,17 @@ struct AppTextField: View {
         .foregroundColor(.textPrimary)
         .padding()
         .frame(height: AppDimensions.textFieldHeight)
-        .background(Color.cardBackgroundSoft)
+        .background(Color.cardBackground)
         .cornerRadius(AppDimensions.buttonCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
                 .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
         )
+        .onChange(of: text) { _, newValue in
+            if newValue.count > maxLength {
+                text = String(newValue.prefix(maxLength))
+            }
+        }
     }
 }
 
@@ -1569,7 +1552,7 @@ struct AppTextField: View {
 struct EmptyStateView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    let icon: String
+    //let icon: String
     let title: String
     let message: String
     let buttonTitle: String?
@@ -1581,13 +1564,13 @@ struct EmptyStateView: View {
     }
 
     init(
-        icon: String,
+       // icon: String,
         title: String,
         message: String,
         buttonTitle: String? = nil,
         buttonAction: (() -> Void)? = nil
     ) {
-        self.icon = icon
+        //self.icon = icon
         self.title = title
         self.message = message
         self.buttonTitle = buttonTitle
@@ -1596,9 +1579,9 @@ struct EmptyStateView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 60))
-                .foregroundColor(.textSecondary)
+            // Image(systemName: icon)
+            //     .font(.system(size: 60))
+            //     .foregroundColor(.textSecondary)
 
             Text(title)
                 .font(.appTitle)

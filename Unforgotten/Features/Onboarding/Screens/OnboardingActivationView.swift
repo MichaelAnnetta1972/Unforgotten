@@ -27,6 +27,7 @@ struct OnboardingActivationView: View {
     @State private var checkmarkScale: CGFloat = 0
     @State private var allFeaturesActivated = false
     @State private var hapticTrigger: Int = 0
+    @State private var cachedFeatures: [ActivationFeature] = []
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -46,7 +47,7 @@ struct OnboardingActivationView: View {
 
     // MARK: - Features List
 
-    private var features: [ActivationFeature] {
+    private static func buildFeatures(from onboardingData: OnboardingData) -> [ActivationFeature] {
         var items: [ActivationFeature] = []
         var index = 0
 
@@ -105,6 +106,7 @@ struct OnboardingActivationView: View {
         .sensoryFeedback(.selection, trigger: hapticTrigger)
         .onAppear {
             guard !hasAppeared else { return }
+            cachedFeatures = Self.buildFeatures(from: onboardingData)
             hasAppeared = true
             startActivationSequence()
         }
@@ -119,7 +121,7 @@ struct OnboardingActivationView: View {
             let centerX = geo.size.width / 2
 
             ZStack {
-                ForEach(features) { feature in
+                ForEach(cachedFeatures) { feature in
                     let index = feature.id
                     let rawY = CGFloat(index) * itemStride - drumOffset
                     let normalizedDistance = rawY / itemStride
@@ -218,12 +220,12 @@ struct OnboardingActivationView: View {
 
     private func startActivationSequence() {
         guard !reduceMotion else {
-            for feature in features {
+            for feature in cachedFeatures {
                 activatedFeatures.insert(feature.id)
             }
             checkProgress = 1.0
             checkmarkScale = 1.0
-            if let lastFeature = features.last {
+            if let lastFeature = cachedFeatures.last {
                 drumOffset = CGFloat(lastFeature.id) * itemStride
                 currentIndex = lastFeature.id
             }
@@ -235,10 +237,10 @@ struct OnboardingActivationView: View {
     }
 
     private func activateFeature(at index: Int) {
-        guard index < features.count else {
+        guard index < cachedFeatures.count else {
             // All features activated - show completion
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.4)) {
                     allFeaturesActivated = true
                 }
                 let notificationFeedback = UINotificationFeedbackGenerator()
@@ -250,16 +252,16 @@ struct OnboardingActivationView: View {
         currentIndex = index
 
         // Phase 1: Pause to let user see the focused feature
-        let pauseDuration: Double = index == 0 ? 0.8 : 0.6
+        let pauseDuration: Double = index == 0 ? 0.3 : 0.2
 
         DispatchQueue.main.asyncAfter(deadline: .now() + pauseDuration) {
             // Phase 2: Animate the circular progress ring
-            withAnimation(.easeInOut(duration: 0.5)) {
+            withAnimation(.easeInOut(duration: 0.2)) {
                 checkProgress = 1.0
             }
 
             // Phase 3: After ring completes, pop in the checkmark
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                     checkmarkScale = 1.0
                 }
@@ -267,24 +269,25 @@ struct OnboardingActivationView: View {
                 hapticTrigger += 1
 
                 // Phase 4: Settle, then scroll to next
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    // Reset check state for next item
-                    checkProgress = 0
-                    checkmarkScale = 0
-
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     let nextIndex = index + 1
-                    if nextIndex < features.count {
+                    if nextIndex < cachedFeatures.count {
+                        // Reset check state for next item
+                        currentIndex = nextIndex
+                        checkProgress = 0
+                        checkmarkScale = 0
+
                         // Scroll up to bring next item to center
-                        withAnimation(.easeInOut(duration: 0.5)) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
                             drumOffset = CGFloat(nextIndex) * itemStride
                         }
 
                         // After scroll completes, activate next feature
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             activateFeature(at: nextIndex)
                         }
                     } else {
-                        // Last feature done
+                        // Last feature done — keep check state visible
                         activateFeature(at: nextIndex)
                     }
                 }
@@ -305,6 +308,8 @@ private struct DrumRollerFeatureCard: View {
     let unfocusedHeight: CGFloat
     let isRegularWidth: Bool
 
+    private var focusAnimation: Animation { .easeInOut(duration: 0.3) }
+
     var body: some View {
         HStack(spacing: isFocused ? 16 : 12) {
             // Icon (visible when focused)
@@ -320,6 +325,7 @@ private struct DrumRollerFeatureCard: View {
                 .font(isFocused ? .appCardTitle : .appBody)
                 .foregroundColor(isFocused ? .textPrimary : .textSecondary)
                 .lineLimit(1)
+                .animation(focusAnimation, value: isFocused)
 
             Spacer()
 
@@ -336,8 +342,9 @@ private struct DrumRollerFeatureCard: View {
         .background(
             RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
                 .fill(isFocused ? Color.cardBackground : Color.cardBackground.opacity(0.6))
+                .animation(focusAnimation, value: isFocused)
         )
-        .animation(.easeInOut(duration: 0.3), value: isFocused)
+        .animation(focusAnimation, value: isFocused)
     }
 }
 

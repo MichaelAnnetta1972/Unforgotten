@@ -174,9 +174,9 @@ struct OnboardingThemeSelectionView: View {
                 Spacer()
 
                 // Checkbox circle
-                Circle()
-                    .stroke(themeManager.accentColor, lineWidth: 2)
-                    .frame(width: 24, height: 24)
+                // Circle()
+                //     .stroke(themeManager.accentColor, lineWidth: 2)
+                //     .frame(width: 24, height: 24)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

@@ -110,18 +110,12 @@ struct AppearanceSettingsView: View {
 }
 
 // MARK: - Accent Color Picker With Reset
-/// Accent color picker that includes a "Reset to Style Default" button
+/// Accent color picker using native ColorPicker with a "Reset to Style Default" button
 struct AccentColorPickerWithReset: View {
     @Environment(UserPreferences.self) private var userPreferences
     @Environment(HeaderStyleManager.self) private var headerStyleManager
-
-    let columns = [
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible())
-    ]
+    @State private var pickerColor: Color = .yellow
+    @State private var commitTask: Task<Void, Never>?
 
     /// The effective accent color based on custom setting or style default
     private var effectiveAccentColor: Color {
@@ -132,10 +126,10 @@ struct AccentColorPickerWithReset: View {
         }
     }
 
-    /// The name of the effective accent color
-    private var effectiveColorName: String {
+    /// Label text for the effective color
+    private var effectiveColorLabel: String {
         if userPreferences.hasCustomAccentColor {
-            return userPreferences.selectedAccentColor.name
+            return "Custom Colour"
         } else {
             return "Style Default (\(headerStyleManager.currentStyle.name))"
         }
@@ -144,37 +138,96 @@ struct AccentColorPickerWithReset: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Section header
-            Text("Accent Color")
+            Text("Accent Colour")
                 .font(.appCardTitle)
                 .foregroundColor(.textPrimary)
 
-            Text("Choose a color for buttons and highlights")
+            Text("Choose a colour for buttons and highlights")
                 .font(.appCaption)
                 .foregroundColor(.textSecondary)
 
-            // Color grid
-            LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(AccentColorOption.allCases) { option in
-                    AccentColorButton(
-                        option: option,
-                        isSelected: userPreferences.hasCustomAccentColor && userPreferences.selectedAccentColor == option,
-                        action: {
-                            userPreferences.selectColor(option)
-                            // Haptic feedback
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.impactOccurred()
-                        }
-                    )
+            // Native ColorPicker
+            ColorPicker(selection: $pickerColor, supportsOpacity: false) {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(pickerColor)
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color.white.opacity(0.3), lineWidth: 1)
+                        )
+
+                    Text("Tap to choose")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+            .onChange(of: pickerColor) { _, newColor in
+                // Apply colour immediately so the UI updates in real-time
+                userPreferences.applyColorLive(newColor)
+
+                // Cancel any pending commit and debounce — only save to recent
+                // history once the user stops changing for 1 second
+                commitTask?.cancel()
+                commitTask = Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { return }
+                    userPreferences.selectColor(newColor)
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
                 }
             }
 
-            // Selected color name
+            // Recent Colours
+            if !userPreferences.recentColorHexes.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Recent Colours")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+
+                    HStack(spacing: 10) {
+                        ForEach(userPreferences.recentColorHexes, id: \.self) { hex in
+                            let color = Color(hex: hex)
+                            let isSelected = userPreferences.hasCustomAccentColor
+                                && hex.lowercased() == userPreferences.selectedAccentColorHex.lowercased()
+
+                            Button {
+                                pickerColor = color
+                                userPreferences.selectColor(color)
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                            } label: {
+                                Circle()
+                                    .fill(color)
+                                    .frame(width: 36, height: 36)
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(Color.white.opacity(0.3), lineWidth: 1)
+                                    )
+                                    .overlay(
+                                        isSelected
+                                            ? Image(systemName: "checkmark")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(.white)
+                                            : nil
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Spacer()
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            // Effective color indicator
             HStack {
                 Circle()
                     .fill(effectiveAccentColor)
                     .frame(width: 16, height: 16)
 
-                Text("Selected: \(effectiveColorName)")
+                Text("Active: \(effectiveColorLabel)")
                     .font(.appCaption)
                     .foregroundColor(.textSecondary)
             }
@@ -184,7 +237,7 @@ struct AccentColorPickerWithReset: View {
             if userPreferences.hasCustomAccentColor {
                 Button {
                     userPreferences.resetToStyleDefault()
-                    // Haptic feedback
+                    pickerColor = headerStyleManager.defaultAccentColor
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
                 } label: {
@@ -199,6 +252,23 @@ struct AccentColorPickerWithReset: View {
                     .background(Color.cardBackgroundSoft)
                     .cornerRadius(AppDimensions.smallCornerRadius)
                 }
+            }
+        }
+        .onAppear {
+            pickerColor = effectiveAccentColor
+        }
+        .onChange(of: userPreferences.hasCustomAccentColor) { _, hasCustom in
+            // When theme selection resets the custom flag, sync pickerColor to the new style default
+            if !hasCustom {
+                pickerColor = headerStyleManager.defaultAccentColor
+                commitTask?.cancel()
+            }
+        }
+        .onDisappear {
+            // If the user was actively picking a custom color, commit it before leaving
+            if let task = commitTask {
+                task.cancel()
+                userPreferences.selectColor(pickerColor)
             }
         }
         .padding()

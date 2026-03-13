@@ -8,6 +8,7 @@ import SwiftUI
 enum WidgetDataStore {
     static let appGroupId = "group.com.bbad.michael.Unforgotten"
     private static let briefingKey = "morningBriefingData"
+    private static let tomorrowBriefingKey = "tomorrowBriefingData"
 
     static var sharedDefaults: UserDefaults? {
         UserDefaults(suiteName: appGroupId)
@@ -35,6 +36,41 @@ enum WidgetDataStore {
             return briefing
         }
         return nil
+    }
+
+    // MARK: - Tomorrow's Pre-cached Data
+
+    static func saveTomorrowBriefingData(_ data: WidgetBriefingData) {
+        guard let defaults = sharedDefaults else { return }
+        if let encoded = try? JSONEncoder().encode(data) {
+            defaults.set(encoded, forKey: tomorrowBriefingKey)
+        }
+    }
+
+    static func loadTomorrowBriefingData() -> WidgetBriefingData? {
+        guard let defaults = sharedDefaults,
+              let data = defaults.data(forKey: tomorrowBriefingKey),
+              let briefing = try? JSONDecoder().decode(WidgetBriefingData.self, from: data) else {
+            return nil
+        }
+        return briefing
+    }
+
+    /// Promote pre-cached tomorrow data to today's slot.
+    /// Called by the background task at ~2 AM when the new day starts.
+    static func promoteTomorrowToToday() {
+        guard let tomorrowData = loadTomorrowBriefingData() else { return }
+
+        // Re-date the data to now so the isDateInToday check passes
+        let promoted = WidgetBriefingData(
+            date: Date(),
+            items: tomorrowData.items,
+            totalCount: tomorrowData.totalCount
+        )
+        saveBriefingData(promoted)
+
+        // Clear the tomorrow slot
+        sharedDefaults?.removeObject(forKey: tomorrowBriefingKey)
     }
 }
 

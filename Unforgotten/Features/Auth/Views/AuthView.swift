@@ -41,12 +41,11 @@ struct AuthView: View {
                         .frame(maxWidth: isRegularWidth ? 500 : 550)
                     }
                     .frame(maxWidth: .infinity)
-                    .containerRelativeFrame(.vertical) { height, _ in height }
+                    .frame(minHeight: UIScreen.main.bounds.height)
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollDismissesKeyboard(.interactively)
             }
-            .ignoresSafeArea(.keyboard)
         }
     }
 }
@@ -280,7 +279,17 @@ struct SignInForm: View {
                 isLoading = true
                 do {
                     _ = try await appState.authRepository.signInWithApple(credential: credential)
-                    await appState.checkAuthState()
+
+                    // Extract the user's full name from the Apple credential (only provided on first sign-in)
+                    var appleDisplayName: String?
+                    if let fullName = credential.fullName {
+                        let nameParts = [fullName.givenName, fullName.familyName].compactMap { $0 }
+                        if !nameParts.isEmpty {
+                            appleDisplayName = nameParts.joined(separator: " ")
+                        }
+                    }
+
+                    await appState.checkAuthState(appleDisplayName: appleDisplayName)
                 } catch {
                     errorMessage = "Apple Sign In failed"
                 }
@@ -301,13 +310,14 @@ struct SignInForm: View {
             errorMessage = "Please enter your email first"
             return
         }
-        
+
+        // Always show the same message to prevent user enumeration
         do {
             try await appState.authRepository.resetPassword(email: email)
-            errorMessage = "Password reset email sent"
         } catch {
-            errorMessage = "Failed to send reset email"
+            // Silently ignore errors to prevent revealing whether the email exists
         }
+        errorMessage = "If an account exists with that email, you'll receive a password reset link."
     }
 }
 
@@ -322,6 +332,7 @@ struct SignUpForm: View {
     @State private var confirmPassword = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showVerificationMessage = false
 
     // Button gradient colors matching design
     private let buttonGradient = LinearGradient(
@@ -331,115 +342,162 @@ struct SignUpForm: View {
     )
 
     var body: some View {
-        VStack(spacing: 16) {
-            // Title
-            Text("Let's get you signed up")
-                .font(.appLargeTitle)
-                .foregroundColor(.textPrimary)
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 8)
+        if showVerificationMessage {
+            // Verification email sent confirmation
+            VStack(spacing: 20) {
+                Image(systemName: "envelope.badge")
+                    .font(.system(size: 48))
+                    .foregroundColor(Color(hex: "79A5D7"))
+                    .padding(.bottom, 8)
 
-            // Email field
-            AuthTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
-                .textContentType(.emailAddress)
-                .autocapitalization(.none)
-
-            // Password field
-            AuthTextField(placeholder: "Password", text: $password, isSecure: true)
-                .textContentType(.newPassword)
-
-            // Confirm password field
-            AuthTextField(placeholder: "Confirm Password", text: $confirmPassword, isSecure: true)
-                .textContentType(.newPassword)
-
-            // Password requirements (only show when typing)
-            if !password.isEmpty || !confirmPassword.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    PasswordRequirement(text: "At least 8 characters", isMet: password.count >= 8)
-                    PasswordRequirement(text: "Passwords match", isMet: !password.isEmpty && password == confirmPassword)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            // Error message
-            if let error = errorMessage {
-                Text(error)
-                    .font(.appCaption)
-                    .foregroundColor(.medicalRed)
+                Text("Check your email")
+                    .font(.appLargeTitle)
+                    .foregroundColor(.textPrimary)
                     .multilineTextAlignment(.center)
-            }
 
-            // Create Account button
-            Button {
-                Task { await signUp() }
-            } label: {
-                HStack {
-                    if isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    } else {
-                        Text("Create Account")
-                            .font(.appBodyMedium)
-                    }
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: AppDimensions.buttonHeight)
-                .background(buttonGradient)
-                .cornerRadius(AppDimensions.buttonHeight / 2)
-            }
-            .disabled(!isFormValid || isLoading)
-            .opacity(!isFormValid ? 0.6 : 1)
+                Text("We've sent a verification link to **\(email)**. Please check your inbox and tap the link to verify your account.")
+                    .font(.appBody)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
 
-            // Divider
-            HStack {
-                Rectangle()
-                    .fill(Color.textSecondary.opacity(0.3))
-                    .frame(height: 1)
-
-                Text("or")
+                Text("Don't forget to check your spam folder.")
                     .font(.appCaption)
                     .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
 
-                Rectangle()
-                    .fill(Color.textSecondary.opacity(0.3))
-                    .frame(height: 1)
-            }
-            .padding(.vertical, 8)
-
-            // Apple Sign Up
-            SignInWithAppleButton(.signUp) { request in
-                request.requestedScopes = [.email, .fullName]
-            } onCompletion: { result in
-                Task { await handleAppleSignUp(result) }
-            }
-            .signInWithAppleButtonStyle(.white)
-            .frame(height: AppDimensions.buttonHeight)
-            .cornerRadius(AppDimensions.buttonHeight / 2)
-
-            // Switch to sign in
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showSignUp = false
+                // Back to sign in button
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showSignUp = false
+                    }
+                } label: {
+                    Text("Back to Sign In")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: AppDimensions.buttonHeight)
+                        .background(buttonGradient)
+                        .cornerRadius(AppDimensions.buttonHeight / 2)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Text("Already have an account?")
+                .padding(.top, 8)
+            }
+        } else {
+            // Sign up form
+            VStack(spacing: 16) {
+                // Title
+                Text("Let's get you signed up")
+                    .font(.appLargeTitle)
+                    .foregroundColor(.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 8)
+
+                // Email field
+                AuthTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+                    .textContentType(.emailAddress)
+                    .autocapitalization(.none)
+
+                // Password field
+                AuthTextField(placeholder: "Password", text: $password, isSecure: true)
+                    .textContentType(.newPassword)
+
+                // Confirm password field
+                AuthTextField(placeholder: "Confirm Password", text: $confirmPassword, isSecure: true)
+                    .textContentType(.newPassword)
+
+                // Password requirements (only show when typing)
+                if !password.isEmpty || !confirmPassword.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        PasswordRequirement(text: "At least 8 characters", isMet: password.count >= 8)
+                        PasswordRequirement(text: "Contains an uppercase letter", isMet: password.range(of: "[A-Z]", options: .regularExpression) != nil)
+                        PasswordRequirement(text: "Contains a number", isMet: password.range(of: "[0-9]", options: .regularExpression) != nil)
+                        PasswordRequirement(text: "Passwords match", isMet: !password.isEmpty && password == confirmPassword)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                // Error message
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.appCaption)
+                        .foregroundColor(.medicalRed)
+                        .multilineTextAlignment(.center)
+                }
+
+                // Create Account button
+                Button {
+                    Task { await signUp() }
+                } label: {
+                    HStack {
+                        if isLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Text("Create Account")
+                                .font(.appBodyMedium)
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppDimensions.buttonHeight)
+                    .background(buttonGradient)
+                    .cornerRadius(AppDimensions.buttonHeight / 2)
+                }
+                .disabled(!isFormValid || isLoading)
+                .opacity(!isFormValid ? 0.6 : 1)
+
+                // Divider
+                HStack {
+                    Rectangle()
+                        .fill(Color.textSecondary.opacity(0.3))
+                        .frame(height: 1)
+
+                    Text("or")
+                        .font(.appCaption)
                         .foregroundColor(.textSecondary)
-                    Text("Sign In")
-                        .foregroundColor(Color(hex: "79A5D7"))
+
+                    Rectangle()
+                        .fill(Color.textSecondary.opacity(0.3))
+                        .frame(height: 1)
                 }
-                .font(.appBody)
+                .padding(.vertical, 8)
+
+                // Apple Sign Up
+                SignInWithAppleButton(.signUp) { request in
+                    request.requestedScopes = [.email, .fullName]
+                } onCompletion: { result in
+                    Task { await handleAppleSignUp(result) }
+                }
+                .signInWithAppleButtonStyle(.white)
+                .frame(height: AppDimensions.buttonHeight)
+                .cornerRadius(AppDimensions.buttonHeight / 2)
+
+                // Switch to sign in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showSignUp = false
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Already have an account?")
+                            .foregroundColor(.textSecondary)
+                        Text("Sign In")
+                            .foregroundColor(Color(hex: "79A5D7"))
+                    }
+                    .font(.appBody)
+                }
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
+            .animation(.easeInOut(duration: 0.2), value: password.isEmpty && confirmPassword.isEmpty)
         }
-        .animation(.easeInOut(duration: 0.2), value: password.isEmpty && confirmPassword.isEmpty)
     }
     
     private var isFormValid: Bool {
         email.isValidEmail &&
         password.count >= 8 &&
+        password.range(of: "[A-Z]", options: .regularExpression) != nil &&
+        password.range(of: "[0-9]", options: .regularExpression) != nil &&
         password == confirmPassword
     }
     
@@ -447,14 +505,16 @@ struct SignUpForm: View {
     private func signUp() async {
         isLoading = true
         errorMessage = nil
-        
+
         do {
             _ = try await appState.authRepository.signUp(email: email, password: password)
-            await appState.checkAuthState()
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showVerificationMessage = true
+            }
         } catch {
             errorMessage = "Failed to create account. Email may already be in use."
         }
-        
+
         isLoading = false
     }
     

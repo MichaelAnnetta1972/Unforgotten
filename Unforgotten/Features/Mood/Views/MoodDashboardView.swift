@@ -9,6 +9,7 @@ struct MoodDashboardView: View {
     @StateObject private var viewModel = MoodDashboardViewModel()
     @State private var showMoodPrompt = false
     @State private var editingEntry: MoodEntry? = nil
+    @Environment(\.appAccentColor) private var appAccentColor
 
     private let moodEmojis = ["", "😢", "😕", "😐", "🙂", "😊"]
     private let moodLabels = ["", "Sad", "Not Great", "Okay", "Good", "Great"]
@@ -54,11 +55,11 @@ struct MoodDashboardView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("HISTORY")
                                     .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                                    .foregroundColor(appAccentColor)
 
                                 if viewModel.entries.isEmpty && !viewModel.isLoading {
                                     EmptyStateView(
-                                        icon: "face.smiling",
+                                        //icon: "face.smiling",
                                         title: "No mood entries yet",
                                         message: "Start tracking your mood to see patterns over time",
                                         buttonTitle: "Record Mood",
@@ -191,12 +192,10 @@ struct TodayMoodCard: View {
             }
         }
         .padding(AppDimensions.cardPadding)
-        .background(appAccentColor.opacity(0.15))
+        .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                .stroke(appAccentColor.opacity(0.3), lineWidth: 1)
-        )
+
+        
     }
 }
 
@@ -245,7 +244,7 @@ struct MoodSummaryCard: View {
                 Text("30-DAY SUMMARY")
                     .font(.appCaption)
                     .fontWeight(.bold)
-                    .foregroundColor(.textSecondary)
+                    .foregroundColor(appAccentColor)
 
                 Spacer()
             }
@@ -309,6 +308,8 @@ struct MoodSummaryCard: View {
 // MARK: - Weekly Trend Card
 struct WeeklyTrendCard: View {
     @ObservedObject var viewModel: MoodDashboardViewModel
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let moodEmojis: [String]
 
     var body: some View {
@@ -316,7 +317,7 @@ struct WeeklyTrendCard: View {
             Text("LAST 7 DAYS")
                 .font(.appCaption)
                 .fontWeight(.bold)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(appAccentColor)
 
             HStack(spacing: 8) {
                 ForEach(viewModel.lastSevenDays, id: \.date) { day in
@@ -448,13 +449,13 @@ class MoodDashboardViewModel: ObservableObject {
 
         isLoading = true
 
-        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
         let now = Date()
 
         // Use UTC calendar for consistent date comparison with stored data
         var utcCalendar = Calendar(identifier: .gregorian)
         utcCalendar.timeZone = TimeZone(identifier: "UTC")!
         let todayUTC = utcCalendar.startOfDay(for: now)
+        let thirtyDaysAgo = utcCalendar.date(byAdding: .day, value: -30, to: todayUTC)!
 
         do {
             entries = try await appState.moodRepository.getEntries(

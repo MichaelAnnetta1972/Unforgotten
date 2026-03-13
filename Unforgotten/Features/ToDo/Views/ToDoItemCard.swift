@@ -12,7 +12,6 @@ struct ToDoItemCard: View {
     @Binding var focusedItemId: UUID?
     let onToggle: () -> Void
     let onTextChange: (String) -> Void
-    let onDelete: () -> Void
 
     @State private var itemText: String
     @State private var checkboxScale: CGFloat = 1.0
@@ -23,14 +22,12 @@ struct ToDoItemCard: View {
         item: ToDoItem,
         focusedItemId: Binding<UUID?>,
         onToggle: @escaping () -> Void,
-        onTextChange: @escaping (String) -> Void,
-        onDelete: @escaping () -> Void
+        onTextChange: @escaping (String) -> Void
     ) {
         self.item = item
         self._focusedItemId = focusedItemId
         self.onToggle = onToggle
         self.onTextChange = onTextChange
-        self.onDelete = onDelete
         self._itemText = State(initialValue: item.text)
         self._showCheckmark = State(initialValue: item.isCompleted)
     }
@@ -75,23 +72,13 @@ struct ToDoItemCard: View {
                     onTextChange(newValue)
                 }
 
-            // Show X to dismiss keyboard when focused, or delete icon when not
+            // Show X to dismiss keyboard when focused
             if isTextFieldFocused {
                 Button(action: { isTextFieldFocused = false }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 20))
                         .foregroundColor(.textSecondary)
                         .frame(width: 32)
-                }
-                .buttonStyle(PlainButtonStyle())
-            } else {
-                // Delete button
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 16))
-                        .foregroundColor(.red.opacity(0.8))
-                        .frame(width: 32, height: 32)
-                        .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
             }

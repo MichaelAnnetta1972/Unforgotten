@@ -283,6 +283,9 @@ struct OnboardingContainerView: View {
                 // Apply feature visibility selections
                 applyFeatureSelections()
 
+                // Sync theme selection from the onboarding theme manager to onboarding data
+                onboardingData.selectedHeaderStyle = themeManager.selectedStyle
+
                 #if DEBUG
                 print("🎯 OnboardingContainerView: Starting completeOnboarding")
                 print("🎯 OnboardingContainerView: connectedInvitation = \(onboardingData.connectedInvitation?.id.uuidString ?? "nil")")

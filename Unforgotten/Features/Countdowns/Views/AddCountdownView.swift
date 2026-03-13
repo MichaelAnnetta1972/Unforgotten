@@ -20,6 +20,10 @@ struct AddCountdownView: View {
     @State private var notes = ""
     @State private var reminderMinutes: Int? = 1440  // Default: 1 day before
     @State private var isRecurring = false
+    @State private var recurrenceUnit: RecurrenceUnit = .year
+    @State private var recurrenceInterval: Int = 1
+    @State private var hasRecurrenceEndDate = false
+    @State private var recurrenceEndDate = Date()
     @State private var selectedImage: UIImage?
 
     @State private var isLoading = false
@@ -28,6 +32,7 @@ struct AddCountdownView: View {
     // Date picker modal state
     @State private var showDatePicker = false
     @State private var showEndDatePicker = false
+    @State private var showRecurrenceEndDatePicker = false
 
     // Family sharing state
     @State private var shareToFamily = false
@@ -125,6 +130,7 @@ struct AddCountdownView: View {
                             ForEach(CountdownType.allCases) { type in
                                 Label(type.displayName, systemImage: type.icon)
                                     .tag(type)
+                                    .font(.appBody)
                             }
                         }
                         .pickerStyle(.menu)
@@ -132,8 +138,12 @@ struct AddCountdownView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Custom type name (shown only when "Custom" is selected)
                     if selectedType == .custom {
@@ -217,19 +227,92 @@ struct AddCountdownView: View {
                         }
                         .padding()
                     }
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
-                    // Recurring toggle
-                    HStack {
-                        Toggle("Repeats every year", isOn: $isRecurring)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                            .tint(appAccentColor)
+                    // Recurring section
+                    VStack(spacing: 0) {
+                        HStack {
+                            Toggle("Repeats", isOn: $isRecurring.animation())
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                                .tint(appAccentColor)
+                        }
+                        .padding()
+
+                        if isRecurring {
+                            Divider()
+                                .padding(.horizontal, 16)
+
+                            HStack {
+                                Text("Every")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Spacer()
+
+                                Picker("Interval", selection: $recurrenceInterval) {
+                                    ForEach(1...30, id: \.self) { num in
+                                        Text("\(num)").tag(num)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+
+                                Picker("Unit", selection: $recurrenceUnit) {
+                                    ForEach(RecurrenceUnit.allCases) { unit in
+                                        Text(recurrenceInterval == 1 ? unit.displayName : unit.pluralName).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+                            }
+                            .padding()
+
+                            Divider()
+                                .padding(.horizontal, 16)
+
+                            HStack {
+                                Toggle("End Date", isOn: $hasRecurrenceEndDate.animation())
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                                    .tint(appAccentColor)
+                            }
+                            .padding()
+
+                            if hasRecurrenceEndDate {
+                                Divider()
+                                    .padding(.horizontal, 16)
+
+                                HStack {
+                                    Text("Ends On")
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+
+                                    Spacer()
+
+                                    Button {
+                                        showRecurrenceEndDatePicker = true
+                                    } label: {
+                                        Text(recurrenceEndDate.formatted(date: .abbreviated, time: .omitted))
+                                            .font(.appBody)
+                                            .foregroundColor(appAccentColor)
+                                    }
+                                }
+                                .padding()
+                            }
+                        }
                     }
-                    .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Reminder picker row
                     HStack {
@@ -249,8 +332,12 @@ struct AddCountdownView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     AppTextField(placeholder: "Notes (optional)", text: $notes)
 
@@ -310,15 +397,26 @@ struct AddCountdownView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(Color.appBackgroundLight)
         }
+        .sheet(isPresented: $showRecurrenceEndDatePicker) {
+            CountdownDatePickerSheet(
+                title: "Repeat End Date",
+                selection: $recurrenceEndDate,
+                minimumDate: date,
+                hasTime: false
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
+        }
     }
 
     // MARK: - Family Sharing Section
     @ViewBuilder
     private var familySharingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Family Calendar")
+            Text("FAMILY CALENDAR")
                 .font(.appCaption)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(appAccentColor)
                 .padding(.horizontal, 4)
 
             if hasFamilyAccess {
@@ -366,8 +464,12 @@ struct AddCountdownView: View {
                     }
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
             } else {
                 // Upgrade prompt for non-Family Plus users
                 HStack {
@@ -387,8 +489,12 @@ struct AddCountdownView: View {
                         .foregroundColor(.textSecondary)
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
             }
         }
     }
@@ -418,6 +524,9 @@ struct AddCountdownView: View {
                     imageUrl: nil,
                     reminderOffsetMinutes: reminderMinutes,
                     isRecurring: isRecurring,
+                    recurrenceUnit: isRecurring ? recurrenceUnit : nil,
+                    recurrenceInterval: isRecurring ? recurrenceInterval : nil,
+                    recurrenceEndDate: isRecurring && hasRecurrenceEndDate ? recurrenceEndDate : nil,
                     useRemoteFirst: useRemoteFirst
                 )
 
@@ -463,6 +572,16 @@ struct AddCountdownView: View {
                             #endif
                         }
                     }
+                    // Send one push notification for the event (not per-day)
+                    if let firstDay = countdowns.first {
+                        await PushNotificationService.shared.sendShareNotification(
+                            eventType: .countdown,
+                            eventId: firstDay.id,
+                            eventTitle: title,
+                            sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                            memberUserIds: Array(selectedMemberIds)
+                        )
+                    }
                 }
 
                 if let firstDay = countdowns.first {
@@ -480,7 +599,10 @@ struct AddCountdownView: View {
                     customType: selectedType == .custom ? customTypeName : nil,
                     notes: notes.isBlank ? nil : notes,
                     reminderOffsetMinutes: reminderMinutes,
-                    isRecurring: isRecurring
+                    isRecurring: isRecurring,
+                    recurrenceUnit: isRecurring ? recurrenceUnit : nil,
+                    recurrenceInterval: isRecurring ? recurrenceInterval : nil,
+                    recurrenceEndDate: isRecurring && hasRecurrenceEndDate ? recurrenceEndDate : nil
                 )
 
                 var countdown: Countdown
@@ -523,6 +645,14 @@ struct AddCountdownView: View {
                             eventId: countdown.id,
                             memberUserIds: Array(selectedMemberIds)
                         )
+                        // Send push notification to shared members
+                        await PushNotificationService.shared.sendShareNotification(
+                            eventType: .countdown,
+                            eventId: countdown.id,
+                            eventTitle: countdown.title,
+                            sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                            memberUserIds: Array(selectedMemberIds)
+                        )
                     } catch {
                         #if DEBUG
                         print("Failed to create family share: \(error)")
@@ -563,6 +693,10 @@ struct EditCountdownView: View {
     @State private var notes: String
     @State private var reminderMinutes: Int?
     @State private var isRecurring: Bool
+    @State private var recurrenceUnit: RecurrenceUnit
+    @State private var recurrenceInterval: Int
+    @State private var hasRecurrenceEndDate: Bool
+    @State private var recurrenceEndDate: Date
     @State private var selectedImage: UIImage?
     @State private var removePhoto = false
 
@@ -574,6 +708,7 @@ struct EditCountdownView: View {
     // Date picker modal state
     @State private var showDatePicker = false
     @State private var showEndDatePicker = false
+    @State private var showRecurrenceEndDatePicker = false
 
     // Family sharing state
     @State private var shareToFamily = false
@@ -609,6 +744,10 @@ struct EditCountdownView: View {
         self._notes = State(initialValue: countdown.notes ?? "")
         self._reminderMinutes = State(initialValue: countdown.reminderOffsetMinutes)
         self._isRecurring = State(initialValue: countdown.isRecurring)
+        self._recurrenceUnit = State(initialValue: countdown.recurrenceUnit ?? .year)
+        self._recurrenceInterval = State(initialValue: countdown.recurrenceInterval ?? 1)
+        self._hasRecurrenceEndDate = State(initialValue: countdown.recurrenceEndDate != nil)
+        self._recurrenceEndDate = State(initialValue: countdown.recurrenceEndDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date())
     }
 
     private func dismissView() {
@@ -676,7 +815,11 @@ struct EditCountdownView: View {
                         }
                         .padding()
                         .background(appAccentColor.opacity(0.1))
-                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
                     }
 
                     AppTextField(placeholder: "Title *", text: $title)
@@ -699,6 +842,7 @@ struct EditCountdownView: View {
                             ForEach(CountdownType.allCases) { type in
                                 Label(type.displayName, systemImage: type.icon)
                                     .tag(type)
+                                    .font(.appBody)
                             }
                         }
                         .pickerStyle(.menu)
@@ -706,8 +850,12 @@ struct EditCountdownView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Custom type name (shown only when "Custom" is selected)
                     if selectedType == .custom {
@@ -793,19 +941,92 @@ struct EditCountdownView: View {
                         }
                         .padding()
                     }
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
-                    // Recurring toggle
-                    HStack {
-                        Toggle("Repeats every year", isOn: $isRecurring)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                            .tint(appAccentColor)
+                    // Recurring section
+                    VStack(spacing: 0) {
+                        HStack {
+                            Toggle("Repeats", isOn: $isRecurring.animation())
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                                .tint(appAccentColor)
+                        }
+                        .padding()
+
+                        if isRecurring {
+                            Divider()
+                                .padding(.horizontal, 16)
+
+                            HStack {
+                                Text("Every")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Spacer()
+
+                                Picker("Interval", selection: $recurrenceInterval) {
+                                    ForEach(1...30, id: \.self) { num in
+                                        Text("\(num)").tag(num)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+
+                                Picker("Unit", selection: $recurrenceUnit) {
+                                    ForEach(RecurrenceUnit.allCases) { unit in
+                                        Text(recurrenceInterval == 1 ? unit.displayName : unit.pluralName).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+                            }
+                            .padding()
+
+                            Divider()
+                                .padding(.horizontal, 16)
+
+                            HStack {
+                                Toggle("End Date", isOn: $hasRecurrenceEndDate.animation())
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                                    .tint(appAccentColor)
+                            }
+                            .padding()
+
+                            if hasRecurrenceEndDate {
+                                Divider()
+                                    .padding(.horizontal, 16)
+
+                                HStack {
+                                    Text("Ends On")
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+
+                                    Spacer()
+
+                                    Button {
+                                        showRecurrenceEndDatePicker = true
+                                    } label: {
+                                        Text(recurrenceEndDate.formatted(date: .abbreviated, time: .omitted))
+                                            .font(.appBody)
+                                            .foregroundColor(appAccentColor)
+                                    }
+                                }
+                                .padding()
+                            }
+                        }
                     }
-                    .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Reminder picker row
                     HStack {
@@ -818,6 +1039,7 @@ struct EditCountdownView: View {
                         Picker("Reminder", selection: $reminderMinutes) {
                             ForEach(reminderOptions, id: \.0) { option in
                                 Text(option.1).tag(option.0)
+                                .font(.appBody)
                             }
                         }
                         .pickerStyle(.menu)
@@ -825,8 +1047,12 @@ struct EditCountdownView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     AppTextField(placeholder: "Notes", text: $notes)
 
@@ -867,8 +1093,12 @@ struct EditCountdownView: View {
                                 }
                                 .foregroundColor(appAccentColor)
                                 .padding()
-                                .background(Color.cardBackgroundSoft)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
+                                .background(Color.cardBackground)
+                                .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
                             }
                             .buttonStyle(PlainButtonStyle())
 
@@ -884,8 +1114,12 @@ struct EditCountdownView: View {
                                 }
                                 .foregroundColor(.medicalRed)
                                 .padding()
-                                .background(Color.cardBackgroundSoft)
-                                .cornerRadius(AppDimensions.cardCornerRadius)
+                                .background(Color.cardBackground)
+                                .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -935,6 +1169,17 @@ struct EditCountdownView: View {
                 selection: $endDate,
                 minimumDate: date,
                 hasTime: hasTime
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
+        }
+        .sheet(isPresented: $showRecurrenceEndDatePicker) {
+            CountdownDatePickerSheet(
+                title: "Repeat End Date",
+                selection: $recurrenceEndDate,
+                minimumDate: date,
+                hasTime: false
             )
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
@@ -1010,9 +1255,9 @@ struct EditCountdownView: View {
                         .foregroundColor(shareToFamily ? appAccentColor : .textSecondary)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Family Calendar")
+                        Text("FAMILY CALENDAR")
                             .font(.appBody)
-                            .foregroundColor(.textPrimary)
+                            .foregroundColor(appAccentColor)
 
                         Text(shareToFamily ? "\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected" : "Not shared")
                             .font(.appCaption)
@@ -1026,8 +1271,12 @@ struct EditCountdownView: View {
                         .foregroundColor(.textSecondary)
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
             }
             .buttonStyle(PlainButtonStyle())
         } else {
@@ -1048,13 +1297,23 @@ struct EditCountdownView: View {
 
                 Spacer()
 
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(.accentYellow)
+                // Image(systemName: "crown.fill")
+                //     .font(.system(size: 14))
+                //     .foregroundColor(.accentYellow)
+
+                    Image("unforgotten-icon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 45)
+                        .cornerRadius(8)
             }
             .padding()
-            .background(Color.cardBackgroundSoft)
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
             .opacity(0.7)
         }
     }
@@ -1092,6 +1351,14 @@ struct EditCountdownView: View {
                     eventId: countdownId,
                     memberUserIds: Array(selectedMemberIds)
                 )
+                // Send push notification to shared members
+                await PushNotificationService.shared.sendShareNotification(
+                    eventType: .countdown,
+                    eventId: countdownId,
+                    eventTitle: title,
+                    sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                    memberUserIds: Array(selectedMemberIds)
+                )
             }
         } catch {
             #if DEBUG
@@ -1115,6 +1382,9 @@ struct EditCountdownView: View {
         updatedCountdown.notes = notes.isBlank ? nil : notes
         updatedCountdown.reminderOffsetMinutes = reminderMinutes
         updatedCountdown.isRecurring = isRecurring
+        updatedCountdown.recurrenceUnit = isRecurring ? recurrenceUnit : nil
+        updatedCountdown.recurrenceInterval = isRecurring ? recurrenceInterval : nil
+        updatedCountdown.recurrenceEndDate = isRecurring && hasRecurrenceEndDate ? recurrenceEndDate : nil
 
         // Handle photo upload/removal
         if let image = selectedImage {
@@ -1186,8 +1456,13 @@ struct EditGroupCountdownView: View {
     @State private var notes: String
     @State private var reminderMinutes: Int?
     @State private var isRecurring: Bool
+    @State private var recurrenceUnit: RecurrenceUnit
+    @State private var recurrenceInterval: Int
+    @State private var hasRecurrenceEndDate: Bool
+    @State private var recurrenceEndDate: Date
     @State private var selectedImage: UIImage?
     @State private var removePhoto = false
+    @State private var showRecurrenceEndDatePicker = false
 
     // Family sharing state
     @State private var shareToFamily = false
@@ -1222,6 +1497,10 @@ struct EditGroupCountdownView: View {
         self._notes = State(initialValue: countdown.notes ?? "")
         self._reminderMinutes = State(initialValue: countdown.reminderOffsetMinutes)
         self._isRecurring = State(initialValue: countdown.isRecurring)
+        self._recurrenceUnit = State(initialValue: countdown.recurrenceUnit ?? .year)
+        self._recurrenceInterval = State(initialValue: countdown.recurrenceInterval ?? 1)
+        self._hasRecurrenceEndDate = State(initialValue: countdown.recurrenceEndDate != nil)
+        self._recurrenceEndDate = State(initialValue: countdown.recurrenceEndDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date())
     }
 
     private func dismissView() {
@@ -1285,7 +1564,11 @@ struct EditGroupCountdownView: View {
                     }
                     .padding()
                     .background(appAccentColor.opacity(0.1))
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     AppTextField(placeholder: "Title *", text: $title)
 
@@ -1311,8 +1594,12 @@ struct EditGroupCountdownView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     if selectedType == .custom {
                         AppTextField(placeholder: "Custom type name", text: $customTypeName)
@@ -1328,19 +1615,92 @@ struct EditGroupCountdownView: View {
                         }
                         .padding()
                     }
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
-                    // Recurring toggle
-                    HStack {
-                        Toggle("Repeats every year", isOn: $isRecurring)
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                            .tint(appAccentColor)
+                    // Recurring section
+                    VStack(spacing: 0) {
+                        HStack {
+                            Toggle("Repeats", isOn: $isRecurring.animation())
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                                .tint(appAccentColor)
+                        }
+                        .padding()
+
+                        if isRecurring {
+                            Divider()
+                                .padding(.horizontal, 16)
+
+                            HStack {
+                                Text("Every")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+
+                                Spacer()
+
+                                Picker("Interval", selection: $recurrenceInterval) {
+                                    ForEach(1...30, id: \.self) { num in
+                                        Text("\(num)").tag(num)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+
+                                Picker("Unit", selection: $recurrenceUnit) {
+                                    ForEach(RecurrenceUnit.allCases) { unit in
+                                        Text(recurrenceInterval == 1 ? unit.displayName : unit.pluralName).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+                            }
+                            .padding()
+
+                            Divider()
+                                .padding(.horizontal, 16)
+
+                            HStack {
+                                Toggle("End Date", isOn: $hasRecurrenceEndDate.animation())
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                                    .tint(appAccentColor)
+                            }
+                            .padding()
+
+                            if hasRecurrenceEndDate {
+                                Divider()
+                                    .padding(.horizontal, 16)
+
+                                HStack {
+                                    Text("Ends On")
+                                        .font(.appBody)
+                                        .foregroundColor(.textPrimary)
+
+                                    Spacer()
+
+                                    Button {
+                                        showRecurrenceEndDatePicker = true
+                                    } label: {
+                                        Text(recurrenceEndDate.formatted(date: .abbreviated, time: .omitted))
+                                            .font(.appBody)
+                                            .foregroundColor(appAccentColor)
+                                    }
+                                }
+                                .padding()
+                            }
+                        }
                     }
-                    .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Reminder picker
                     HStack {
@@ -1360,8 +1720,12 @@ struct EditGroupCountdownView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     AppTextField(placeholder: "Notes (optional)", text: $notes)
 
@@ -1409,6 +1773,17 @@ struct EditGroupCountdownView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(Color.appBackgroundLight)
         }
+        .sheet(isPresented: $showRecurrenceEndDatePicker) {
+            CountdownDatePickerSheet(
+                title: "Repeat End Date",
+                selection: $recurrenceEndDate,
+                minimumDate: countdown.date,
+                hasTime: false
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
+        }
     }
 
     // MARK: - Family Sharing Section
@@ -1440,8 +1815,12 @@ struct EditGroupCountdownView: View {
                         .foregroundColor(.textSecondary)
                 }
                 .padding()
-                .background(Color.cardBackgroundSoft)
-                .cornerRadius(AppDimensions.cardCornerRadius)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
             }
             .buttonStyle(PlainButtonStyle())
         } else {
@@ -1462,13 +1841,23 @@ struct EditGroupCountdownView: View {
 
                 Spacer()
 
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(.accentYellow)
+                // Image(systemName: "crown.fill")
+                //     .font(.system(size: 14))
+                //     .foregroundColor(.accentYellow)
+                    Image("unforgotten-icon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 45)
+                        .cornerRadius(8)
+
             }
             .padding()
-            .background(Color.cardBackgroundSoft)
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
             .opacity(0.7)
         }
     }
@@ -1492,6 +1881,7 @@ struct EditGroupCountdownView: View {
     }
 
     private func updateFamilyCalendarSharingForGroup(accountId: UUID, countdownIds: [UUID]) async {
+        var didSendNotification = false
         for countdownId in countdownIds {
             do {
                 try await appState.familyCalendarRepository.deleteShareForEvent(
@@ -1506,6 +1896,17 @@ struct EditGroupCountdownView: View {
                         eventId: countdownId,
                         memberUserIds: Array(selectedMemberIds)
                     )
+                    // Send one push notification for the group (not per-day)
+                    if !didSendNotification {
+                        didSendNotification = true
+                        await PushNotificationService.shared.sendShareNotification(
+                            eventType: .countdown,
+                            eventId: countdownId,
+                            eventTitle: countdown.title,
+                            sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                            memberUserIds: Array(selectedMemberIds)
+                        )
+                    }
                 }
             } catch {
                 #if DEBUG
@@ -1548,7 +1949,10 @@ struct EditGroupCountdownView: View {
             notes: notes.isBlank ? nil : notes,
             imageUrl: imageUrl,
             reminderOffsetMinutes: reminderMinutes,
-            isRecurring: isRecurring
+            isRecurring: isRecurring,
+            recurrenceUnit: isRecurring ? recurrenceUnit : nil,
+            recurrenceInterval: isRecurring ? recurrenceInterval : nil,
+            recurrenceEndDate: isRecurring && hasRecurrenceEndDate ? recurrenceEndDate : nil
         )
 
         do {
@@ -1624,7 +2028,7 @@ private struct CountdownDatePickerSheet: View {
             // Selected day name label
             Text(selection.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
                 .font(.appBodyMedium)
-                .foregroundColor(.accentYellow)
+                .foregroundColor(appAccentColor)
                 .padding(.bottom, 8)
 
             // Date picker

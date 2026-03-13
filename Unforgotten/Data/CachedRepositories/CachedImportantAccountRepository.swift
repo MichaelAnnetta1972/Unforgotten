@@ -151,7 +151,9 @@ final class CachedImportantAccountRepository {
                 try? modelContext.save()
                 return remote
             } catch {
+                #if DEBUG
                 print("[CachedImportantAccountRepo] Remote createAccount failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -226,7 +228,9 @@ final class CachedImportantAccountRepository {
                 try modelContext.save()
                 return updated
             } catch {
+                #if DEBUG
                 print("[CachedImportantAccountRepo] Remote updateAccount failed: \(error). Saving locally.")
+                #endif
             }
         }
 
@@ -271,7 +275,9 @@ final class CachedImportantAccountRepository {
                 try modelContext.save()
                 return
             } catch {
+                #if DEBUG
                 print("[CachedImportantAccountRepo] Remote deleteAccount failed: \(error). Saving locally.")
+                #endif
             }
         }
 

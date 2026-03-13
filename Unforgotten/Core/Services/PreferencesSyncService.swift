@@ -74,7 +74,7 @@ final class PreferencesSyncService: ObservableObject {
         }
 
         // Apply accent color
-        userPrefs.selectedAccentColorIndex = remote.accentColorIndex
+        userPrefs.selectedAccentColorHex = remote.accentColorHex
         userPrefs.hasCustomAccentColor = remote.hasCustomAccentColor
 
         // Apply feature visibility
@@ -117,7 +117,7 @@ final class PreferencesSyncService: ObservableObject {
                 userId: userId,
                 accountId: accountId,
                 headerStyleId: headerManager.currentStyle.id,
-                accentColorIndex: userPrefs.selectedAccentColorIndex,
+                accentColorHex: userPrefs.selectedAccentColorHex,
                 hasCustomAccentColor: userPrefs.hasCustomAccentColor,
                 featureVisibility: featureVisibility,
                 featureOrder: featureManager.featureOrder

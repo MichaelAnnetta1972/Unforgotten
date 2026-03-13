@@ -21,6 +21,7 @@ final class RealtimeSyncService: ObservableObject {
     private var plannedMealsChannel: RealtimeChannelV2?
     private var moodEntriesChannel: RealtimeChannelV2?
     private var importantAccountsChannel: RealtimeChannelV2?
+    private var accountMembersChannel: RealtimeChannelV2?
     private var changeListenerTask: Task<Void, Never>?
     private var stickyReminderListenerTask: Task<Void, Never>?
     private var countdownListenerTask: Task<Void, Never>?
@@ -34,6 +35,7 @@ final class RealtimeSyncService: ObservableObject {
     private var plannedMealListenerTask: Task<Void, Never>?
     private var moodEntryListenerTask: Task<Void, Never>?
     private var importantAccountListenerTask: Task<Void, Never>?
+    private var accountMemberListenerTask: Task<Void, Never>?
     private var currentAccountId: UUID?
 
     private init() {}
@@ -89,6 +91,9 @@ final class RealtimeSyncService: ObservableObject {
         // Subscribe to important_accounts table changes
         await subscribeToImportantAccounts(accountId: accountId)
 
+        // Subscribe to account_members table changes (role updates)
+        await subscribeToAccountMembers(accountId: accountId)
+
         #if DEBUG
         print("📡 RealtimeSyncService: Started listening for account \(accountId)")
         #endif
@@ -134,6 +139,9 @@ final class RealtimeSyncService: ObservableObject {
 
         importantAccountListenerTask?.cancel()
         importantAccountListenerTask = nil
+
+        accountMemberListenerTask?.cancel()
+        accountMemberListenerTask = nil
 
         if let channel = appointmentsChannel {
             await supabase.realtimeV2.removeChannel(channel)
@@ -198,6 +206,11 @@ final class RealtimeSyncService: ObservableObject {
         if let channel = importantAccountsChannel {
             await supabase.realtimeV2.removeChannel(channel)
             importantAccountsChannel = nil
+        }
+
+        if let channel = accountMembersChannel {
+            await supabase.realtimeV2.removeChannel(channel)
+            accountMembersChannel = nil
         }
 
         currentAccountId = nil
@@ -1033,6 +1046,72 @@ final class RealtimeSyncService: ObservableObject {
 
         NotificationCenter.default.post(
             name: .importantAccountsDidChange,
+            object: nil,
+            userInfo: userInfo
+        )
+    }
+
+    // MARK: - Account Members Subscription (for role changes)
+
+    private func subscribeToAccountMembers(accountId: UUID) async {
+        let channel = supabase.channel("account_members_\(accountId.uuidString)")
+
+        let changeStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: TableName.accountMembers,
+            filter: "account_id=eq.\(accountId.uuidString)"
+        )
+
+        await channel.subscribe()
+        accountMembersChannel = channel
+
+        accountMemberListenerTask = Task { [weak self] in
+            for await change in changeStream {
+                guard !Task.isCancelled else { break }
+                await self?.handleAccountMemberChange(change)
+            }
+        }
+    }
+
+    private func handleAccountMemberChange(_ change: AnyAction) async {
+        #if DEBUG
+        print("📡 RealtimeSyncService: Received account member change")
+        #endif
+
+        var userInfo: [String: Any] = [:]
+
+        switch change {
+        case .update(let action):
+            #if DEBUG
+            print("📡 RealtimeSyncService: Account member UPDATE detected (role change)")
+            #endif
+            if let accountIdValue = action.record["account_id"],
+               let accountIdString = extractStringValue(from: accountIdValue),
+               let accountId = UUID(uuidString: accountIdString) {
+                userInfo["accountId"] = accountId
+            }
+            if let userIdValue = action.record["user_id"],
+               let userIdString = extractStringValue(from: userIdValue),
+               let userId = UUID(uuidString: userIdString) {
+                userInfo["userId"] = userId
+            }
+            if let roleValue = action.record["role"],
+               let roleString = extractStringValue(from: roleValue) {
+                userInfo["newRole"] = roleString
+            }
+        case .insert:
+            #if DEBUG
+            print("📡 RealtimeSyncService: Account member INSERT detected")
+            #endif
+        case .delete:
+            #if DEBUG
+            print("📡 RealtimeSyncService: Account member DELETE detected")
+            #endif
+        }
+
+        NotificationCenter.default.post(
+            name: .memberRoleDidChange,
             object: nil,
             userInfo: userInfo
         )

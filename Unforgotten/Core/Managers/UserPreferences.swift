@@ -1,108 +1,37 @@
 import SwiftUI
 
-// MARK: - Accent Color Option
-enum AccentColorOption: Int, CaseIterable, Identifiable {
-    case yellow = 0
-    case orange
-    case coral
-    case pink
-    case purple
-    case blue
-    case cyan
-    case teal
-    case green
-    case mint
-    case white
-    case grey
-    case sage
-    case dusk
-    case indigo
-
-    var id: Int { rawValue }
-
-    var name: String {
-        switch self {
-        case .yellow: return "Yellow"
-        case .orange: return "Orange"
-        case .coral: return "Coral"
-        case .pink: return "Pink"
-        case .purple: return "Purple"
-        case .blue: return "Blue"
-        case .cyan: return "Cyan"
-        case .teal: return "Teal"
-        case .green: return "Green"
-        case .mint: return "Mint"
-        case .white: return "White"
-        case .grey: return "Grey"
-        case .sage: return "Sage"
-        case .dusk: return "Dusk"
-        case .indigo: return "Indigo"
-
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .yellow: return Color(hex: "FFD60A")
-        case .orange: return Color(hex: "FF9F0A")
-        case .coral: return Color(hex: "FF6B6B")
-        case .pink: return Color(hex: "ce76b7")
-        case .purple: return Color(hex: "BF5AF2")
-        case .blue: return Color(hex: "0A84FF")
-        case .cyan: return Color(hex: "64D2FF")
-        case .teal: return Color(hex: "40C8E0")
-        case .green: return Color(hex: "6a863e")
-        case .mint: return Color(hex: "63E6BE")
-        case .white: return Color(hex: "FFFFFF")
-        case .grey: return Color(hex: "a7a7a7")
-        case .sage: return Color(hex: "98aca4")
-        case .dusk: return Color(hex: "7791a4")
-        case .indigo: return Color(hex: "565577")
-
-        }
-    }
-
-    var hexString: String {
-        switch self {
-        case .yellow: return "FFD60A"
-        case .orange: return "FF9F0A"
-        case .coral: return "FF6B6B"
-        case .pink: return "f16690"
-        case .purple: return "935cb6"
-        case .blue: return "0A84FF"
-        case .cyan: return "64D2FF"
-        case .teal: return "40C8E0"
-        case .green: return "518d69"
-        case .mint: return "63E6BE"
-        case .white: return "FFFFFF"
-        case .grey: return "a7a7a7"
-        case .sage: return "98aca4"
-        case .dusk: return "7791a4"
-        case .indigo: return "565577"
-        }
-    }
-
-    /// Find the accent color option that matches a hex string (case-insensitive)
-    static func from(hex: String) -> AccentColorOption? {
-        let normalizedHex = hex.uppercased().trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        return allCases.first { $0.hexString.uppercased() == normalizedHex }
-    }
-}
-
 // MARK: - User Preferences Manager
 @Observable
 class UserPreferences {
-    private let accentColorKey = "user_accent_color_index"
+    private let accentColorHexKey = "user_accent_color_hex"
     private let hasCustomAccentColorKey = "has_custom_accent_color"
+    private let legacyAccentColorIndexKey = "user_accent_color_index"
+    private let recentColorHexesKeyPrefix = "recent_accent_color_hexes"
+    private let maxRecentColors = 5
 
     /// Current user ID for sync (set by AppState)
-    var currentUserId: UUID?
+    var currentUserId: UUID? {
+        didSet {
+            // Reload user-scoped recent colours when the user changes
+            if oldValue != currentUserId {
+                loadRecentColors()
+            }
+        }
+    }
     /// Current account ID for sync (set by AppState)
     var currentAccountId: UUID?
 
-    var selectedAccentColorIndex: Int {
+    /// Returns a user-scoped UserDefaults key for recent colours
+    private var recentColorHexesKey: String {
+        if let userId = currentUserId {
+            return "\(recentColorHexesKeyPrefix)_\(userId.uuidString)"
+        }
+        return recentColorHexesKeyPrefix
+    }
+
+    var selectedAccentColorHex: String {
         didSet {
-            UserDefaults.standard.set(selectedAccentColorIndex, forKey: accentColorKey)
+            UserDefaults.standard.set(selectedAccentColorHex, forKey: accentColorHexKey)
             triggerSync()
         }
     }
@@ -116,6 +45,18 @@ class UserPreferences {
         }
     }
 
+    /// The user's most recent 5 custom accent colour hex values (newest first)
+    var recentColorHexes: [String] {
+        didSet {
+            UserDefaults.standard.set(recentColorHexes, forKey: recentColorHexesKey)
+        }
+    }
+
+    /// The user's recent colours as SwiftUI Color values
+    var recentColors: [Color] {
+        recentColorHexes.map { Color(hex: $0) }
+    }
+
     /// Trigger async sync to Supabase
     private func triggerSync() {
         guard let userId = currentUserId, let accountId = currentAccountId else { return }
@@ -124,31 +65,76 @@ class UserPreferences {
         }
     }
 
-    var selectedAccentColor: AccentColorOption {
-        get {
-            AccentColorOption(rawValue: selectedAccentColorIndex) ?? .yellow
-        }
-        set {
-            selectedAccentColorIndex = newValue.rawValue
-        }
-    }
-
     var accentColor: Color {
-        selectedAccentColor.color
+        Color(hex: selectedAccentColorHex)
     }
 
     init() {
-        // Load saved preference or default to yellow (index 0)
-        self.selectedAccentColorIndex = UserDefaults.standard.integer(forKey: accentColorKey)
-        self.hasCustomAccentColor = UserDefaults.standard.bool(forKey: hasCustomAccentColorKey)
+        let defaults = UserDefaults.standard
+
+        // Check for new hex-based storage first
+        if let existingHex = defaults.string(forKey: accentColorHexKey) {
+            self.selectedAccentColorHex = existingHex
+        } else {
+            // Migrate from legacy integer index
+            let legacyIndex = defaults.integer(forKey: legacyAccentColorIndexKey)
+            let hex = Self.legacyIndexToHex(legacyIndex)
+            self.selectedAccentColorHex = hex
+            defaults.set(hex, forKey: accentColorHexKey)
+            defaults.removeObject(forKey: legacyAccentColorIndexKey)
+        }
+
+        self.hasCustomAccentColor = defaults.bool(forKey: hasCustomAccentColorKey)
+        // Recent colours are loaded when currentUserId is set (user-scoped)
+        self.recentColorHexes = []
     }
 
-    /// Select a custom accent color - this sets hasCustomAccentColor to true
-    func selectColor(_ option: AccentColorOption) {
+    /// Loads recent colours from UserDefaults using the user-scoped key.
+    /// Migrates any existing data from the old global key on first load.
+    private func loadRecentColors() {
+        let defaults = UserDefaults.standard
+        let globalKey = recentColorHexesKeyPrefix
+
+        if let userColors = defaults.stringArray(forKey: recentColorHexesKey), !userColors.isEmpty {
+            recentColorHexes = userColors
+        } else if let globalColors = defaults.stringArray(forKey: globalKey), !globalColors.isEmpty,
+                  currentUserId != nil {
+            // Migrate from old global key to user-scoped key
+            recentColorHexes = globalColors
+            defaults.removeObject(forKey: globalKey)
+        } else {
+            recentColorHexes = []
+        }
+    }
+
+    /// Apply a custom accent color live without saving to recent history.
+    /// Use this during continuous interactions like dragging the colour picker.
+    func applyColorLive(_ color: Color) {
+        let hex = color.toHex()
+        selectedAccentColorHex = hex
+        hasCustomAccentColor = true
+    }
+
+    /// Select a custom accent color - this sets hasCustomAccentColor to true and saves to recent history.
+    /// Use this when the user has committed to a final colour choice.
+    func selectColor(_ color: Color) {
+        let hex = color.toHex()
         withAnimation(.easeInOut(duration: 0.2)) {
-            selectedAccentColor = option
+            selectedAccentColorHex = hex
             hasCustomAccentColor = true
         }
+        addToRecentColors(hex: hex)
+    }
+
+    /// Adds a hex colour to the recent list, keeping only the last 5 unique entries
+    private func addToRecentColors(hex: String) {
+        var recent = recentColorHexes
+        recent.removeAll { $0.lowercased() == hex.lowercased() }
+        recent.insert(hex, at: 0)
+        if recent.count > maxRecentColors {
+            recent = Array(recent.prefix(maxRecentColors))
+        }
+        recentColorHexes = recent
     }
 
     /// Reset to use the style's default accent color
@@ -161,8 +147,31 @@ class UserPreferences {
     /// Sync the selected accent color to match a style's default (used when changing styles)
     /// This does NOT set hasCustomAccentColor, it just updates the stored color for display purposes
     func syncToStyleDefault(hex: String) {
-        if let option = AccentColorOption.from(hex: hex) {
-            selectedAccentColorIndex = option.rawValue
+        selectedAccentColorHex = hex
+    }
+
+    // MARK: - Legacy Migration
+
+    /// Maps old AccentColorOption integer indices to hex strings.
+    /// Used only for one-time migration from integer-based storage.
+    private static func legacyIndexToHex(_ index: Int) -> String {
+        switch index {
+        case 0: return "FFD60A"   // yellow
+        case 1: return "FF9F0A"   // orange
+        case 2: return "FF6B6B"   // coral
+        case 3: return "CE76B7"   // pink
+        case 4: return "BF5AF2"   // purple
+        case 5: return "0A84FF"   // blue
+        case 6: return "64D2FF"   // cyan
+        case 7: return "40C8E0"   // teal
+        case 8: return "6A863E"   // green
+        case 9: return "63E6BE"   // mint
+        case 10: return "FFFFFF"  // white
+        case 11: return "A7A7A7"  // grey
+        case 12: return "98ACA4"  // sage
+        case 13: return "7791A4"  // dusk
+        case 14: return "565577"  // indigo
+        default: return "FFD60A"  // fallback to yellow
         }
     }
 }

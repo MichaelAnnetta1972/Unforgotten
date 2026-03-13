@@ -14,6 +14,7 @@ struct iPadHomeSidebar: View {
     @StateObject private var viewModel = HomeViewModel()
     @Binding var selectedContent: iPadContentSelection
     @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(FeatureVisibilityManager.self) private var featureVisibility
     @State private var showAccountSwitcher = false
     @State private var isReordering = false
@@ -92,7 +93,7 @@ struct iPadHomeSidebar: View {
                     CustomizableHeaderView(
                         pageIdentifier: .home,
                         title: "Unforgotten",
-                        showAccountSwitcherButton: appState.allAccounts.count > 1,
+                        showAccountSwitcherButton: appState.switchableAccounts.count > 1,
                         accountSwitcherAction: { showAccountSwitcher = true },
                         showSettingsButton: true,
                         settingsAction: { selectedContent = .settings },
@@ -192,7 +193,6 @@ struct iPadHomeSidebar: View {
         }
         .background(Color.appBackgroundLight)
         .refreshable {
-            await viewModel.loadData(appState: appState)
             await appState.generateTodaysMedicationLogs()
             await viewModel.loadData(appState: appState)
         }
@@ -236,7 +236,6 @@ struct iPadHomeSidebar: View {
         .onChange(of: appState.currentAccount?.id) { _, _ in
             // Reload data when account changes
             Task {
-                await viewModel.loadData(appState: appState)
                 await appState.generateTodaysMedicationLogs()
                 await viewModel.loadData(appState: appState)
             }
@@ -244,9 +243,17 @@ struct iPadHomeSidebar: View {
         .onReceive(NotificationCenter.default.publisher(for: .accountDidChange)) { _ in
             // Reload sidebar data when account changes from elsewhere
             Task {
-                await viewModel.loadData(appState: appState)
                 await appState.generateTodaysMedicationLogs()
                 await viewModel.loadData(appState: appState)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                // Reload all today data when returning to foreground
+                Task {
+                    await appState.generateTodaysMedicationLogs()
+                    await viewModel.loadData(appState: appState)
+                }
             }
         }
     }
@@ -283,7 +290,7 @@ struct iPadAccountSwitcherPopover: View {
 
             // Account List - sizes to fit content, scrolls if too many accounts
             VStack(spacing: 8) {
-                ForEach(appState.allAccounts) { accountWithRole in
+                ForEach(appState.switchableAccounts) { accountWithRole in
                     iPadAccountSwitcherRow(
                         accountWithRole: accountWithRole,
                         isSelected: appState.currentAccount?.id == accountWithRole.account.id,
@@ -321,7 +328,7 @@ struct iPadAccountSwitcherRow: View {
                 // Account icon
                 ZStack {
                     Circle()
-                        .fill(accountWithRole.isOwner ? appAccentColor : Color.cardBackgroundSoft)
+                        .fill(accountWithRole.isOwner ? appAccentColor : Color.cardBackground)
                         .frame(width: 40, height: 40)
 
                     Image(systemName: accountWithRole.isOwner ? "house.fill" : "person.2.fill")
@@ -351,7 +358,7 @@ struct iPadAccountSwitcherRow: View {
                 }
             }
             .padding(12)
-            .background(isSelected ? appAccentColor.opacity(0.1) : Color.cardBackgroundSoft)
+            .background(isSelected ? appAccentColor.opacity(0.1) : Color.cardBackground)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -376,12 +383,12 @@ struct iPadSidebarNavItem: View {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .font(.system(size: 20))
-                    .foregroundColor(isSelected ? .white : appAccentColor)
+                    .foregroundColor(isSelected ? .appBackground : appAccentColor)
                     .frame(width: 28)
 
                 Text(title)
                     .font(.appCardTitle)
-                    .foregroundColor(isSelected ? .white : .textPrimary)
+                    .foregroundColor(isSelected ? .appBackground : .textPrimary)
 
                 Spacer()
 
@@ -410,9 +417,15 @@ struct iPadSidebarUpgradeBanner: View {
             showUpgradeSheet = true
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(appAccentColor)
+                // Image(systemName: "crown.fill")
+                //     .font(.system(size: 20))
+                //     .foregroundColor(appAccentColor)
+
+            Image("unforgotten-icon")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Free Plan")
@@ -516,6 +529,8 @@ struct iPadSidebarTodayCard: View {
                         iPadSidebarBirthdayRow(profile: profile)
                     case .countdown(let countdown):
                         iPadSidebarCountdownRow(countdown: countdown)
+                    case .todoList(let list, let pendingCount):
+                        iPadSidebarTaskSummaryRow(list: list, pendingCount: pendingCount)
                     }
                 }
             }
@@ -786,6 +801,50 @@ struct iPadSidebarCountdownRow: View {
                         .lineLimit(1)
 
                     Text(countdown.displayTypeName)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.textSecondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, AppDimensions.cardPadding)
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: - iPad Sidebar Task Summary Row
+struct iPadSidebarTaskSummaryRow: View {
+    let list: ToDoList
+    let pendingCount: Int
+    @Environment(\.iPadTodayTaskAction) private var iPadTodayTaskAction
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        Button {
+            iPadTodayTaskAction?()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 18))
+                    .foregroundColor(appAccentColor)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(list.title)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
+
+                    Text(pendingCount == 1
+                         ? "1 task pending"
+                         : "\(pendingCount) tasks pending")
                         .font(.appCaption)
                         .foregroundColor(.textSecondary)
                 }

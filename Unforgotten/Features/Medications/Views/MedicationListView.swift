@@ -8,6 +8,7 @@ struct MedicationListView: View {
     @Environment(\.iPadHomeAction) private var iPadHomeAction
     @Environment(\.iPadAddMedicationAction) private var iPadAddMedicationAction
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.appAccentColor) private var appAccentColor
     @StateObject private var viewModel = MedicationListViewModel()
     @State private var showAddMedication = false
     @State private var showUpgradePrompt = false
@@ -134,9 +135,9 @@ struct MedicationListView: View {
                         HStack {
                             Image(systemName: "calendar")
                                 .font(.appCardTitle)
-                                .foregroundColor(.white)
+                                .foregroundColor(appAccentColor)
 
-                            Text("Calendar")
+                            Text("Medication History")
                                 .font(.appCardTitle)
                                 .foregroundColor(.white)
 
@@ -146,7 +147,7 @@ struct MedicationListView: View {
                                 .foregroundColor(.white.opacity(0.7))
                         }
                         .padding(AppDimensions.cardPaddingLarge)
-                        .background(Color.cardBackgroundLight.opacity(0.8))
+                        .background(Color.cardBackground)
                         .cornerRadius(AppDimensions.cardCornerRadius)
                     }
 
@@ -170,6 +171,7 @@ struct MedicationListView: View {
                                         } label: {
                                             Label("Delete", systemImage: "trash")
                                         }
+                                        .tint(.medicalRed)
                                     }
                                 }
                                 .listRowBackground(Color.clear)
@@ -202,7 +204,7 @@ struct MedicationListView: View {
                     // Empty state
                     if viewModel.medications.isEmpty && !viewModel.isLoading {
                         EmptyStateView(
-                            icon: "pills.fill",
+                            //icon: "pills.fill",
                             title: "No medications yet",
                             message: "Add medications to track schedules and reminders",
                             buttonTitle: "Add Medication",
@@ -245,6 +247,8 @@ struct MedicationListView: View {
 
 // MARK: - Medication Header View
 struct MedicationHeaderView: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let onBack: () -> Void
     
     var body: some View {
@@ -288,7 +292,7 @@ struct MedicationHeaderView: View {
                     .foregroundColor(.black)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Color.accentYellow)
+                    .background(appAccentColor)
                     .cornerRadius(20)
                 }
                 .padding(AppDimensions.screenPadding)
@@ -332,7 +336,7 @@ struct MedicationListRow: View {
                                     .font(.system(size: horizontalSizeClass == .regular ? 28 : 24))
                                     .foregroundColor(appAccentColor)
                                     .frame(width: thumbnailSize, height: thumbnailSize)
-                                    .background(Color.cardBackgroundSoft)
+                                    .background(Color.cardBackground)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                         }
@@ -341,7 +345,7 @@ struct MedicationListRow: View {
                             .font(.system(size: horizontalSizeClass == .regular ? 28 : 24))
                             .foregroundColor(appAccentColor)
                             .frame(width: thumbnailSize, height: thumbnailSize)
-                            .background(Color.cardBackgroundSoft)
+                            .background(Color.cardBackground)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
@@ -371,7 +375,7 @@ struct MedicationListRow: View {
                         if let instruction = medication.intakeInstruction {
                             Text(instruction.displayName)
                                 .font(.appCaptionSmall)
-                                .foregroundColor(.accentYellow)
+                                .foregroundColor(appAccentColor)
                         }
                     }
 
@@ -582,6 +586,7 @@ struct MedicationDetailView: View {
     @State private var showSettings = false
     @State private var isTogglingPause = false
     @State private var showFullscreenImage = false
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         ScrollView {
@@ -642,7 +647,7 @@ struct MedicationDetailView: View {
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(Color.accentYellow)
+                                .background(appAccentColor)
                                 .cornerRadius(12)
                             }
                             .padding()
@@ -675,6 +680,23 @@ struct MedicationDetailView: View {
                         }
                         .padding(.horizontal, AppDimensions.screenPadding)
 
+
+
+                        // Schedule section
+                        if !viewModel.schedules.isEmpty {
+                            VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
+                                Text("SCHEDULE")
+                                    .font(.appCaption)
+                                    .foregroundColor(appAccentColor)
+                                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                                ForEach(viewModel.schedules) { schedule in
+                                    ScheduleCard(schedule: schedule)
+                                }
+                                .padding(.horizontal, AppDimensions.screenPadding)
+                            }
+                        }
+
                         // Pause/Resume button
                         if !medication.isPaused {
                             Button {
@@ -688,27 +710,13 @@ struct MedicationDetailView: View {
                                 .foregroundColor(.textPrimary)
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                                .background(Color.cardBackgroundSoft)
+                                //.background(Color.cardBackgroundSoft)
                                 .cornerRadius(AppDimensions.buttonCornerRadius)
                             }
                             .disabled(isTogglingPause)
                             .padding(.horizontal, AppDimensions.screenPadding)
                         }
 
-                        // Schedule section
-                        if !viewModel.schedules.isEmpty {
-                            VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
-                                Text("SCHEDULE")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                                    .padding(.horizontal, AppDimensions.screenPadding)
-
-                                ForEach(viewModel.schedules) { schedule in
-                                    ScheduleCard(schedule: schedule)
-                                }
-                                .padding(.horizontal, AppDimensions.screenPadding)
-                            }
-                        }
 
                         // Bottom spacing for nav bar
                         Spacer()
@@ -742,6 +750,15 @@ struct MedicationDetailView: View {
         }
         .task {
             await viewModel.loadSchedules(medicationId: medication.id, appState: appState)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .medicationsDidChange)) { _ in
+            Task {
+                // Reload medication details (iPad edit panel dismisses without updating local state)
+                if let updated = try? await appState.medicationRepository.getMedication(id: medication.id) {
+                    medication = updated
+                }
+                await viewModel.loadSchedules(medicationId: medication.id, appState: appState)
+            }
         }
         .alert("Error", isPresented: .init(
             get: { viewModel.error != nil },
@@ -811,6 +828,7 @@ struct MedicationDetailHeaderView: View {
 
 // MARK: - Schedule Card
 struct ScheduleCard: View {
+    @Environment(\.appAccentColor) private var appAccentColor
     let schedule: MedicationSchedule
 
     var body: some View {
@@ -838,7 +856,7 @@ struct ScheduleCard: View {
                 // Legacy times display
                 HStack {
                     Image(systemName: "clock")
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(appAccentColor)
                     Text(times.joined(separator: ", "))
                         .font(.appCaption)
                         .foregroundColor(.textSecondary)
@@ -847,7 +865,7 @@ struct ScheduleCard: View {
                 if let days = schedule.daysOfWeek {
                     HStack {
                         Image(systemName: "calendar")
-                            .foregroundColor(.accentYellow)
+                            .foregroundColor(appAccentColor)
                         Text(daysTextFromArray(days))
                             .font(.appCaption)
                             .foregroundColor(.textSecondary)
@@ -871,6 +889,7 @@ struct ScheduleCard: View {
 // MARK: - Schedule Entry Display Row
 struct ScheduleEntryDisplayRow: View {
     let entry: ScheduleEntry
+    @Environment(\.appAccentColor) private var appAccentColor
 
     private var daysText: String {
         let days = entry.daysOfWeek.sorted()
@@ -880,19 +899,12 @@ struct ScheduleEntryDisplayRow: View {
         return days.compactMap { $0 < Calendar.daysOfWeek.count ? Calendar.daysOfWeek[$0] : nil }.joined(separator: ", ")
     }
 
-    private var durationText: String? {
-        guard let value = entry.durationValue else { return nil }
-        let unit = entry.durationUnit
-        let unitName = value == 1 ? unit.singularName : unit.displayName.lowercased()
-        return "\(value) \(unitName)"
-    }
-
     var body: some View {
         HStack(spacing: 8) {
             // Time
             HStack(spacing: 4) {
                 Image(systemName: "clock")
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
                     .font(.system(size: 10))
                 Text(entry.time)
                     .font(.appCaption)
@@ -915,20 +927,11 @@ struct ScheduleEntryDisplayRow: View {
                 .font(.appCaption)
                 .foregroundColor(.textSecondary)
 
-            // Duration (if present)
-            if let duration = durationText {
-                Text("•")
-                    .foregroundColor(.textMuted)
-                Text(duration)
-                    .font(.appCaption)
-                    .foregroundColor(.accentYellow)
-            }
-
             Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.cardBackgroundSoft)
+        .background(Color.cardBackground)
         .cornerRadius(8)
     }
 }
@@ -969,7 +972,7 @@ struct MedicationCalendarView: View {
                 // Header scrolls with content - uses style-based assets from HeaderStyleManager
                 CustomizableHeaderView(
                     pageIdentifier: .medications,
-                    title: "Medicine Calendar",
+                    title: "Medication History",
                     showBackButton: true,
                     backAction: { dismiss() },
                     showCustomizeButton: false
@@ -1050,8 +1053,12 @@ struct MedicationCalendarView: View {
                     date: date,
                     logs: viewModel.getLogsForDate(date),
                     medications: viewModel.medications,
-                    futureScheduledItems: viewModel.isFutureDate(date) ? viewModel.getScheduledMedicationsForDate(date) : []
+                    futureScheduledItems: viewModel.isFutureDate(date) ? viewModel.getScheduledMedicationsForDate(date) : [],
+                    onLogUpdated: {
+                        await viewModel.loadMonthData(appState: appState)
+                    }
                 )
+                .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
@@ -1062,6 +1069,7 @@ struct MedicationCalendarView: View {
 // MARK: - Streak Banner
 struct StreakBanner: View {
     let streak: Int
+    @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1084,7 +1092,7 @@ struct StreakBanner: View {
         .padding(AppDimensions.cardPadding)
         .background(
             LinearGradient(
-                colors: [Color.orange.opacity(0.2), Color.accentYellow.opacity(0.15)],
+                colors: [Color.orange.opacity(0.2), appAccentColor.opacity(0.15)],
                 startPoint: .leading,
                 endPoint: .trailing
             )
@@ -1099,6 +1107,8 @@ struct StreakBanner: View {
 
 // MARK: - Month Navigation Header
 struct MonthNavigationHeader: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let currentMonth: Date
     let onPreviousMonth: () -> Void
     let onNextMonth: () -> Void
@@ -1119,7 +1129,7 @@ struct MonthNavigationHeader: View {
             Button(action: onPreviousMonth) {
                 Image(systemName: "chevron.left")
                     .font(.title3)
-                    .foregroundColor(.accentColor)
+                    .foregroundColor(appAccentColor)
                     .frame(width: 44, height: 44)
             }
 
@@ -1135,10 +1145,10 @@ struct MonthNavigationHeader: View {
                 Button(action: onToday) {
                     Text("Today")
                         .font(.appCaption)
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(appAccentColor)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Color.accentColor.opacity(0.2))
+                        .background(appAccentColor.opacity(0.2))
                         .cornerRadius(AppDimensions.pillCornerRadius)
                 }
             }
@@ -1146,7 +1156,7 @@ struct MonthNavigationHeader: View {
             Button(action: onNextMonth) {
                 Image(systemName: "chevron.right")
                     .font(.title3)
-                    .foregroundColor(isCurrentMonth ? .textSecondary.opacity(0.3) : .accentColor)
+                    .foregroundColor(isCurrentMonth ? .textSecondary.opacity(0.3) : appAccentColor)
                     .frame(width: 44, height: 44)
             }
             .disabled(isCurrentMonth)
@@ -1182,6 +1192,8 @@ struct MedicationFilterPicker: View {
 }
 
 struct FilterChip: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let title: String
     let isSelected: Bool
     let action: () -> Void
@@ -1193,7 +1205,7 @@ struct FilterChip: View {
                 .foregroundColor(isSelected ? .black : .textPrimary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(isSelected ? Color.accentColor : Color.cardBackgroundSoft)
+                .background(isSelected ? appAccentColor : Color.cardBackground)
                 .cornerRadius(AppDimensions.pillCornerRadius)
         }
     }
@@ -1278,6 +1290,7 @@ struct CalendarDayCell: View {
     let isFuture: Bool
     let isSelected: Bool
     let onTap: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
 
     private var dayNumber: String {
         let formatter = DateFormatter()
@@ -1296,7 +1309,7 @@ struct CalendarDayCell: View {
                 // Status dot - show for past days and future scheduled days
                 if let status = status {
                     Circle()
-                        .fill(status.color)
+                        .fill(status.color(accent: appAccentColor))
                         .frame(width: 6, height: 6)
                 } else {
                     Circle()
@@ -1310,7 +1323,7 @@ struct CalendarDayCell: View {
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isToday ? Color.accentYellow : Color.clear, lineWidth: 2)
+                    .stroke(isToday ? appAccentColor : Color.clear, lineWidth: 2)
             )
         }
     }
@@ -1321,7 +1334,7 @@ struct CalendarDayCell: View {
         } else if isFuture && status == .scheduled {
             return .textSecondary.opacity(0.7)
         } else if isToday {
-            return .accentYellow
+            return appAccentColor
         } else {
             return .textPrimary
         }
@@ -1329,7 +1342,7 @@ struct CalendarDayCell: View {
 
     private var backgroundColor: Color {
         if isSelected {
-            return Color.accentYellow.opacity(0.2)
+            return appAccentColor.opacity(0.2)
         } else {
             return Color.clear
         }
@@ -1338,19 +1351,20 @@ struct CalendarDayCell: View {
 
 // MARK: - Day Adherence Status
 enum DayAdherenceStatus {
+
     case allTaken      // 100% adherence
     case partialTaken  // Some taken
     case noneTaken     // 0% adherence (all missed/skipped)
     case noMedications // No medications scheduled
     case scheduled     // Future date with scheduled medications
 
-    var color: Color {
+    func color(accent: Color) -> Color {
         switch self {
         case .allTaken: return .badgeGreen
-        case .partialTaken: return .accentYellow
+        case .partialTaken: return accent
         case .noneTaken: return .medicalRed
         case .noMedications: return .textSecondary.opacity(0.3)
-        case .scheduled: return .accentYellow.opacity(0.6)
+        case .scheduled: return accent.opacity(0.6)
         }
     }
 
@@ -1367,6 +1381,8 @@ enum DayAdherenceStatus {
 
 // MARK: - Calendar Legend
 struct CalendarLegend: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 16) {
@@ -1375,7 +1391,7 @@ struct CalendarLegend: View {
                 LegendItem(color: .medicalRed, label: "Missed")
             }
             HStack(spacing: 16) {
-                LegendItem(color: .accentYellow.opacity(0.6), label: "Scheduled")
+                LegendItem(color: appAccentColor.opacity(0.6), label: "Scheduled")
             }
         }
         .padding(.vertical, 8)
@@ -1401,6 +1417,8 @@ struct LegendItem: View {
 
 // MARK: - Monthly Summary Card
 struct MonthlySummaryCard: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let summary: MonthlySummary
 
     var body: some View {
@@ -1413,7 +1431,7 @@ struct MonthlySummaryCard: View {
                 SummaryStatView(
                     value: "\(summary.adherencePercentage)%",
                     label: "Adherence",
-                    color: summary.adherencePercentage >= 80 ? .badgeGreen : (summary.adherencePercentage >= 50 ? .accentYellow : .medicalRed)
+                    color: summary.adherencePercentage >= 80 ? .badgeGreen : (summary.adherencePercentage >= 50 ? appAccentColor : .medicalRed)
                 )
 
                 Divider()
@@ -1486,10 +1504,14 @@ struct MonthlySummary {
 // MARK: - Day Detail Sheet
 struct DayDetailSheet: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.appAccentColor) private var appAccentColor
+    @EnvironmentObject var appState: AppState
+
     let date: Date
-    let logs: [MedicationLog]
+    @State var logs: [MedicationLog]
     let medications: [Medication]
     var futureScheduledItems: [(medication: Medication, entry: ScheduleEntry)] = []
+    var onLogUpdated: (() async -> Void)?
 
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -1515,6 +1537,39 @@ struct DayDetailSheet: View {
         !logs.isEmpty || !futureScheduledItems.isEmpty
     }
 
+    private func nextStatus(for status: MedicationLogStatus) -> MedicationLogStatus {
+        switch status {
+        case .scheduled: return .taken
+        case .taken: return .skipped
+        case .skipped: return .missed
+        case .missed: return .taken
+        }
+    }
+
+    private func updateLogStatus(log: MedicationLog) async {
+        let newStatus = nextStatus(for: log.status)
+        let takenAt: Date? = newStatus == .taken ? Date() : nil
+
+        do {
+            let updated = try await appState.medicationRepository.updateLogStatus(
+                logId: log.id,
+                status: newStatus,
+                takenAt: takenAt
+            )
+            // Update local state
+            if let index = logs.firstIndex(where: { $0.id == log.id }) {
+                logs[index].status = updated.status
+                logs[index].takenAt = updated.takenAt
+            }
+            // Notify parent to refresh calendar
+            await onLogUpdated?()
+        } catch {
+            #if DEBUG
+            print("Failed to update log status: \(error)")
+            #endif
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -1538,14 +1593,14 @@ struct DayDetailSheet: View {
                                 // Future date banner
                                 HStack {
                                     Image(systemName: "calendar.badge.clock")
-                                        .foregroundColor(.accentYellow)
+                                        .foregroundColor(appAccentColor)
                                     Text("\(futureScheduledItems.count) medication\(futureScheduledItems.count == 1 ? "" : "s") scheduled")
                                         .font(.appBodyMedium)
                                         .foregroundColor(.textPrimary)
                                     Spacer()
                                 }
                                 .padding(AppDimensions.cardPadding)
-                                .background(Color.accentYellow.opacity(0.15))
+                                .background(appAccentColor.opacity(0.15))
                                 .cornerRadius(AppDimensions.cardCornerRadius)
                                 .padding(.horizontal, AppDimensions.screenPadding)
 
@@ -1562,8 +1617,17 @@ struct DayDetailSheet: View {
                                 // Individual logs
                                 ForEach(logs) { log in
                                     if let med = medication(for: log) {
-                                        DayLogCard(medication: med, log: log, timeFormatter: timeFormatter)
-                                            .padding(.horizontal, AppDimensions.screenPadding)
+                                        DayLogCard(
+                                            medication: med,
+                                            log: log,
+                                            timeFormatter: timeFormatter,
+                                            onStatusTap: {
+                                                Task {
+                                                    await updateLogStatus(log: log)
+                                                }
+                                            }
+                                        )
+                                        .padding(.horizontal, AppDimensions.screenPadding)
                                     }
                                 }
                             }
@@ -1579,7 +1643,7 @@ struct DayDetailSheet: View {
                     Button("Done") {
                         dismiss()
                     }
-                    .foregroundColor(.accentYellow)
+                    .foregroundColor(appAccentColor)
                 }
             }
         }
@@ -1588,6 +1652,8 @@ struct DayDetailSheet: View {
 
 // MARK: - Future Schedule Card
 struct FutureScheduleCard: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let medication: Medication
     let entry: ScheduleEntry
 
@@ -1596,7 +1662,7 @@ struct FutureScheduleCard: View {
             // Clock icon
             Image(systemName: "clock")
                 .font(.title3)
-                .foregroundColor(.accentYellow)
+                .foregroundColor(appAccentColor)
                 .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -1621,7 +1687,7 @@ struct FutureScheduleCard: View {
                 if let instruction = medication.intakeInstruction {
                     Text(instruction.displayName)
                         .font(.appCaptionSmall)
-                        .foregroundColor(.accentYellow)
+                        .foregroundColor(appAccentColor)
                 }
             }
 
@@ -1630,10 +1696,10 @@ struct FutureScheduleCard: View {
             // Scheduled badge
             Text("Scheduled")
                 .font(.appCaption)
-                .foregroundColor(.accentYellow)
+                .foregroundColor(appAccentColor)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.accentYellow.opacity(0.15))
+                .background(appAccentColor.opacity(0.15))
                 .cornerRadius(AppDimensions.pillCornerRadius)
         }
         .padding(AppDimensions.cardPadding)
@@ -1644,6 +1710,8 @@ struct FutureScheduleCard: View {
 
 // MARK: - Day Summary Banner
 struct DaySummaryBanner: View {
+    @Environment(\.appAccentColor) private var appAccentColor
+
     let logs: [MedicationLog]
 
     private var takenCount: Int {
@@ -1676,12 +1744,12 @@ struct DaySummaryBanner: View {
             // Progress ring
             ZStack {
                 Circle()
-                    .stroke(Color.cardBackgroundSoft, lineWidth: 4)
+                    .stroke(Color.cardBackground, lineWidth: 4)
                     .frame(width: 44, height: 44)
 
                 Circle()
                     .trim(from: 0, to: CGFloat(percentage) / 100)
-                    .stroke(percentage >= 80 ? Color.badgeGreen : (percentage >= 50 ? Color.accentYellow : Color.medicalRed), lineWidth: 4)
+                    .stroke(percentage >= 80 ? Color.badgeGreen : (percentage >= 50 ? appAccentColor : Color.medicalRed), lineWidth: 4)
                     .frame(width: 44, height: 44)
                     .rotationEffect(.degrees(-90))
 
@@ -1701,6 +1769,8 @@ struct DayLogCard: View {
     let medication: Medication
     let log: MedicationLog
     let timeFormatter: DateFormatter
+    var onStatusTap: (() -> Void)?
+    @State private var isUpdating = false
 
     var body: some View {
         HStack {
@@ -1722,14 +1792,34 @@ struct DayLogCard: View {
 
             Spacer()
 
-            // Status badge
-            Text(log.status.displayName)
-                .font(.appCaption)
-                .foregroundColor(statusColor)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(statusColor.opacity(0.15))
-                .cornerRadius(AppDimensions.pillCornerRadius)
+            // Status badge - tappable if onStatusTap is provided
+            if let onStatusTap = onStatusTap {
+                Button {
+                    onStatusTap()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(log.status.displayName)
+                            .font(.appCaption)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundColor(statusColor)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(statusColor.opacity(0.15))
+                    .cornerRadius(AppDimensions.pillCornerRadius)
+                }
+                .disabled(isUpdating)
+                .opacity(isUpdating ? 0.5 : 1.0)
+            } else {
+                Text(log.status.displayName)
+                    .font(.appCaption)
+                    .foregroundColor(statusColor)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(statusColor.opacity(0.15))
+                    .cornerRadius(AppDimensions.pillCornerRadius)
+            }
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
@@ -1838,6 +1928,7 @@ class MedicationCalendarViewModel: ObservableObject {
 
     /// Backfill missed medication logs for past days in the month that have no log records.
     /// Returns true if any logs were backfilled.
+    /// Limited to at most 7 days of backfill to avoid excessive DB calls on first load.
     private func backfillMissedLogs(appState: AppState, startOfMonth: Date, endOfMonth: Date) async throws -> Bool {
         guard let account = appState.currentAccount else { return false }
 
@@ -1853,8 +1944,11 @@ class MedicationCalendarViewModel: ObservableObject {
         // Group existing logs by day to know which days already have logs
         let existingLogDays = Set(allLogs.map { calendar.startOfDay(for: $0.scheduledAt) })
 
-        var checkDate = monthStart
-        let backfillEnd = min(yesterday, calendar.date(byAdding: .day, value: -1, to: endOfMonth)!)
+        // Limit backfill to the last 7 days to avoid excessive DB calls
+        let maxBackfillStart = calendar.date(byAdding: .day, value: -7, to: today) ?? monthStart
+        var checkDate = max(monthStart, maxBackfillStart)
+        guard let dayBeforeEndOfMonth = calendar.date(byAdding: .day, value: -1, to: endOfMonth) else { return false }
+        let backfillEnd = min(yesterday, dayBeforeEndOfMonth)
         var didBackfill = false
 
         while checkDate <= backfillEnd {
@@ -1866,7 +1960,7 @@ class MedicationCalendarViewModel: ObservableObject {
                 try await appState.medicationRepository.generateDailyLogs(accountId: account.id, date: checkDate)
 
                 // Fetch the newly created logs and mark them as missed
-                let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+                guard let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart) else { break }
                 let newLogs = try await appState.medicationRepository.getLogsForAccount(
                     accountId: account.id,
                     from: dayStart,
@@ -1884,7 +1978,8 @@ class MedicationCalendarViewModel: ObservableObject {
                 didBackfill = true
             }
 
-            checkDate = calendar.date(byAdding: .day, value: 1, to: checkDate) ?? backfillEnd
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: checkDate) else { break }
+            checkDate = nextDay
         }
 
         return didBackfill
@@ -1912,7 +2007,12 @@ class MedicationCalendarViewModel: ObservableObject {
         var checkDate = max(today, startOfMonth)
         if checkDate == today {
             // Skip today since it might already have logs
-            checkDate = calendar.date(byAdding: .day, value: 1, to: checkDate) ?? checkDate
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: checkDate) else {
+                dayStatuses = statuses
+                updateFilteredStatuses()
+                return
+            }
+            checkDate = nextDay
         }
 
         while checkDate <= endOfMonth {
@@ -1923,7 +2023,8 @@ class MedicationCalendarViewModel: ObservableObject {
                     statuses[dayStart] = .scheduled
                 }
             }
-            checkDate = calendar.date(byAdding: .day, value: 1, to: checkDate) ?? endOfMonth
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: checkDate) else { break }
+            checkDate = nextDay
         }
 
         dayStatuses = statuses
@@ -1969,34 +2070,9 @@ class MedicationCalendarViewModel: ObservableObject {
         return false
     }
 
-    /// Check if any schedule entry is active for a specific date using sequential duration logic
+    /// Check if any schedule entry is active for a specific date
     private func isEntryActiveForDate(entries: [ScheduleEntry], scheduleStartDate: Date, targetDate: Date, dayOfWeek: Int) -> Bool {
-        let sortedEntries = entries.sorted { $0.sortOrder < $1.sortOrder }
-        let daysSinceStart = calendar.dateComponents([.day], from: calendar.startOfDay(for: scheduleStartDate), to: calendar.startOfDay(for: targetDate)).day ?? 0
-
-        var cumulativeDays = 0
-
-        for entry in sortedEntries {
-            let entryDuration = entry.durationDays ?? Int.max
-
-            let entryStartDay = cumulativeDays
-            let entryEndDay = entryDuration == Int.max ? Int.max : cumulativeDays + entryDuration - 1
-
-            if daysSinceStart >= entryStartDay && daysSinceStart <= entryEndDay {
-                // This entry is active - check if target day of week is included
-                if entry.daysOfWeek.contains(dayOfWeek) {
-                    return true
-                }
-            }
-
-            if entryDuration != Int.max {
-                cumulativeDays += entryDuration
-            } else {
-                break
-            }
-        }
-
-        return false
+        return entries.contains { $0.daysOfWeek.contains(dayOfWeek) }
     }
 
     func updateFilteredStatuses() {
@@ -2039,7 +2115,8 @@ class MedicationCalendarViewModel: ObservableObject {
 
         var checkDate = max(today, startOfMonth)
         if checkDate == today {
-            checkDate = calendar.date(byAdding: .day, value: 1, to: checkDate) ?? checkDate
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: checkDate) else { return }
+            checkDate = nextDay
         }
 
         while checkDate <= endOfMonth {
@@ -2074,7 +2151,8 @@ class MedicationCalendarViewModel: ObservableObject {
                 }
             }
 
-            checkDate = calendar.date(byAdding: .day, value: 1, to: checkDate) ?? endOfMonth
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: checkDate) else { break }
+            checkDate = nextDay
         }
     }
 
@@ -2114,27 +2192,42 @@ class MedicationCalendarViewModel: ObservableObject {
     func calculateStreak(appState: AppState) async {
         guard let account = appState.currentAccount else { return }
 
-        var streak = 0
-        var checkDate = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: Date())
 
-        // Go back day by day checking for 100% adherence
-        while true {
-            let nextDay = calendar.date(byAdding: .day, value: 1, to: checkDate)!
+        // Fetch last 60 days of logs in a single query instead of one query per day
+        guard let rangeStart = calendar.date(byAdding: .day, value: -60, to: today),
+              let rangeEnd = calendar.date(byAdding: .day, value: 1, to: today) else {
+            currentStreak = 0
+            return
+        }
 
-            do {
-                let dayLogs = try await appState.medicationRepository.getLogsForAccount(
-                    accountId: account.id,
-                    from: checkDate,
-                    to: nextDay
-                )
+        do {
+            let recentLogs = try await appState.medicationRepository.getLogsForAccount(
+                accountId: account.id,
+                from: rangeStart,
+                to: rangeEnd
+            )
 
-                // If no medications scheduled, skip this day but don't break streak
-                if dayLogs.isEmpty {
-                    checkDate = calendar.date(byAdding: .day, value: -1, to: checkDate)!
+            // Group logs by day
+            let groupedLogs = Dictionary(grouping: recentLogs) { log in
+                calendar.startOfDay(for: log.scheduledAt)
+            }
+
+            var streak = 0
+            var checkDate = today
+
+            // Go back day by day using the pre-fetched data
+            while true {
+                guard let dayLogs = groupedLogs[checkDate] else {
+                    // No logs for this day - skip but don't break streak
+                    guard let prevDay = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
+                    checkDate = prevDay
                     // Limit how far back we go to find scheduled days
-                    if streak == 0 && calendar.dateComponents([.day], from: checkDate, to: Date()).day ?? 0 > 30 {
+                    if streak == 0 && calendar.dateComponents([.day], from: checkDate, to: today).day ?? 0 > 30 {
                         break
                     }
+                    // Don't go past our fetched range
+                    if checkDate < rangeStart { break }
                     continue
                 }
 
@@ -2142,19 +2235,18 @@ class MedicationCalendarViewModel: ObservableObject {
 
                 if allTaken {
                     streak += 1
-                    checkDate = calendar.date(byAdding: .day, value: -1, to: checkDate)!
+                    guard let prevDay = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
+                    checkDate = prevDay
+                    if checkDate < rangeStart { break }
                 } else {
                     break
                 }
-
-                // Safety limit
-                if streak > 365 { break }
-            } catch {
-                break
             }
-        }
 
-        currentStreak = streak
+            currentStreak = streak
+        } catch {
+            currentStreak = 0
+        }
     }
 
     func getLogsForDate(_ date: Date) -> [MedicationLog] {
@@ -2238,34 +2330,9 @@ class MedicationCalendarViewModel: ObservableObject {
         return scheduledItems.sorted { $0.entry.time < $1.entry.time }
     }
 
-    /// Get active schedule entries for a date using sequential duration logic
+    /// Get active schedule entries for a date
     private func getActiveScheduleEntries(entries: [ScheduleEntry], scheduleStartDate: Date, targetDate: Date, dayOfWeek: Int) -> [ScheduleEntry] {
-        let sortedEntries = entries.sorted { $0.sortOrder < $1.sortOrder }
-        let daysSinceStart = calendar.dateComponents([.day], from: calendar.startOfDay(for: scheduleStartDate), to: calendar.startOfDay(for: targetDate)).day ?? 0
-
-        var cumulativeDays = 0
-        var activeEntries: [ScheduleEntry] = []
-
-        for entry in sortedEntries {
-            let entryDuration = entry.durationDays ?? Int.max
-
-            let entryStartDay = cumulativeDays
-            let entryEndDay = entryDuration == Int.max ? Int.max : cumulativeDays + entryDuration - 1
-
-            if daysSinceStart >= entryStartDay && daysSinceStart <= entryEndDay {
-                if entry.daysOfWeek.contains(dayOfWeek) {
-                    activeEntries.append(entry)
-                }
-            }
-
-            if entryDuration != Int.max {
-                cumulativeDays += entryDuration
-            } else {
-                break
-            }
-        }
-
-        return activeEntries
+        return entries.filter { $0.daysOfWeek.contains(dayOfWeek) }
     }
 
     /// Check if a date is in the future (past today)
@@ -2310,9 +2377,12 @@ struct AddMedicationView: View {
     @State private var notes = ""
     @State private var intakeInstruction: IntakeInstruction?
     @State private var scheduleType: ScheduleType = .scheduled
-    @State private var scheduleEntries: [ScheduleEntry] = [ScheduleEntry(time: "08:00")]
+    @State private var schedules: [ScheduleData] = []
     @State private var selectedImage: UIImage?
     @State private var doseDescription = ""
+    @State private var editingScheduleIndex: Int?
+    @State private var newScheduleData = ScheduleData()
+    @State private var showScheduleModal = false
 
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -2389,9 +2459,9 @@ struct AddMedicationView: View {
 
                         // Form picker
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Form")
+                            Text("FORM")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                                .foregroundColor(appAccentColor)
 
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
@@ -2404,7 +2474,7 @@ struct AddMedicationView: View {
                                                 .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
+                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackground)
                                                 .cornerRadius(20)
                                         }
                                     }
@@ -2416,9 +2486,9 @@ struct AddMedicationView: View {
 
                         // Intake instruction picker
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Intake Instructions")
+                            Text("INTAKE INSTRUCTIONS")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                                .foregroundColor(appAccentColor)
 
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
@@ -2431,7 +2501,7 @@ struct AddMedicationView: View {
                                             .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
+                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackground)
                                             .cornerRadius(20)
                                     }
 
@@ -2444,7 +2514,7 @@ struct AddMedicationView: View {
                                                 .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
+                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackground)
                                                 .cornerRadius(20)
                                         }
                                     }
@@ -2468,15 +2538,45 @@ struct AddMedicationView: View {
                                         .foregroundColor(scheduleType == type ? .black : .textPrimary)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 10)
-                                        .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
+                                        .background(scheduleType == type ? appAccentColor : Color.cardBackground)
                                         .cornerRadius(20)
                                 }
                             }
                         }
 
                         if scheduleType == .scheduled {
-                            // Schedule entries list with modal
-                            ScheduleEntriesListView(entries: $scheduleEntries)
+                            // Existing schedule cards
+                            ForEach(schedules.indices, id: \.self) { index in
+                                ScheduleSummaryCard(
+                                    scheduleData: schedules[index],
+                                    onTap: {
+                                        editingScheduleIndex = index
+                                        showScheduleModal = true
+                                    },
+                                    onDelete: nil
+                                )
+                            }
+
+                            // Add Schedule button
+                            Button {
+                                editingScheduleIndex = nil
+                                showScheduleModal = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                    Text("Add Schedule")
+                                }
+                                .font(.appCaption)
+                                .foregroundColor(appAccentColor)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.cardBackground)
+                                .cornerRadius(AppDimensions.buttonCornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                                )
+                            }
                         }
 
                         if scheduleType == .asNeeded {
@@ -2494,6 +2594,28 @@ struct AddMedicationView: View {
             }
         }
         .background(Color.appBackgroundLight)
+        .sheet(isPresented: $showScheduleModal) {
+            if let index = editingScheduleIndex {
+                MedicationScheduleModal(
+                    scheduleData: $schedules[index],
+                    isEditing: true,
+                    onSave: {},
+                    onDelete: {
+                        schedules.remove(at: index)
+                    }
+                )
+            } else {
+                MedicationScheduleModal(
+                    scheduleData: $newScheduleData,
+                    isEditing: false,
+                    onSave: {
+                        schedules.append(newScheduleData)
+                        newScheduleData = ScheduleData()
+                    },
+                    onDelete: nil
+                )
+            }
+        }
     }
 
     private func saveMedication() async {
@@ -2528,26 +2650,30 @@ struct AddMedicationView: View {
                 medication = try await appState.medicationRepository.updateMedication(medication)
             }
 
-            // Create schedule if needed
-            if scheduleType == .scheduled && !scheduleEntries.isEmpty {
-                let scheduleInsert = MedicationScheduleInsert(
-                    accountId: account.id,
-                    medicationId: medication.id,
-                    scheduleType: scheduleType,
-                    scheduleEntries: scheduleEntries,
-                    doseDescription: nil
-                )
-                _ = try await appState.medicationRepository.createSchedule(scheduleInsert)
+            // Create schedules if needed
+            if scheduleType == .scheduled && !schedules.isEmpty {
+                for schedule in schedules {
+                    let scheduleInsert = MedicationScheduleInsert(
+                        accountId: account.id,
+                        medicationId: medication.id,
+                        scheduleType: scheduleType,
+                        startDate: schedule.startDate,
+                        endDate: schedule.hasEndDate ? schedule.endDate : nil,
+                        scheduleEntries: schedule.entries,
+                        doseDescription: nil
+                    )
+                    _ = try await appState.medicationRepository.createSchedule(scheduleInsert)
 
-                // Schedule notifications for each entry
-                for entry in scheduleEntries {
-                    if let scheduledTime = timeStringToDate(entry.time) {
-                        await NotificationService.shared.scheduleMedicationReminder(
-                            medicationId: medication.id,
-                            medicationName: medication.name,
-                            scheduledTime: scheduledTime,
-                            doseDescription: entry.dosage
-                        )
+                    // Schedule notifications for each entry
+                    for entry in schedule.entries {
+                        if let scheduledTime = timeStringToDate(entry.time) {
+                            await NotificationService.shared.scheduleMedicationReminder(
+                                medicationId: medication.id,
+                                medicationName: medication.name,
+                                scheduledTime: scheduledTime,
+                                doseDescription: entry.dosage
+                            )
+                        }
                     }
                 }
             } else if scheduleType == .asNeeded {
@@ -2565,6 +2691,9 @@ struct AddMedicationView: View {
                 medicationId: medication.id,
                 accountId: account.id
             )
+
+            // Notify other views that medications have changed
+            NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
 
             onSave(medication)
             dismissView()
@@ -2605,9 +2734,11 @@ struct EditMedicationView: View {
     @State private var notes: String
     @State private var intakeInstruction: IntakeInstruction?
     @State private var scheduleType: ScheduleType = .scheduled
-    @State private var scheduleEntries: [ScheduleEntry] = []
+    @State private var schedules: [ScheduleData] = []
     @State private var doseDescription: String = ""
-    @State private var existingSchedule: MedicationSchedule?
+    @State private var editingScheduleIndex: Int?
+    @State private var newScheduleData = ScheduleData()
+    @State private var showScheduleModal = false
     @State private var selectedImage: UIImage?
     @State private var removePhoto = false
 
@@ -2715,7 +2846,7 @@ struct EditMedicationView: View {
                                                 .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackgroundSoft)
+                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackground)
                                                 .cornerRadius(20)
                                         }
                                     }
@@ -2741,7 +2872,7 @@ struct EditMedicationView: View {
                                             .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackgroundSoft)
+                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackground)
                                             .cornerRadius(20)
                                     }
 
@@ -2754,7 +2885,7 @@ struct EditMedicationView: View {
                                                 .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 10)
-                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackgroundSoft)
+                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackground)
                                                 .cornerRadius(20)
                                         }
                                     }
@@ -2778,14 +2909,45 @@ struct EditMedicationView: View {
                                         .foregroundColor(scheduleType == type ? .black : .textPrimary)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 10)
-                                        .background(scheduleType == type ? appAccentColor : Color.cardBackgroundSoft)
+                                        .background(scheduleType == type ? appAccentColor : Color.cardBackground)
                                         .cornerRadius(20)
                                 }
                             }
                         }
 
                         if scheduleType == .scheduled {
-                            ScheduleEntriesListView(entries: $scheduleEntries)
+                            // Existing schedule cards
+                            ForEach(schedules.indices, id: \.self) { index in
+                                ScheduleSummaryCard(
+                                    scheduleData: schedules[index],
+                                    onTap: {
+                                        editingScheduleIndex = index
+                                        showScheduleModal = true
+                                    },
+                                    onDelete: nil
+                                )
+                            }
+
+                            // Add Schedule button
+                            Button {
+                                editingScheduleIndex = nil
+                                showScheduleModal = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                    Text("Add Schedule")
+                                }
+                                .font(.appCaption)
+                                .foregroundColor(appAccentColor)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.cardBackground)
+                                .cornerRadius(AppDimensions.buttonCornerRadius)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                                )
+                            }
                         }
 
                         if scheduleType == .asNeeded {
@@ -2820,6 +2982,28 @@ struct EditMedicationView: View {
             }
         }
         .background(Color.appBackgroundLight)
+        .sheet(isPresented: $showScheduleModal) {
+            if let index = editingScheduleIndex {
+                MedicationScheduleModal(
+                    scheduleData: $schedules[index],
+                    isEditing: true,
+                    onSave: {},
+                    onDelete: {
+                        schedules.remove(at: index)
+                    }
+                )
+            } else {
+                MedicationScheduleModal(
+                    scheduleData: $newScheduleData,
+                    isEditing: false,
+                    onSave: {
+                        schedules.append(newScheduleData)
+                        newScheduleData = ScheduleData()
+                    },
+                    onDelete: nil
+                )
+            }
+        }
         .task {
             await loadSchedule()
         }
@@ -2835,34 +3019,42 @@ struct EditMedicationView: View {
 
     private func loadSchedule() async {
         do {
-            let schedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
-            if let schedule = schedules.first {
-                existingSchedule = schedule
-                scheduleType = schedule.scheduleType
+            let loadedSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
 
-                // Load schedule entries or convert legacy times
-                if let entries = schedule.scheduleEntries, !entries.isEmpty {
-                    scheduleEntries = entries
-                } else if let times = schedule.times {
-                    // Convert legacy times to schedule entries
-                    scheduleEntries = times.enumerated().map { index, time in
-                        ScheduleEntry(
-                            time: time,
-                            dosage: schedule.doseDescription,
-                            daysOfWeek: schedule.daysOfWeek ?? [0, 1, 2, 3, 4, 5, 6],
-                            sortOrder: index
-                        )
+            if !loadedSchedules.isEmpty {
+                scheduleType = loadedSchedules.first?.scheduleType ?? .scheduled
+
+                self.schedules = loadedSchedules.map { schedule in
+                    var data = ScheduleData()
+                    data.existingScheduleId = schedule.id
+                    data.startDate = schedule.startDate
+
+                    // Load schedule entries or convert legacy times
+                    if let entries = schedule.scheduleEntries, !entries.isEmpty {
+                        data.entries = entries
+                    } else if let times = schedule.times {
+                        data.entries = times.enumerated().map { index, time in
+                            ScheduleEntry(
+                                time: time,
+                                dosage: schedule.doseDescription,
+                                daysOfWeek: schedule.daysOfWeek ?? [0, 1, 2, 3, 4, 5, 6],
+                                sortOrder: index
+                            )
+                        }
                     }
+
+                    if let scheduleEndDate = schedule.endDate {
+                        data.hasEndDate = true
+                        data.endDate = scheduleEndDate
+                    }
+
+                    return data
                 }
 
-                doseDescription = schedule.doseDescription ?? ""
-            }
-
-            if scheduleEntries.isEmpty {
-                scheduleEntries = [ScheduleEntry(time: "08:00")]
+                doseDescription = loadedSchedules.first?.doseDescription ?? ""
             }
         } catch {
-            scheduleEntries = [ScheduleEntry(time: "08:00")]
+            // Leave schedules empty on error
         }
     }
 
@@ -2903,23 +3095,47 @@ struct EditMedicationView: View {
         do {
             let savedMedication = try await appState.medicationRepository.updateMedication(updatedMedication)
 
-            // Update or create schedule
-            if let existingSchedule = existingSchedule {
-                var updatedSchedule = existingSchedule
-                updatedSchedule.scheduleType = scheduleType
-                updatedSchedule.scheduleEntries = scheduleType == .scheduled ? scheduleEntries : nil
-                updatedSchedule.doseDescription = scheduleType == .asNeeded && !doseDescription.isBlank ? doseDescription : nil
-                _ = try await appState.medicationRepository.updateSchedule(updatedSchedule)
-            } else if scheduleType == .scheduled && !scheduleEntries.isEmpty {
-                let scheduleInsert = MedicationScheduleInsert(
-                    accountId: account.id,
-                    medicationId: medication.id,
-                    scheduleType: scheduleType,
-                    scheduleEntries: scheduleEntries,
-                    doseDescription: nil
-                )
-                _ = try await appState.medicationRepository.createSchedule(scheduleInsert)
+            // Update or create schedules
+            if scheduleType == .scheduled {
+                // Delete existing schedules that are no longer present
+                let existingSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+                let keepIds = Set(schedules.compactMap { $0.existingScheduleId })
+                for existing in existingSchedules {
+                    if !keepIds.contains(existing.id) {
+                        try await appState.medicationRepository.deleteSchedule(id: existing.id)
+                    }
+                }
+
+                // Update existing or create new schedules
+                for schedule in schedules {
+                    if let existingId = schedule.existingScheduleId,
+                       let existingSchedule = existingSchedules.first(where: { $0.id == existingId }) {
+                        var updatedSchedule = existingSchedule
+                        updatedSchedule.scheduleType = scheduleType
+                        updatedSchedule.scheduleEntries = schedule.entries
+                        updatedSchedule.startDate = schedule.startDate
+                        updatedSchedule.endDate = schedule.hasEndDate ? schedule.endDate : nil
+                        updatedSchedule.doseDescription = nil
+                        _ = try await appState.medicationRepository.updateSchedule(updatedSchedule)
+                    } else {
+                        let scheduleInsert = MedicationScheduleInsert(
+                            accountId: account.id,
+                            medicationId: medication.id,
+                            scheduleType: scheduleType,
+                            startDate: schedule.startDate,
+                            endDate: schedule.hasEndDate ? schedule.endDate : nil,
+                            scheduleEntries: schedule.entries,
+                            doseDescription: nil
+                        )
+                        _ = try await appState.medicationRepository.createSchedule(scheduleInsert)
+                    }
+                }
             } else if scheduleType == .asNeeded {
+                // Delete all existing scheduled schedules and create as-needed
+                let existingSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+                for existing in existingSchedules {
+                    try await appState.medicationRepository.deleteSchedule(id: existing.id)
+                }
                 let scheduleInsert = MedicationScheduleInsert(
                     accountId: account.id,
                     medicationId: medication.id,

@@ -76,10 +76,9 @@ struct SectionBasedCategoryView: View {
 
     let profile: Profile
     let category: ProfileCategoryType
-    let details: [ProfileDetail]
     let isOwnProfile: Bool
 
-    @State private var currentDetails: [ProfileDetail]
+    @State private var currentDetails: [ProfileDetail] = []
     @State private var showAddSection = false
     @State private var showAddItem = false
     @State private var selectedSection: String?
@@ -88,6 +87,10 @@ struct SectionBasedCategoryView: View {
     @State private var hasActiveSyncConnections = false
     @State private var isCategoryShared = true
     @State private var isSharingLoading = false
+    @State private var sectionToDelete: String?
+    @State private var showDeleteConfirmation = false
+    @State private var sectionListHeight: CGFloat = 0
+    @State private var hasUnsyncedChanges = false
 
     /// Check if iPad environment actions are available
     private var hasiPadSectionAction: Bool {
@@ -106,12 +109,10 @@ struct SectionBasedCategoryView: View {
         }
     }
 
-    init(profile: Profile, category: ProfileCategoryType, details: [ProfileDetail], isOwnProfile: Bool = false) {
+    init(profile: Profile, category: ProfileCategoryType, isOwnProfile: Bool = false) {
         self.profile = profile
         self.category = category
-        self.details = details
         self.isOwnProfile = isOwnProfile
-        self._currentDetails = State(initialValue: details)
     }
 
     /// Group details by their label (section name)
@@ -184,43 +185,62 @@ struct SectionBasedCategoryView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.top, 40)
                         } else {
-                            // Sections
-                            ForEach(groupedDetails, id: \.section) { group in
-                                SectionCard(
-                                    sectionName: group.section,
-                                    items: group.items,
-                                    accentColor: appAccentColor,
-                                    syncedDetailIds: syncedDetailIds,
-                                    sourceName: profile.isSyncedProfile ? profile.displayName : nil,
-                                    onAddItem: {
-                                        // Use iPad full-screen action if available
-                                        if hasiPadItemAction {
-                                            switch category {
-                                            case .hobbies:
-                                                iPadAddHobbyItemAction?(profile, group.section)
-                                            case .activities:
-                                                iPadAddActivityItemAction?(profile, group.section)
-                                            default:
-                                                break
+                            // Sections with swipe-to-delete
+                            List {
+                                ForEach(groupedDetails, id: \.section) { group in
+                                    SectionCard(
+                                        sectionName: group.section,
+                                        items: group.items,
+                                        accentColor: .white,
+                                        syncedDetailIds: syncedDetailIds,
+                                        sourceName: profile.isSyncedProfile ? profile.displayName : nil,
+                                        onAddItem: {
+                                            // Use iPad full-screen action if available
+                                            if hasiPadItemAction {
+                                                switch category {
+                                                case .hobbies:
+                                                    iPadAddHobbyItemAction?(profile, group.section)
+                                                case .activities:
+                                                    iPadAddActivityItemAction?(profile, group.section)
+                                                default:
+                                                    break
+                                                }
+                                            } else {
+                                                selectedSection = group.section
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                    showAddItem = true
+                                                }
                                             }
-                                        } else {
-                                            selectedSection = group.section
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                showAddItem = true
+                                        },
+                                        onDeleteItem: { detail in
+                                            Task {
+                                                await deleteDetail(detail)
                                             }
                                         }
-                                    },
-                                    onDeleteItem: { detail in
-                                        Task {
-                                            await deleteDetail(detail)
+                                    )
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            sectionToDelete = group.section
+                                            showDeleteConfirmation = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
                                         }
-                                    },
-                                    onDeleteSection: {
-                                        Task {
-                                            await deleteSection(group.section)
-                                        }
+                                        .tint(.medicalRed)
                                     }
-                                )
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
+                                }
+                            }
+                            .listStyle(.plain)
+                            .scrollDisabled(true)
+                            .scrollContentBackground(.hidden)
+                            .frame(height: sectionListHeight)
+                            .onAppear {
+                                updateSectionListHeight()
+                            }
+                            .onChange(of: currentDetails.count) { _, _ in
+                                updateSectionListHeight()
                             }
                         }
 
@@ -232,9 +252,10 @@ struct SectionBasedCategoryView: View {
                     .padding(.top, AppDimensions.cardSpacing)
                 }
             }
+
         }
         .ignoresSafeArea(edges: .top)
-        .background(Color.appBackgroundLight)
+        .background(Color.appBackground)
         .navigationBarHidden(true)
         .sidePanel(isPresented: $showSettings) {
             SettingsPanelView(onDismiss: { showSettings = false })
@@ -273,42 +294,95 @@ struct SectionBasedCategoryView: View {
                     profile: profile,
                     category: category,
                     sectionName: section,
+                    existingItems: currentDetails.filter { $0.label == section }.map { $0.value },
                     onDismiss: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             showAddItem = false
                         }
                         selectedSection = nil
+                        // Reload from server after panel closes to pick up all saved items
+                        Task {
+                            await reloadDetails(forceRefresh: true)
+                        }
                     },
-                    onItemAdded: { newDetail in
-                        currentDetails.append(newDetail)
+                    onItemAdded: { _ in
+                        // Items are saved to server by AddSectionItemView
+                        // We reload from server when panel closes
+                        hasUnsyncedChanges = true
                     }
                 )
             }
         }
+        .onChange(of: showAddItem) { _, isShowing in
+            if !isShowing {
+                Task {
+                    await reloadDetails(forceRefresh: true)
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .profileDetailsDidChange)) { notification in
-            // Reload details when they change (e.g., from iPad full-screen overlay or remote sync)
             let isRemoteSync = notification.userInfo?["isRemoteSync"] as? Bool ?? false
+            let action = notification.userInfo?["action"] as? ProfileDetailChangeAction
+
+            // Handle remote deletes immediately — remove from local list and cache
+            if action == .deleted, let detailId = notification.userInfo?["detailId"] as? UUID {
+                // Always remove from local cache
+                appState.profileRepository.removeLocalProfileDetail(id: detailId)
+                // Remove from displayed list if present
+                if currentDetails.contains(where: { $0.id == detailId }) {
+                    currentDetails.removeAll { $0.id == detailId }
+                }
+            }
+
+            // Skip reload if an add/section panel is open
+            if showAddItem || showAddSection {
+                return
+            }
 
             // For remote sync notifications, check if this is for our profile or if profileId is missing (common for deletes)
             if let profileId = notification.userInfo?["profileId"] as? UUID {
                 guard profileId == profile.id else { return }
             } else if !isRemoteSync {
-                // Local notification without profileId - ignore
                 return
             }
-            // Remote sync without profileId (e.g., delete) - refresh to be safe
 
             Task {
+                // Small delay to allow server transaction to commit
+                try? await Task.sleep(nanoseconds: 500_000_000)
                 await reloadDetails(forceRefresh: isRemoteSync)
             }
         }
         .task {
-            // Always refresh from network on appear to ensure data is current
             await reloadDetails(forceRefresh: true)
 
             // Load sharing preferences if viewing own profile
             if isOwnProfile {
                 await loadSharingPreferences()
+            }
+        }
+        .onDisappear {
+            // Notify other views when navigating away so they can refresh
+            // Only post if no panels are open (fullScreenCover triggers onDisappear too)
+            if hasUnsyncedChanges && !showAddItem && !showAddSection {
+                hasUnsyncedChanges = false
+                NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
+            }
+        }
+        .alert("Delete Section", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                sectionToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let section = sectionToDelete {
+                    Task {
+                        await deleteSection(section)
+                        sectionToDelete = nil
+                    }
+                }
+            }
+        } message: {
+            if let section = sectionToDelete {
+                Text("Are you sure you want to delete \"\(section)\" and all its items? This action cannot be undone.")
             }
         }
     }
@@ -395,7 +469,7 @@ struct SectionBasedCategoryView: View {
         do {
             try await appState.profileRepository.deleteProfileDetail(id: detail.id)
             currentDetails.removeAll { $0.id == detail.id }
-            NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
+            hasUnsyncedChanges = true
         } catch {
             #if DEBUG
             print("Failed to delete detail: \(error)")
@@ -415,7 +489,19 @@ struct SectionBasedCategoryView: View {
             }
         }
         currentDetails.removeAll { $0.label == sectionName }
-        NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
+        hasUnsyncedChanges = true
+    }
+
+    private func updateSectionListHeight() {
+        // Each section card has variable height based on number of tags
+        // Estimate: header (~28) + padding (32) + tags rows (~36 per row of ~3 items) + spacing
+        var totalHeight: CGFloat = 0
+        for group in groupedDetails {
+            let tagRowCount = max(1, ceil(Double(group.items.count) / 3.0))
+            let cardHeight: CGFloat = 28 + 32 + CGFloat(tagRowCount) * 36 + 12
+            totalHeight += cardHeight + AppDimensions.cardSpacing
+        }
+        sectionListHeight = totalHeight
     }
 }
 
@@ -428,9 +514,8 @@ struct SectionCard: View {
     let sourceName: String?
     let onAddItem: () -> Void
     let onDeleteItem: (ProfileDetail) -> Void
-    let onDeleteSection: () -> Void
 
-    init(sectionName: String, items: [ProfileDetail], accentColor: Color, syncedDetailIds: Set<UUID> = [], sourceName: String? = nil, onAddItem: @escaping () -> Void, onDeleteItem: @escaping (ProfileDetail) -> Void, onDeleteSection: @escaping () -> Void) {
+    init(sectionName: String, items: [ProfileDetail], accentColor: Color, syncedDetailIds: Set<UUID> = [], sourceName: String? = nil, onAddItem: @escaping () -> Void, onDeleteItem: @escaping (ProfileDetail) -> Void) {
         self.sectionName = sectionName
         self.items = items
         self.accentColor = accentColor
@@ -438,10 +523,7 @@ struct SectionCard: View {
         self.sourceName = sourceName
         self.onAddItem = onAddItem
         self.onDeleteItem = onDeleteItem
-        self.onDeleteSection = onDeleteSection
     }
-
-    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -460,19 +542,10 @@ struct SectionCard: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(accentColor)
                         .frame(width: 28, height: 28)
-                        .background(accentColor.opacity(0.2))
+                        .background(.white.opacity(0.2))
                         .clipShape(Circle())
                 }
-
-                // Delete section button
-                Button(action: { showDeleteConfirmation = true }) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.red.opacity(0.8))
-                        .frame(width: 28, height: 28)
-                        .background(Color.red.opacity(0.1))
-                        .clipShape(Circle())
-                }
+                .buttonStyle(.borderless)
             }
 
             // Items as tags
@@ -491,18 +564,6 @@ struct SectionCard: View {
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
-        .confirmationDialog(
-            "Delete Section",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete \"\(sectionName)\"", role: .destructive) {
-                onDeleteSection()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will delete the section and all items in it.")
-        }
     }
 }
 
@@ -537,6 +598,7 @@ struct ItemTag: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.textSecondary)
             }
+            .buttonStyle(.borderless)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -587,8 +649,21 @@ struct AddSectionView: View {
 
                 Spacer()
 
-                // Placeholder for balance
-                Color.clear.frame(width: 48, height: 48)
+                Button {
+                    if !customSectionName.isBlank {
+                        onSectionAdded(customSectionName.trimmingCharacters(in: .whitespaces))
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(customSectionName.isBlank ? Color.white.opacity(0.5) : appAccentColor)
+                        )
+                }
+                .disabled(customSectionName.isBlank)
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
@@ -601,7 +676,7 @@ struct AddSectionView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("SUGGESTED SECTIONS")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                                .foregroundColor(appAccentColor)
 
                             FlowLayout(spacing: 8) {
                                 ForEach(presetSections, id: \.self) { section in
@@ -613,7 +688,7 @@ struct AddSectionView: View {
                                             .foregroundColor(.textPrimary)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 10)
-                                            .background(Color.cardBackgroundSoft)
+                                            .background(Color.cardBackground)
                                             .cornerRadius(20)
                                     }
                                 }
@@ -625,27 +700,9 @@ struct AddSectionView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("OR CREATE CUSTOM SECTION")
                             .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                            .foregroundColor(appAccentColor)
 
-                        HStack {
-                            AppTextField(placeholder: "Section name", text: $customSectionName)
-
-                            Button {
-                                if !customSectionName.isBlank {
-                                    onSectionAdded(customSectionName.trimmingCharacters(in: .whitespaces))
-                                }
-                            } label: {
-                                Image(systemName: "arrow.right")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(.black)
-                                    .frame(width: 44, height: 44)
-                                    .background(
-                                        Circle()
-                                            .fill(customSectionName.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
-                                    )
-                            }
-                            .disabled(customSectionName.isBlank)
-                        }
+                        AppTextField(placeholder: "Section name", text: $customSectionName)
                     }
 
                     if let error = errorMessage {
@@ -670,6 +727,7 @@ struct AddSectionItemView: View {
     let profile: Profile
     let category: ProfileCategoryType
     let sectionName: String
+    let existingItems: [String]
     let onDismiss: () -> Void
     let onItemAdded: (ProfileDetail) -> Void
 
@@ -678,9 +736,14 @@ struct AddSectionItemView: View {
     @State private var errorMessage: String?
     @State private var addedItems: [String] = []
 
+    /// All items to filter from suggestions: existing items + newly added items
+    private var allItems: [String] {
+        existingItems + addedItems
+    }
+
     private var presetItems: [String] {
         SectionPresets.presets(for: sectionName)
-            .filter { !addedItems.contains($0) }
+            .filter { !allItems.contains($0) }
     }
 
     var body: some View {
@@ -713,10 +776,14 @@ struct AddSectionItemView: View {
                 Button {
                     onDismiss()
                 } label: {
-                    Text("Done")
-                        .font(.appBodyMedium)
-                        .foregroundColor(appAccentColor)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
                         .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(appAccentColor)
+                        )
                 }
             }
             .padding(.horizontal, AppDimensions.screenPadding)
@@ -725,21 +792,21 @@ struct AddSectionItemView: View {
 
             ScrollView {
                 VStack(spacing: 20) {
-                    // Added items preview
-                    if !addedItems.isEmpty {
+                    // Existing + newly added items preview
+                    if !allItems.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("ADDED")
+                            Text("CURRENT ITEMS")
                                 .font(.appCaption)
                                 .foregroundColor(.textSecondary)
 
                             FlowLayout(spacing: 8) {
-                                ForEach(addedItems, id: \.self) { item in
+                                ForEach(allItems, id: \.self) { item in
                                     Text(item)
                                         .font(.appCaption)
                                         .foregroundColor(.textPrimary)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .background(appAccentColor.opacity(0.3))
+                                        .background(.white.opacity(0.3))
                                         .cornerRadius(16)
                                 }
                             }
@@ -770,7 +837,7 @@ struct AddSectionItemView: View {
                                         }
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .background(Color.cardBackgroundSoft)
+                                        .background(Color.cardBackground)
                                         .cornerRadius(16)
                                     }
                                     .disabled(isLoading)
@@ -841,9 +908,8 @@ struct AddSectionItemView: View {
             let newDetail = try await appState.profileRepository.createProfileDetail(insert)
             addedItems.append(itemName)
             onItemAdded(newDetail)
-            NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
         } catch {
-            errorMessage = "Failed to add item. Please try again."
+            errorMessage = "Failed to add item: \(error.localizedDescription)"
         }
 
         isLoading = false
@@ -876,8 +942,7 @@ struct AddSectionItemView: View {
             createdAt: Date(),
             updatedAt: Date()
         ),
-        category: .hobbies,
-        details: []
+        category: .hobbies
     )
     .environmentObject(AppState.forPreview())
 }
