@@ -35,6 +35,8 @@ struct SettingsView: View {
     @State private var showJoinAccount = false
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
+    @State private var showHelpTutorials = false
+    @State private var showRecentlyDeleted = false
     @State private var userEmail: String = ""
     @State private var isCheckmarkPressed = false
     @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
@@ -150,6 +152,17 @@ struct SettingsView: View {
                         }
                     }
 
+
+                    // Support section
+                    SettingsSection(title: "SUPPORT") {
+                        SettingsButtonRow(
+                            icon: "questionmark.circle.fill",
+                            title: "Help & Tutorials",
+                            action: { showHelpTutorials = true }
+                        )
+                    }
+
+
                     // Notifications section
                     SettingsSection(title: "NOTIFICATIONS") {
                         SettingsToggleRow(
@@ -163,7 +176,6 @@ struct SettingsView: View {
                                 // Re-enable: request permission and reschedule
                                 Task {
                                     _ = await NotificationService.shared.requestPermission()
-                                    await NotificationService.shared.scheduleMorningBriefingTrigger()
                                 }
                             }
                         }
@@ -290,10 +302,25 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Sync section
-                    SettingsSection(title: "DATA & SYNC") {
+                    // Mood section
+                    SettingsSection(title: "MOOD") {
+                        SettingsButtonRow(
+                            icon: "chart.line.uptrend.xyaxis",
+                            title: "View Mood History",
+                            action: { showMoodHistory = true }
+                        )
+                    }
+
+                    // Data section
+                    SettingsSection(title: "DATA") {
+                        SettingsButtonRow(
+                            icon: "trash",
+                            title: "Recently Deleted",
+                            action: { showRecentlyDeleted = true }
+                        )
                         SyncStatusSettingsRow(syncEngine: appState.syncEngine)
                     }
+
 
                     // About section
                     SettingsSection(title: "ABOUT") {
@@ -369,11 +396,17 @@ struct SettingsView: View {
         .sidePanel(isPresented: $showJoinAccount) {
             JoinAccountView()
         }
+        .sidePanel(isPresented: $showRecentlyDeleted) {
+            RecentlyDeletedView()
+        }
         .sidePanel(isPresented: $showPrivacyPolicy) {
             PrivacyPolicyView()
         }
         .sidePanel(isPresented: $showTermsOfService) {
             TermsOfServiceView()
+        }
+        .sidePanel(isPresented: $showHelpTutorials) {
+            HelpTutorialsView()
         }
         .alert("Sign Out", isPresented: $showSignOutConfirm) {
             Button("Cancel", role: .cancel) { }
@@ -1516,7 +1549,7 @@ struct UpgradeSettingsSection: View {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
                                 .font(.system(size: 8))
-                            Text("Premium $4.99")
+                            Text("Premium $5.99")
                         }
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(appAccentColor)
@@ -1529,7 +1562,7 @@ struct UpgradeSettingsSection: View {
                         HStack(spacing: 4) {
                             Image(systemName: "person.2.fill")
                                 .font(.system(size: 8))
-                            Text("Family Plus $7.99")
+                            Text("Family Plus $9.99")
                         }
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.medicalRed)
@@ -1564,11 +1597,13 @@ struct UpgradeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.sidePanelDismiss) private var sidePanelDismiss
     @Environment(\.appAccentColor) private var appAccentColor
-    @State private var products: [Product] = []
     @State private var selectedProduct: Product? = nil
     @State private var purchaseState: PurchaseState = .idle
     @State private var errorMessage: String? = nil
     @State private var selectedTier: SelectedTier = .premium
+    @State private var fallbackSelection: FallbackPricing = .premiumMonthly
+
+    private let subscriptionManager = SubscriptionManager.shared
 
     /// When true, the view is embedded in a panel and should not show NavigationStack or cancel button
     var isEmbedded: Bool = false
@@ -1585,26 +1620,22 @@ struct UpgradeView: View {
         case familyPlus
     }
 
-    private let productIds = [
-        "com.unforgotten.premium.monthly",
-        "com.unforgotten.premium.annual",
-        "com.unforgotten.family.monthly",
-        "com.unforgotten.family.annual"
-    ]
+    private enum FallbackPricing {
+        case premiumMonthly, premiumAnnual
+        case familyMonthly, familyAnnual
+    }
 
     // Premium features list
     private let premiumFeatures: [(icon: String, text: String)] = [
-        ("infinity", "Unlimited profiles, medications, notes & more"),
-        ("calendar", "Unlimited appointments (no 30-day limit)"),
-        ("photo.on.rectangle", "Custom header images"),
-        ("bell.badge", "Unlimited reminders & countdowns")
+        ("infinity", "Unlimited profiles, contacts, reminders and more"),
+        ("calendar", "Unlimited appointments & Events"),
+        ("bell.badge", "Unlimited Medications")
     ]
 
     // Family Plus features list
     private let familyPlusFeatures: [(icon: String, text: String)] = [
         ("checkmark.circle.fill", "Everything in Premium"),
-        ("person.badge.plus", "Invite family members"),
-        ("arrow.left.arrow.right", "Switch between family accounts"),
+        ("person.badge.plus", "Collaborate with family"),
         ("person.2", "Manage account members")
     ]
 
@@ -1842,35 +1873,57 @@ struct UpgradeView: View {
         VStack(spacing: 12) {
             let tierProducts = productsForSelectedTier
             if tierProducts.isEmpty {
-                // Fallback pricing
+                // Fallback pricing (no StoreKit products loaded)
                 if selectedTier == .premium {
-                    upgradePricingCard(
-                        title: "Monthly",
-                        price: "$5.99/month",
-                        isSelected: true,
-                        isBestValue: false
-                    )
-                    upgradePricingCard(
-                        title: "Annual",
-                        price: "$39.99/year",
-                        subtitle: "Save 44%",
-                        isSelected: false,
-                        isBestValue: true
-                    )
+                    Button {
+                        fallbackSelection = .premiumMonthly
+                    } label: {
+                        upgradePricingCard(
+                            title: "Monthly",
+                            price: "$5.99/month",
+                            isSelected: fallbackSelection == .premiumMonthly,
+                            isBestValue: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        fallbackSelection = .premiumAnnual
+                    } label: {
+                        upgradePricingCard(
+                            title: "Annual",
+                            price: "$39.99/year",
+                            subtitle: "Save 44%",
+                            isSelected: fallbackSelection == .premiumAnnual,
+                            isBestValue: true
+                        )
+                    }
+                    .buttonStyle(.plain)
                 } else {
-                    upgradePricingCard(
-                        title: "Monthly",
-                        price: "$9.99/month",
-                        isSelected: true,
-                        isBestValue: false
-                    )
-                    upgradePricingCard(
-                        title: "Annual",
-                        price: "$69.99/year",
-                        subtitle: "Save 42%",
-                        isSelected: false,
-                        isBestValue: true
-                    )
+                    Button {
+                        fallbackSelection = .familyMonthly
+                    } label: {
+                        upgradePricingCard(
+                            title: "Monthly",
+                            price: "$9.99/month",
+                            isSelected: fallbackSelection == .familyMonthly,
+                            isBestValue: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        fallbackSelection = .familyAnnual
+                    } label: {
+                        upgradePricingCard(
+                            title: "Annual",
+                            price: "$69.99/year",
+                            subtitle: "Save 42%",
+                            isSelected: fallbackSelection == .familyAnnual,
+                            isBestValue: true
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             } else {
                 ForEach(tierProducts.sorted { $0.price < $1.price }) { product in
@@ -1895,13 +1948,16 @@ struct UpgradeView: View {
     }
 
     private var productsForSelectedTier: [Product] {
-        let prefix = selectedTier == .premium ? "com.unforgotten.premium" : "com.unforgotten.family"
-        return products.filter { $0.id.hasPrefix(prefix) }
+        let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
+        return subscriptionManager.products(for: tier)
     }
 
     private func updateSelectedProduct() {
-        let tierProducts = productsForSelectedTier
-        selectedProduct = tierProducts.first { $0.id.contains("annual") } ?? tierProducts.first
+        let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
+        selectedProduct = subscriptionManager.product(for: tier, period: .annual)
+            ?? subscriptionManager.products(for: tier).first
+        // Update fallback selection to match tier
+        fallbackSelection = selectedTier == .premium ? .premiumMonthly : .familyMonthly
     }
 
     private func upgradePricingCard(
@@ -1961,23 +2017,11 @@ struct UpgradeView: View {
 
     private func loadProducts() async {
         purchaseState = .loading
-        do {
-            let storeProducts = try await Product.products(for: productIds)
-            await MainActor.run {
-                products = storeProducts
-                // Select annual premium by default
-                selectedProduct = storeProducts.first { $0.id == "com.unforgotten.premium.annual" }
-                    ?? storeProducts.first { $0.id.contains("premium") }
-                purchaseState = .idle
-            }
-        } catch {
-            #if DEBUG
-            print("Failed to load products: \(error)")
-            #endif
-            await MainActor.run {
-                purchaseState = .idle
-            }
-        }
+        await subscriptionManager.loadProducts()
+        // Select annual premium by default
+        selectedProduct = subscriptionManager.product(for: .premium, period: .annual)
+            ?? subscriptionManager.products(for: .premium).first
+        purchaseState = .idle
     }
 
     private func purchase() {
@@ -1991,52 +2035,22 @@ struct UpgradeView: View {
 
         Task {
             do {
-                let result = try await product.purchase()
+                let transaction = try await subscriptionManager.purchase(product)
 
-                switch result {
-                case .success(let verification):
-                    switch verification {
-                    case .verified(let transaction):
-                        await transaction.finish()
-                        await MainActor.run {
-                            // Determine tier from product ID and save it
-                            let tier: SubscriptionTier = product.id.contains("family") ? .familyPlus : .premium
-                            appState.setSubscriptionTier(tier)
-                            UserDefaults.standard.set(product.id, forKey: "user_subscription_product_id")
-                            purchaseState = .success
-                        }
-
-                    case .unverified(_, let error):
-                        await MainActor.run {
-                            errorMessage = "Purchase verification failed. Please try again."
-                            purchaseState = .idle
-                        }
-                        #if DEBUG
-                        print("Unverified transaction: \(error)")
-                        #endif
-                    }
-
-                case .userCancelled:
-                    await MainActor.run {
-                        purchaseState = .idle
-                    }
-
-                case .pending:
-                    await MainActor.run {
-                        errorMessage = "Purchase is pending approval."
-                        purchaseState = .idle
-                    }
-
-                @unknown default:
-                    await MainActor.run {
-                        purchaseState = .idle
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Purchase failed. Please try again."
+                if transaction != nil {
+                    // SubscriptionManager already updated tier and UserDefaults
+                    appState.objectWillChange.send()
+                    purchaseState = .success
+                } else {
+                    // User cancelled
                     purchaseState = .idle
                 }
+            } catch let error as SubscriptionError {
+                errorMessage = error.localizedDescription
+                purchaseState = .idle
+            } catch {
+                errorMessage = "Purchase failed. Please try again."
+                purchaseState = .idle
                 #if DEBUG
                 print("Purchase error: \(error)")
                 #endif
@@ -2046,30 +2060,17 @@ struct UpgradeView: View {
 
     private func restorePurchases() async {
         do {
-            try await AppStore.sync()
+            try await subscriptionManager.restorePurchases()
 
-            for await result in Transaction.currentEntitlements {
-                if case .verified(let transaction) = result {
-                    if productIds.contains(transaction.productID) {
-                        await MainActor.run {
-                            let tier: SubscriptionTier = transaction.productID.contains("family") ? .familyPlus : .premium
-                            appState.setSubscriptionTier(tier)
-                            UserDefaults.standard.set(transaction.productID, forKey: "user_subscription_product_id")
-                            selectedTier = tier == .familyPlus ? .familyPlus : .premium
-                            purchaseState = .success
-                        }
-                        return
-                    }
-                }
-            }
-
-            await MainActor.run {
+            if subscriptionManager.subscriptionTier != .free {
+                appState.objectWillChange.send()
+                selectedTier = subscriptionManager.subscriptionTier == .familyPlus ? .familyPlus : .premium
+                purchaseState = .success
+            } else {
                 errorMessage = "No active subscription found."
             }
         } catch {
-            await MainActor.run {
-                errorMessage = "Failed to restore purchases."
-            }
+            errorMessage = "Failed to restore purchases."
             #if DEBUG
             print("Restore error: \(error)")
             #endif

@@ -104,6 +104,7 @@ struct iPadHomeSidebar: View {
                                 isReordering.toggle()
                             }
                         },
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Home.mp4",
                         roundedTopRightCorner: true,
                         useLogo: true,
                         logoImageName: "unforgotten-logo"

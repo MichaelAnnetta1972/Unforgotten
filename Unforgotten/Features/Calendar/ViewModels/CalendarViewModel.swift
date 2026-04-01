@@ -51,6 +51,8 @@ class CalendarViewModel: ObservableObject {
     /// Cached shared events (fetched once via RPC, reused across month loads)
     private var cachedSharedAppointments: [Appointment]?
     private var cachedSharedCountdowns: [Countdown]?
+    /// Cached to-do lists with due dates (fetched once, filtered per month)
+    private var cachedToDoLists: [ToDoList]?
 
     /// Returns a "yyyy-MM" key for a given date
     private func monthKey(for date: Date) -> String {
@@ -115,13 +117,21 @@ class CalendarViewModel: ObservableObject {
         return counts
     }
 
-    /// Collapse multi-day grouped events, keeping only the first (earliest) per group
+    /// Collapse multi-day grouped events, keeping only the first (earliest) per group.
+    /// For recurring groups, each recurrence block is treated independently so that
+    /// collapsing still shows one entry per repeating week rather than one entry total.
     private func collapseMultiDayGroups(_ events: [CalendarEvent]) -> [CalendarEvent] {
         guard collapseMultiDay else { return events }
-        var seenGroups: Set<UUID> = []
+        let calendar = Calendar.current
+        // Track seen (groupId, weekStart) pairs so each recurrence block collapses independently
+        var seenGroupWeeks: Set<String> = []
         return events.filter { event in
-            if case .countdown(let cd, _, _) = event, let gid = cd.groupId {
-                return seenGroups.insert(gid).inserted
+            if case .countdown(let cd, _, let displayDate) = event, let gid = cd.groupId {
+                let eventDate = displayDate ?? cd.date
+                // Use the start-of-week as a recurrence block key
+                let weekStart = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: eventDate)
+                let key = "\(gid)-\(weekStart.yearForWeekOfYear ?? 0)-\(weekStart.weekOfYear ?? 0)"
+                return seenGroupWeeks.insert(key).inserted
             }
             return true
         }
@@ -356,27 +366,13 @@ class CalendarViewModel: ObservableObject {
         error = nil
 
         do {
-            // Load profiles for member filtering (profiles link to events via profileId)
-            profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+            // Phase 1: Load profiles and account members in parallel (needed for event loading)
+            async let profilesTask = appState.profileRepository.getProfiles(accountId: account.id)
+            async let membersTask = appState.accountRepository.getAccountMembersWithUsers(accountId: account.id)
 
-            // Load account members (invited family members) for filtering
-            accountMembers = try await appState.accountRepository.getAccountMembersWithUsers(accountId: account.id)
-
-            // Load shared event IDs and full share objects (for member filtering)
-            let sharedIds = try await appState.familyCalendarRepository.getSharedEventIdsForUser(accountId: account.id)
-            sharedAppointmentIds = sharedIds.appointmentIds
-            sharedCountdownIds = sharedIds.countdownIds
-
-            // Load full share objects for filtering by sharedByUserId (across all accounts)
-            familyShares = try await appState.familyCalendarRepository.getSharesVisibleToUser()
-
-            // Load share members for each share (for filtering by "shared with")
-            var memberMap: [UUID: Set<UUID>] = [:]
-            for share in familyShares {
-                let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: share.id)
-                memberMap[share.id] = Set(members.map { $0.memberUserId })
-            }
-            familyShareMembers = memberMap
+            let (loadedProfiles, loadedMembers) = try await (profilesTask, membersTask)
+            profiles = loadedProfiles
+            accountMembers = loadedMembers
 
             // Add connected users from profiles to accountMembers so they appear in the member filter.
             let existingMemberUserIds = Set(accountMembers.map { $0.userId })
@@ -409,7 +405,11 @@ class CalendarViewModel: ObservableObject {
                 accountMembers.append(AccountMemberWithUser(member: syntheticMember, user: appUser))
             }
 
-            // Load events for the current month (this is fast — only fetches one month window)
+            // Phase 2: Load family sharing data FIRST so shared IDs are available
+            // when events are created (isShared flag is set at event creation time)
+            await loadFamilySharingData(appState: appState, accountId: account.id)
+
+            // Phase 3: Load events for current month (uses sharedAppointmentIds/sharedCountdownIds)
             await loadEventsForMonth(currentMonth, appState: appState)
 
         } catch {
@@ -420,6 +420,50 @@ class CalendarViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Loads family sharing metadata (shared IDs, shares, share members) in parallel
+    private func loadFamilySharingData(appState: AppState, accountId: UUID) async {
+        do {
+            // Load shared IDs and full share objects in parallel
+            async let sharedIdsTask = appState.familyCalendarRepository.getSharedEventIdsForUser(accountId: accountId)
+            async let sharesTask = appState.familyCalendarRepository.getSharesVisibleToUser()
+
+            let (sharedIds, loadedShares) = try await (sharedIdsTask, sharesTask)
+            sharedAppointmentIds = sharedIds.appointmentIds
+            sharedCountdownIds = sharedIds.countdownIds
+            familyShares = loadedShares
+
+            // Load share members in parallel (instead of sequential loop)
+            let memberResults = await withTaskGroup(of: (UUID, Set<UUID>)?.self) { group in
+                for share in loadedShares {
+                    group.addTask {
+                        do {
+                            let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: share.id)
+                            return (share.id, Set(members.map { $0.memberUserId }))
+                        } catch {
+                            #if DEBUG
+                            print("Failed to load members for share \(share.id): \(error)")
+                            #endif
+                            return nil
+                        }
+                    }
+                }
+
+                var map: [UUID: Set<UUID>] = [:]
+                for await result in group {
+                    if let (shareId, memberIds) = result {
+                        map[shareId] = memberIds
+                    }
+                }
+                return map
+            }
+            familyShareMembers = memberResults
+        } catch {
+            #if DEBUG
+            print("Failed to load family sharing data: \(error)")
+            #endif
+        }
     }
 
     // MARK: - Month-Based Event Loading
@@ -493,6 +537,7 @@ class CalendarViewModel: ObservableObject {
         cachedMedications = nil
         cachedSharedAppointments = nil
         cachedSharedCountdowns = nil
+        cachedToDoLists = nil
         events.removeAll()
         await loadEventsForMonth(currentMonth)
     }
@@ -674,14 +719,34 @@ class CalendarViewModel: ObservableObject {
 
     private func loadMedications(appState: AppState, accountId: UUID, startDate: Date, endDate: Date) async -> [CalendarEvent] {
         do {
-            // Cache medication data on first load to avoid N+1 queries on subsequent months
+            // Cache medication data on first load to avoid re-fetching on subsequent months
             if cachedMedications == nil {
                 let medications = try await appState.medicationRepository.getMedications(accountId: accountId)
-                var medData: [(medication: Medication, schedules: [MedicationSchedule])] = []
-                for medication in medications {
-                    guard !medication.isPaused else { continue }
-                    let schedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
-                    medData.append((medication: medication, schedules: schedules))
+                let activeMedications = medications.filter { !$0.isPaused }
+
+                // Fetch all schedules in parallel instead of sequentially
+                let medData = await withTaskGroup(of: (Medication, [MedicationSchedule])?.self) { group in
+                    for medication in activeMedications {
+                        group.addTask {
+                            do {
+                                let schedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+                                return (medication, schedules)
+                            } catch {
+                                #if DEBUG
+                                print("Failed to load schedules for medication \(medication.id): \(error)")
+                                #endif
+                                return nil
+                            }
+                        }
+                    }
+
+                    var results: [(medication: Medication, schedules: [MedicationSchedule])] = []
+                    for await result in group {
+                        if let (medication, schedules) = result {
+                            results.append((medication: medication, schedules: schedules))
+                        }
+                    }
+                    return results
                 }
                 cachedMedications = medData
             }
@@ -730,7 +795,13 @@ class CalendarViewModel: ObservableObject {
 
     private func loadToDoLists(appState: AppState, accountId: UUID, startDate: Date, endDate: Date) async -> [CalendarEvent] {
         do {
-            let lists = try await appState.toDoRepository.getListsWithDueDates(accountId: accountId)
+            // Cache to-do lists on first load to avoid re-fetching on every month scroll
+            if cachedToDoLists == nil {
+                cachedToDoLists = try await appState.toDoRepository.getListsWithDueDates(accountId: accountId)
+            }
+
+            guard let lists = cachedToDoLists else { return [] }
+
             // Filter to only include lists with due dates in the range
             return lists.compactMap { list -> CalendarEvent? in
                 guard let dueDate = list.dueDate else { return nil }

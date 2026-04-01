@@ -18,6 +18,26 @@ struct ToDoList: Identifiable, Equatable, Hashable {
 
     var items: [ToDoItem]
 
+    // MARK: - Sharing (client-side only, not stored in DB)
+    /// The user ID of the person who shared this list (nil if not shared with me)
+    var sharedByUserId: UUID?
+    /// Display name of the person who shared this list
+    var sharedByDisplayName: String?
+    /// Whether this list is shared with anyone (set on the owner's side)
+    var isSharedWithOthers: Bool = false
+    /// Names of members this list is shared with
+    var sharedWithDisplayNames: [String] = []
+
+    /// True if this list was shared to the current user from another account
+    var isSharedWithMe: Bool {
+        sharedByUserId != nil
+    }
+
+    /// True if this list has any sharing involvement (shared by or with)
+    var hasSharing: Bool {
+        isSharedWithMe || isSharedWithOthers
+    }
+
     // Hashable: hash by id only (items are loaded separately)
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
@@ -31,7 +51,11 @@ struct ToDoList: Identifiable, Equatable, Hashable {
         dueDate: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        items: [ToDoItem] = []
+        items: [ToDoItem] = [],
+        sharedByUserId: UUID? = nil,
+        sharedByDisplayName: String? = nil,
+        isSharedWithOthers: Bool = false,
+        sharedWithDisplayNames: [String] = []
     ) {
         self.id = id
         self.accountId = accountId
@@ -41,6 +65,10 @@ struct ToDoList: Identifiable, Equatable, Hashable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.items = items
+        self.sharedByUserId = sharedByUserId
+        self.sharedByDisplayName = sharedByDisplayName
+        self.isSharedWithOthers = isSharedWithOthers
+        self.sharedWithDisplayNames = sharedWithDisplayNames
     }
 
     var completedCount: Int {

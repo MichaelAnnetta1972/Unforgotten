@@ -172,6 +172,7 @@ struct iPadNotesView: View {
             accountId: appState.currentAccount?.id
         )
         modelContext.insert(note)
+        try? modelContext.save()
         selectedNote = note
     }
 
@@ -361,6 +362,7 @@ struct AddNoteSheet: View {
                         // Insert into context when saved
                         if let noteToSave = self.note {
                             modelContext.insert(noteToSave)
+                            try? modelContext.save()
                         }
                         dismissView()
                     }

@@ -21,6 +21,11 @@ struct AppUser: Codable, Identifiable, Equatable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+
+    /// Whether this user signed in with Apple and has a private relay email
+    var isApplePrivateRelayEmail: Bool {
+        email.hasSuffix("@privaterelay.appleid.com")
+    }
 }
 
 // MARK: - App User Repository Protocol

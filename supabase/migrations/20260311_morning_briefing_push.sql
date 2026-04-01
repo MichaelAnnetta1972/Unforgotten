@@ -46,10 +46,11 @@ CREATE POLICY "Users can manage own briefing cache"
     WITH CHECK (auth.uid() = user_id);
 
 -- 3. SECURITY DEFINER function for the edge function to read tokens and briefing data
+-- Uses device_tokens (regular APNs) so the push works as a standard notification.
 CREATE OR REPLACE FUNCTION get_morning_briefing_recipients()
 RETURNS TABLE (
     user_id UUID,
-    la_token TEXT,
+    device_token TEXT,
     content_state JSONB
 )
 LANGUAGE sql
@@ -57,11 +58,11 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
     SELECT
-        lat.user_id,
-        lat.token AS la_token,
+        dt.user_id,
+        dt.token AS device_token,
         mbc.content_state
-    FROM live_activity_tokens lat
-    INNER JOIN morning_briefing_cache mbc ON mbc.user_id = lat.user_id
+    FROM device_tokens dt
+    INNER JOIN morning_briefing_cache mbc ON mbc.user_id = dt.user_id
     WHERE mbc.target_date = CURRENT_DATE;
 $$;
 

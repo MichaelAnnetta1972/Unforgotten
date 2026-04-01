@@ -168,7 +168,7 @@ struct iPadMainView: View {
     @State private var showAddAppointment = false
     @State private var showAddContact = false
     @State private var showAddNote = false
-    @State private var showAddToDoList = false
+    @State private var quickAddToDoList: ToDoList?
     @State private var showAddStickyReminder = false
 
     var body: some View {
@@ -229,7 +229,13 @@ struct iPadMainView: View {
                         }
 
                         Button {
-                            showAddToDoList = true
+                            Task {
+                                guard let accountId = appState.currentAccount?.id else { return }
+                                let repo = ToDoRepository()
+                                if let newList = try? await repo.createList(accountId: accountId, title: "", listType: nil, dueDate: nil) {
+                                    quickAddToDoList = newList
+                                }
+                            }
                         } label: {
                             Label("To Do List", systemImage: "checklist")
                         }
@@ -320,9 +326,9 @@ struct iPadMainView: View {
         .sheet(isPresented: $showAddNote) {
             AddNoteSheet(accountId: appState.currentAccount?.id)
         }
-        .sheet(isPresented: $showAddToDoList) {
+        .sheet(item: $quickAddToDoList) { list in
             NavigationStack {
-                AddToDoListSheet(viewModel: ToDoListsViewModel()) { _ in }
+                ToDoListDetailView(list: list, isNewList: true)
             }
         }
         .sheet(isPresented: $showAddStickyReminder, onDismiss: {

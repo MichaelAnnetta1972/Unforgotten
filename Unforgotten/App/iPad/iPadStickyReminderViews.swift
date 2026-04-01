@@ -81,7 +81,8 @@ struct iPadStickyRemindersListView: View {
                             } else {
                                 showAddReminder = true
                             }
-                        } : nil
+                        } : nil,
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Reminders.mp4"
                     )
 
                     // Content

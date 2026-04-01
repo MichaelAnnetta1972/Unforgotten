@@ -81,6 +81,7 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
     let expiresAt: Date
     var acceptedAt: Date?
     var acceptedBy: UUID?
+    var linkedProfileId: UUID?
 
     // Sharing preferences set at invite time
     var sharingProfileFields: Bool
@@ -103,6 +104,7 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
         case expiresAt = "expires_at"
         case acceptedAt = "accepted_at"
         case acceptedBy = "accepted_by"
+        case linkedProfileId = "linked_profile_id"
         case sharingProfileFields = "sharing_profile_fields"
         case sharingMedical = "sharing_medical"
         case sharingGiftIdea = "sharing_gift_idea"
@@ -125,6 +127,7 @@ struct AccountInvitation: Codable, Identifiable, Equatable {
         expiresAt = try container.decode(Date.self, forKey: .expiresAt)
         acceptedAt = try container.decodeIfPresent(Date.self, forKey: .acceptedAt)
         acceptedBy = try container.decodeIfPresent(UUID.self, forKey: .acceptedBy)
+        linkedProfileId = try container.decodeIfPresent(UUID.self, forKey: .linkedProfileId)
         sharingProfileFields = try container.decodeIfPresent(Bool.self, forKey: .sharingProfileFields) ?? true
         sharingMedical = try container.decodeIfPresent(Bool.self, forKey: .sharingMedical) ?? true
         sharingGiftIdea = try container.decodeIfPresent(Bool.self, forKey: .sharingGiftIdea) ?? true
@@ -185,6 +188,7 @@ struct ProfileSync: Codable, Identifiable, Equatable {
     var status: ProfileSyncStatus
     var severedAt: Date?
     var severedBy: UUID?
+    var newProfileCreated: Bool?
 
     let createdAt: Date
     var updatedAt: Date
@@ -203,6 +207,7 @@ struct ProfileSync: Codable, Identifiable, Equatable {
         case status
         case severedAt = "severed_at"
         case severedBy = "severed_by"
+        case newProfileCreated = "new_profile_created"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -337,6 +342,7 @@ struct ProfileSyncResult: Codable {
     let syncId: UUID?
     let inviterSyncedProfileId: UUID?
     let acceptorSyncedProfileId: UUID?
+    let newProfileCreated: Bool?
     let debug: String?
 
     enum CodingKeys: String, CodingKey {
@@ -344,6 +350,7 @@ struct ProfileSyncResult: Codable {
         case syncId = "sync_id"
         case inviterSyncedProfileId = "inviter_synced_profile_id"
         case acceptorSyncedProfileId = "acceptor_synced_profile_id"
+        case newProfileCreated = "new_profile_created"
         case debug
     }
 }
@@ -382,6 +389,10 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
     /// Links to the profile_syncs record that created this synced profile
     var syncConnectionId: UUID?
 
+    // MARK: - Soft Delete
+    /// When set, this profile is soft-deleted and will be permanently removed after 30 days
+    var deletedAt: Date?
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
@@ -408,6 +419,7 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         case syncedFields = "synced_fields"
         case isLocalOnly = "is_local_only"
         case syncConnectionId = "sync_connection_id"
+        case deletedAt = "deleted_at"
     }
 
     // Memberwise initializer
@@ -436,7 +448,8 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         sourceUserId: UUID? = nil,
         syncedFields: [String]? = nil,
         isLocalOnly: Bool = false,
-        syncConnectionId: UUID? = nil
+        syncConnectionId: UUID? = nil,
+        deletedAt: Date? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -463,6 +476,7 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         self.syncedFields = syncedFields
         self.isLocalOnly = isLocalOnly
         self.syncConnectionId = syncConnectionId
+        self.deletedAt = deletedAt
     }
 
     // Custom decoder to provide default for sort_order, includeInFamilyTree, and isDeceased
@@ -493,6 +507,7 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         syncedFields = try container.decodeIfPresent([String].self, forKey: .syncedFields)
         isLocalOnly = try container.decodeIfPresent(Bool.self, forKey: .isLocalOnly) ?? false
         syncConnectionId = try container.decodeIfPresent(UUID.self, forKey: .syncConnectionId)
+        deletedAt = try container.decodeIfPresent(Date.self, forKey: .deletedAt)
     }
 
     var displayName: String {
@@ -509,6 +524,15 @@ struct Profile: Codable, Identifiable, Equatable, Hashable {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.year], from: birthday, to: deathDate)
         return components.year
+    }
+
+    var isDeleted: Bool { deletedAt != nil }
+
+    var daysUntilPermanentDeletion: Int? {
+        guard let deletedAt else { return nil }
+        let purgeDate = Calendar.current.date(byAdding: .day, value: 30, to: deletedAt) ?? deletedAt
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: purgeDate).day ?? 0
+        return max(0, days)
     }
 
     // MARK: - Profile Sync Helpers
@@ -583,6 +607,37 @@ struct ProfileDetail: Codable, Identifiable, Equatable {
         case metadata
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    // Custom decoder for robustness during sync
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        profileId = try container.decode(UUID.self, forKey: .profileId)
+        category = try container.decodeIfPresent(DetailCategory.self, forKey: .category) ?? .note
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        occasion = try container.decodeIfPresent(String.self, forKey: .occasion)
+        metadata = try container.decodeIfPresent([String: String].self, forKey: .metadata)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
+
+    // Memberwise initializer
+    init(id: UUID, accountId: UUID, profileId: UUID, category: DetailCategory, label: String, value: String, status: String? = nil, occasion: String? = nil, metadata: [String: String]? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
+        self.id = id
+        self.accountId = accountId
+        self.profileId = profileId
+        self.category = category
+        self.label = label
+        self.value = value
+        self.status = status
+        self.occasion = occasion
+        self.metadata = metadata
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 
     /// Placeholder detail for use when a non-optional value is needed but the actual value is not yet available
@@ -817,6 +872,39 @@ struct MedicationSchedule: Codable, Identifiable, Equatable {
         case updatedAt = "updated_at"
     }
 
+    // Memberwise initializer
+    init(id: UUID, accountId: UUID, medicationId: UUID, scheduleType: ScheduleType, startDate: Date, endDate: Date? = nil, daysOfWeek: [Int]? = nil, scheduleEntries: [ScheduleEntry]? = nil, legacyTimes: [String]? = nil, doseDescription: String? = nil, createdAt: Date, updatedAt: Date) {
+        self.id = id
+        self.accountId = accountId
+        self.medicationId = medicationId
+        self.scheduleType = scheduleType
+        self.startDate = startDate
+        self.endDate = endDate
+        self.daysOfWeek = daysOfWeek
+        self.scheduleEntries = scheduleEntries
+        self.legacyTimes = legacyTimes
+        self.doseDescription = doseDescription
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    // Custom decoder for robustness during sync
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        medicationId = try container.decode(UUID.self, forKey: .medicationId)
+        scheduleType = try container.decodeIfPresent(ScheduleType.self, forKey: .scheduleType) ?? .scheduled
+        startDate = try container.decode(Date.self, forKey: .startDate)
+        endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
+        daysOfWeek = try container.decodeIfPresent([Int].self, forKey: .daysOfWeek)
+        scheduleEntries = try container.decodeIfPresent([ScheduleEntry].self, forKey: .scheduleEntries)
+        legacyTimes = try container.decodeIfPresent([String].self, forKey: .legacyTimes)
+        doseDescription = try container.decodeIfPresent(String.self, forKey: .doseDescription)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
     // Returns times from schedule entries, or falls back to legacy times field
     var times: [String]? {
         if let entries = scheduleEntries, !entries.isEmpty {
@@ -954,7 +1042,7 @@ struct MedicationLog: Codable, Identifiable, Equatable {
     var takenAt: Date?
     var note: String?
     let createdAt: Date
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
@@ -964,6 +1052,31 @@ struct MedicationLog: Codable, Identifiable, Equatable {
         case takenAt = "taken_at"
         case note
         case createdAt = "created_at"
+    }
+
+    // Custom decoder for robustness during sync
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        medicationId = try container.decode(UUID.self, forKey: .medicationId)
+        scheduledAt = try container.decode(Date.self, forKey: .scheduledAt)
+        status = try container.decodeIfPresent(MedicationLogStatus.self, forKey: .status) ?? .scheduled
+        takenAt = try container.decodeIfPresent(Date.self, forKey: .takenAt)
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+    }
+
+    // Memberwise initializer
+    init(id: UUID, accountId: UUID, medicationId: UUID, scheduledAt: Date, status: MedicationLogStatus = .scheduled, takenAt: Date? = nil, note: String? = nil, createdAt: Date = Date()) {
+        self.id = id
+        self.accountId = accountId
+        self.medicationId = medicationId
+        self.scheduledAt = scheduledAt
+        self.status = status
+        self.takenAt = takenAt
+        self.note = note
+        self.createdAt = createdAt
     }
 }
 
@@ -998,8 +1111,9 @@ enum AppointmentType: String, Codable, CaseIterable {
     case school
     case friends
     case family
-    case shopping
+    case personal
     case travel
+    case shopping
     case other
 
     var displayName: String {
@@ -1013,8 +1127,9 @@ enum AppointmentType: String, Codable, CaseIterable {
         case .school: return "School"
         case .friends: return "Friends"
         case .family: return "Family"
-        case .shopping: return "Shopping"
+        case .personal: return "Personal"
         case .travel: return "Travel"
+        case .shopping: return "Shopping"
         case .other: return "Other"
         }
     }
@@ -1030,8 +1145,9 @@ enum AppointmentType: String, Codable, CaseIterable {
         case .school: return "graduationcap.fill"
         case .friends: return "person.2.fill"
         case .family: return "house.fill"
-        case .shopping: return "cart.fill"
+        case .personal: return "person.fill"
         case .travel: return "airplane"
+        case .shopping: return "cart.fill"
         case .other: return "ellipsis.circle.fill"
         }
     }
@@ -1047,8 +1163,9 @@ enum AppointmentType: String, Codable, CaseIterable {
         case .school: return .yellow
         case .friends: return .green
         case .family: return .pink
-        case .shopping: return .mint
+        case .personal: return .mint
         case .travel: return .indigo
+        case .shopping: return .purple
         case .other: return .gray
         }
     }
@@ -1312,7 +1429,7 @@ struct MoodEntry: Codable, Identifiable, Equatable {
     var rating: Int
     var note: String?
     let createdAt: Date
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case accountId = "account_id"
@@ -1321,6 +1438,29 @@ struct MoodEntry: Codable, Identifiable, Equatable {
         case rating
         case note
         case createdAt = "created_at"
+    }
+
+    // Custom decoder for robustness during sync
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        accountId = try container.decode(UUID.self, forKey: .accountId)
+        userId = try container.decode(UUID.self, forKey: .userId)
+        date = try container.decode(Date.self, forKey: .date)
+        rating = try container.decodeIfPresent(Int.self, forKey: .rating) ?? 3
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+    }
+
+    // Memberwise initializer
+    init(id: UUID, accountId: UUID, userId: UUID, date: Date, rating: Int, note: String? = nil, createdAt: Date = Date()) {
+        self.id = id
+        self.accountId = accountId
+        self.userId = userId
+        self.date = date
+        self.rating = rating
+        self.note = note
+        self.createdAt = createdAt
     }
 }
 
@@ -1856,6 +1996,25 @@ struct ImportantAccount: Codable, Identifiable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+
+    // Custom decoder for robustness during sync
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        profileId = try container.decode(UUID.self, forKey: .profileId)
+        accountName = try container.decode(String.self, forKey: .accountName)
+        websiteURL = try container.decodeIfPresent(String.self, forKey: .websiteURL)
+        username = try container.decodeIfPresent(String.self, forKey: .username)
+        emailAddress = try container.decodeIfPresent(String.self, forKey: .emailAddress)
+        phoneNumber = try container.decodeIfPresent(String.self, forKey: .phoneNumber)
+        securityQuestionHint = try container.decodeIfPresent(String.self, forKey: .securityQuestionHint)
+        recoveryHint = try container.decodeIfPresent(String.self, forKey: .recoveryHint)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        category = try container.decodeIfPresent(AccountCategory.self, forKey: .category)
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
 }
 
 // MARK: - Account Category
@@ -2254,6 +2413,7 @@ enum UpcomingEvent: Identifiable {
 enum CalendarEventType: String, Codable {
     case appointment
     case countdown
+    case todoList = "todo_list"
 }
 
 // MARK: - Family Calendar Share
@@ -2290,6 +2450,40 @@ struct FamilyCalendarShareMember: Codable, Identifiable, Equatable {
         case id
         case shareId = "share_id"
         case memberUserId = "member_user_id"
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Profile Group
+/// A named group of profiles for quick selection when sharing to family calendar
+struct ProfileGroup: Codable, Identifiable, Equatable {
+    let id: UUID
+    let accountId: UUID
+    var name: String
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accountId = "account_id"
+        case name
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+// MARK: - Profile Group Member
+/// Links a profile to a profile group
+struct ProfileGroupMember: Codable, Identifiable, Equatable {
+    let id: UUID
+    let groupId: UUID
+    let profileId: UUID
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case groupId = "group_id"
+        case profileId = "profile_id"
         case createdAt = "created_at"
     }
 }

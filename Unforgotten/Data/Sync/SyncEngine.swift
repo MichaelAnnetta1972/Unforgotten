@@ -44,6 +44,30 @@ final class SyncEngine: ObservableObject {
         updatePendingChangesCount()
     }
 
+    // MARK: - Error Description Helper
+    private static func describeError(_ error: Error) -> String {
+        if let decodingError = error as? DecodingError {
+            switch decodingError {
+            case .typeMismatch(let type, let context):
+                let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+                return "type mismatch at '\(path)': expected \(type)"
+            case .valueNotFound(let type, let context):
+                let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+                return "null value at '\(path)': expected \(type)"
+            case .keyNotFound(let key, let context):
+                let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+                let fullPath = path.isEmpty ? key.stringValue : "\(path).\(key.stringValue)"
+                return "missing key '\(fullPath)'"
+            case .dataCorrupted(let context):
+                let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+                return "bad data at '\(path)': \(context.debugDescription)"
+            @unknown default:
+                return decodingError.localizedDescription
+            }
+        }
+        return error.localizedDescription
+    }
+
     // MARK: - Network Observer
     private func setupNetworkObserver() {
         networkMonitor.$isConnected
@@ -106,28 +130,66 @@ final class SyncEngine: ObservableObject {
             ]
 
             var totalChanges = 0
+            var failedEntities: [String] = []
 
             for (entity, progress) in entities {
                 guard !Task.isCancelled else { return }
 
                 status = .syncing(entity: entity, progress: progress)
-                let changes = try await syncEntity(entity, accountId: accountId)
-                totalChanges += changes
+                do {
+                    let changes = try await syncEntity(entity, accountId: accountId)
+                    totalChanges += changes
+                } catch {
+                    let detail = Self.describeError(error)
+                    failedEntities.append("\(entity) (\(detail))")
+                    #if DEBUG
+                    print("🔄 Sync error for \(entity): \(error)")
+                    if let decodingError = error as? DecodingError {
+                        switch decodingError {
+                        case .typeMismatch(let type, let context):
+                            print("  Type mismatch: expected \(type), path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
+                        case .valueNotFound(let type, let context):
+                            print("  Value not found: expected \(type), path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
+                        case .keyNotFound(let key, let context):
+                            print("  Key not found: \(key.stringValue), path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
+                        case .dataCorrupted(let context):
+                            print("  Data corrupted: path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
+                        @unknown default:
+                            print("  Unknown decoding error: \(decodingError)")
+                        }
+                    }
+                    #endif
+                }
             }
 
             // 3. Generate medication logs locally for today
             status = .syncing(entity: "medication logs", progress: 0.98)
-            try await generateLocalMedicationLogs(accountId: accountId)
+            do {
+                try await generateLocalMedicationLogs(accountId: accountId)
+            } catch {
+                failedEntities.append("medication logs")
+                #if DEBUG
+                print("🔄 Sync error for medication logs: \(error)")
+                #endif
+            }
 
             // 4. Update sync metadata
             updateSyncMetadata(accountId: accountId)
 
-            status = .completed(changesCount: totalChanges)
-            lastSyncDate = Date()
+            if failedEntities.isEmpty {
+                status = .completed(changesCount: totalChanges)
+                lastSyncDate = Date()
+            } else {
+                status = .failed(error: "Failed to sync: \(failedEntities.joined(separator: ", "))")
+            }
 
             // Reset to idle after delay
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             if case .completed = status {
+                status = .idle
+            } else if case .failed = status {
+                // Keep failed status visible longer, then reset
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
                 status = .idle
             }
 

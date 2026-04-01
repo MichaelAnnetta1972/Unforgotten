@@ -3,8 +3,7 @@ import ActivityKit
 import SwiftUI
 
 /// Live Activity widget primarily for the Lock Screen.
-/// The Dynamic Island presentation is kept minimal — just a small item count —
-/// so it doesn't feel like a "takeover" of the Dynamic Island.
+/// The Dynamic Island presentation is kept minimal.
 struct DailySummaryLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DailySummaryAttributes.self) { context in
@@ -14,7 +13,6 @@ struct DailySummaryLiveActivity: Widget {
                 .widgetURL(URL(string: "unforgotten://home"))
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded (user long-presses the island)
                 DynamicIslandExpandedRegion(.center) {
                     EmptyView()
                 }
@@ -29,57 +27,6 @@ struct DailySummaryLiveActivity: Widget {
     }
 }
 
-// MARK: - Dynamic Island Expanded View
-
-/// Compact summary shown when the user long-presses the Dynamic Island.
-private struct DailySummaryExpandedView: View {
-    let context: ActivityViewContext<DailySummaryAttributes>
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if context.state.medicationCount > 0 {
-                Label(
-                    context.state.medicationCount == 1
-                        ? "1 medication to take"
-                        : "\(context.state.medicationCount) medications to take",
-                    systemImage: "pill.fill"
-                )
-                .font(.system(size: 13))
-                .foregroundColor(.white)
-            }
-
-            ForEach(context.state.appointments.prefix(2), id: \.self) { appointment in
-                Label("\(appointment.title) at \(appointment.time)", systemImage: "calendar")
-                    .font(.system(size: 13))
-                    .foregroundColor(.white)
-            }
-
-            ForEach(context.state.birthdays.prefix(1), id: \.self) { name in
-                Label("\(name)'s birthday", systemImage: "birthday.cake.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(.white)
-            }
-
-            ForEach(context.state.countdowns.prefix(1), id: \.self) { countdown in
-                Label(countdown.title, systemImage: "clock.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(.white)
-            }
-
-            if context.state.taskCount > 0 {
-                Label(
-                    context.state.taskCount == 1
-                        ? "1 task pending"
-                        : "\(context.state.taskCount) tasks pending",
-                    systemImage: "checklist"
-                )
-                .font(.system(size: 13))
-                .foregroundColor(.white)
-            }
-        }
-    }
-}
-
 // MARK: - Lock Screen View
 
 struct DailySummaryLockScreenView: View {
@@ -89,130 +36,33 @@ struct DailySummaryLockScreenView: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header row
             HStack(alignment: .center, spacing: 8) {
+                Image("unforgotten-icon")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 45)
+                    .cornerRadius(8)
 
-                //VStack(alignment: .leading, spacing: 2) {
-                    
-                    Image("unforgotten-icon")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(height: 45)
-                        .cornerRadius(8)
-                
-                    Spacer()
+                Spacer()
 
-                    Text("Today's Overview")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundColor(LiveActivityTheme.textPrimary)
-
-                    // Text(formattedDate(context.attributes.date))
-                    //     .font(.system(size: 12, weight: .regular))
-                    //     .foregroundColor(LiveActivityTheme.textSecondary)
-                //}
-
-               
-
+                Text("Today's Overview")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(LiveActivityTheme.textPrimary)
             }
 
             Divider()
                 .background(Color.white.opacity(0.2))
 
-            // Content items
-            VStack(alignment: .leading, spacing: 6) {
-                if context.state.medicationCount > 0 {
-                    HStack(spacing: 8) {
-                        Image(systemName: "pill.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(LiveActivityTheme.medicalRed)
-                            .frame(width: 16)
-
-                        Text(context.state.medicationCount == 1
-                             ? "1 medication to take"
-                             : "\(context.state.medicationCount) medications to take")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(LiveActivityTheme.textPrimary)
-                            .lineLimit(1)
-                    }
-                }
-
-                ForEach(context.state.appointments.prefix(2), id: \.self) { appointment in
-                    HStack(spacing: 8) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(LiveActivityTheme.calendarBlue)
-                            .frame(width: 16)
-
-                        
-
-                        Text(context.state.appointments.count == 1
-                             ? "1 appointment"
-                             : "\(context.state.appointments.count) appointments")
-                        //Text("\(appointment.title) at \(appointment.time)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(LiveActivityTheme.textPrimary)
-                            .lineLimit(1)
-                    }
-                }
-
-                ForEach(context.state.birthdays.prefix(1), id: \.self) { name in
-                    HStack(spacing: 8) {
-                        Image(systemName: "birthday.cake.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(LiveActivityTheme.birthdayPink)
-                            .frame(width: 16)
-
-
-                        Text(context.state.birthdays.count == 1
-                             ? "1 birthday"
-                             : "\(context.state.birthdays.count) birthdays")
-                        //Text("\(name)'s birthday")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(LiveActivityTheme.textPrimary)
-                            .lineLimit(1)
-                    }
-                }
-
-                ForEach(context.state.countdowns.prefix(1), id: \.self) { countdown in
-                    HStack(spacing: 8) {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(LiveActivityTheme.countdownPurple)
-                            .frame(width: 16)
-
-                        Text(context.state.countdowns.count == 1
-                             ? "1 event"
-                             : "\(context.state.countdowns.count) events")
-                        //Text(countdown.title)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(LiveActivityTheme.textPrimary)
-                            .lineLimit(1)
-                    }
-                }
-
-                if context.state.taskCount > 0 {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checklist")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(LiveActivityTheme.taskGreen)
-                            .frame(width: 16)
-
-
-                        Text(context.state.taskCount == 1
-                             ? "1 task pending"
-                             : "\(context.state.taskCount) tasks pending")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(LiveActivityTheme.textPrimary)
-                            .lineLimit(1)
-                    }
-                }
-
-                // "...and X more" indicator
-                let displayedItems = itemsDisplayed
-                let totalItems = totalItemCount
-                if totalItems > displayedItems {
-                    Text("...and \(totalItems - displayedItems) more")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(LiveActivityTheme.textSecondary)
-                }
+            // Natural language summary
+            if hasAnyItems {
+                Text(summaryText)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(LiveActivityTheme.textPrimary)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Nothing scheduled for today. Enjoy your day!")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(LiveActivityTheme.textSecondary)
             }
         }
         .padding(14)
@@ -221,30 +71,72 @@ struct DailySummaryLockScreenView: View {
 
     // MARK: - Helpers
 
-    private var totalItemCount: Int {
-        context.state.medicationCount
-        + context.state.appointments.count
-        + context.state.birthdays.count
-        + context.state.countdowns.count
-        + context.state.taskCount
+    private var hasAnyItems: Bool {
+        context.state.medicationCount > 0
+        || !context.state.appointments.isEmpty
+        || !context.state.birthdays.isEmpty
+        || !context.state.countdowns.isEmpty
+        || context.state.taskCount > 0
     }
 
-    /// Number of rows actually shown in the layout
-    private var itemsDisplayed: Int {
-        var count = 0
-        if context.state.medicationCount > 0 { count += 1 }
-        //count += min(context.state.medicationCount, 1)
-        count += min(context.state.appointments.count, 1)
-        count += min(context.state.birthdays.count, 1)
-        count += min(context.state.countdowns.count, 1)
-        //count += min(context.state.taskCount, 1)
-        if context.state.taskCount > 0 { count += 1 }
-        return count
-    }
+    /// Build a natural-language summary of today's items.
+    /// e.g. "Today you have 2 medications to take, 1 appointment and 2 events (Gisele with Michael, Charlie's Party)."
+    private var summaryText: String {
+        var parts: [String] = []
 
-    private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d"
-        return formatter.string(from: date)
+        if context.state.medicationCount > 0 {
+            parts.append(
+                context.state.medicationCount == 1
+                    ? "1 medication to take"
+                    : "\(context.state.medicationCount) medications to take"
+            )
+        }
+
+        if !context.state.appointments.isEmpty {
+            let count = context.state.appointments.count
+            if count == 1 {
+                parts.append("1 appointment (\(context.state.appointments[0].title))")
+            } else {
+                parts.append("\(count) appointments")
+            }
+        }
+
+        if !context.state.birthdays.isEmpty {
+            let names = context.state.birthdays.joined(separator: " & ")
+            if context.state.birthdays.count == 1 {
+                parts.append("\(names)'s birthday")
+            } else {
+                parts.append("\(context.state.birthdays.count) birthdays (\(names))")
+            }
+        }
+
+        if !context.state.countdowns.isEmpty {
+            let titles = context.state.countdowns.map(\.title).joined(separator: ", ")
+            if context.state.countdowns.count == 1 {
+                parts.append("1 event (\(titles))")
+            } else {
+                parts.append("\(context.state.countdowns.count) events (\(titles))")
+            }
+        }
+
+        if context.state.taskCount > 0 {
+            parts.append(
+                context.state.taskCount == 1
+                    ? "1 task pending"
+                    : "\(context.state.taskCount) tasks pending"
+            )
+        }
+
+        // Join with commas and "and" before the last item
+        let joined: String
+        if parts.count == 1 {
+            joined = parts[0]
+        } else if parts.count == 2 {
+            joined = "\(parts[0]) and \(parts[1])"
+        } else {
+            joined = parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+        }
+
+        return "Today you have \(joined)."
     }
 }

@@ -12,9 +12,9 @@ struct ToDoListsView: View {
     @StateObject private var viewModel = ToDoListsViewModel()
     @State private var searchText = ""
     @State private var selectedType: String? = nil  // nil means "All"
-    @State private var showingAddList = false
     @State private var showUpgradePrompt = false
     @State private var newlyCreatedList: ToDoList?
+    @State private var isCreatingList = false
     @State private var listContentHeight: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appAccentColor) private var appAccentColor
@@ -71,7 +71,7 @@ struct ToDoListsView: View {
                         showAddButton: true,
                         addAction: {
                             if canAddList {
-                                showingAddList = true
+                                createAndNavigateToNewList()
                             } else {
                                 showUpgradePrompt = true
                             }
@@ -196,22 +196,15 @@ struct ToDoListsView: View {
 
         }
         .navigationBarHidden(true)
-        .sidePanel(isPresented: $showingAddList) {
-            AddToDoListSheet(viewModel: viewModel) { createdList in
-                newlyCreatedList = createdList
-            }
-            .environmentObject(appState)
-        }
         .sidePanel(isPresented: $showUpgradePrompt) {
             UpgradeView()
         }
         .task {
             await viewModel.loadData(appState: appState)
-            // Check if we should show the add sheet after data is loaded
+            // Check if we should create a new list after data is loaded
             if openAddSheetOnAppear {
-                // Check premium limit before showing add sheet
                 if canAddList {
-                    showingAddList = true
+                    createAndNavigateToNewList()
                 } else {
                     showUpgradePrompt = true
                 }
@@ -237,6 +230,19 @@ struct ToDoListsView: View {
                 EmptyView()
             }
         )
+    }
+
+    // MARK: - Create and Navigate
+    private func createAndNavigateToNewList() {
+        guard !isCreatingList else { return }
+        isCreatingList = true
+        Task {
+            let newList = await viewModel.createListAsync(title: "", type: nil, dueDate: nil)
+            isCreatingList = false
+            if let list = newList {
+                newlyCreatedList = list
+            }
+        }
     }
 
     // MARK: - Empty State
@@ -268,7 +274,7 @@ struct ToDoListsView: View {
 
                 Button {
                     if canAddList {
-                        showingAddList = true
+                        createAndNavigateToNewList()
                     } else {
                         showUpgradePrompt = true
                     }

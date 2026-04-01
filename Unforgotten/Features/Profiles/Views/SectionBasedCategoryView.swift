@@ -37,7 +37,7 @@ struct SectionPresets {
     // Preset items for each section type
     static let presetItems: [String: [String]] = [
         // Hobbies
-        "Favourite TV Shows": ["Antiques Roadshow", "NCIS", "The Simpsonos", "The Chase", "MAFS", "EastEnders", "Emmerdale", "Countdown", "Pointless", "Only Fools and Horses"],
+        "Favourite TV Shows": ["Antiques Roadshow", "NCIS", "The Simpsons", "The Chase", "MAFS", "EastEnders", "Emmerdale", "Countdown", "Pointless", "Only Fools and Horses"],
         "Favourite Movies": ["The Sound of Music", "Mary Poppins", "Casablanca", "Gone with the Wind", "It's a Wonderful Life", "Brief Encounter", "The Great Escape", "Singin' in the Rain"],
         "Favourite Music": ["Frank Sinatra", "Elvis Presley", "The Beatles", "Vera Lynn", "Dean Martin", "Nat King Cole", "Cliff Richard", "Tom Jones", "Classical Music", "Jazz", "Big Band"],
         "Favourite Books": ["Agatha Christie", "Dick Francis", "Catherine Cookson", "Maeve Binchy", "Roald Dahl", "Newspapers", "Magazines", "Crossword Books"],

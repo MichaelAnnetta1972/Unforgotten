@@ -15,8 +15,15 @@ struct JoinAccountView: View {
     @State private var invitation: AccountInvitation?
     @State private var accountName: String = ""
     @State private var showSuccess = false
-    @State private var showDuplicateConfirm = false
-    @State private var duplicateProfile: Profile?
+    @State private var newProfileCreated = false
+    @State private var showSharingPreferences = false
+    @State private var sharingPreferences: [SharingCategoryKey: Bool] = {
+        var prefs: [SharingCategoryKey: Bool] = [:]
+        for category in SharingCategoryKey.allCases {
+            prefs[category] = category != .importantAccounts
+        }
+        return prefs
+    }()
     @FocusState private var isCodeFieldFocused: Bool
 
     /// Dismisses the view using side panel dismiss if available, otherwise standard dismiss
@@ -32,7 +39,7 @@ struct JoinAccountView: View {
         VStack(spacing: 0) {
             // Custom header with Done button
             HStack {
-                Text("Join an Account")
+                Text(showSharingPreferences ? "Sharing Preferences" : "Join an Account")
                     .font(.appTitle2)
                     .foregroundColor(.textPrimary)
 
@@ -50,27 +57,30 @@ struct JoinAccountView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.badge.plus")
-                            .font(.system(size: 50))
-                            .foregroundColor(appAccentColor)
-
-                        Text("Join an Account")
-                            .font(.appTitle)
-                            .foregroundColor(.textPrimary)
-
-                        Text("Enter the invite code shared with you to connect with a family member or friend")
-                            .font(.appBody)
-                            .foregroundColor(.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.top, 24)
-
-                    if let invitation = invitation {
+                    if showSharingPreferences, let invitation = invitation {
+                        // Sharing preferences screen
+                        sharingPreferencesContent(invitation: invitation)
+                    } else if let invitation = invitation {
                         // Show invitation details
                         invitationDetailView(invitation: invitation)
                     } else {
+                        // Header
+                        VStack(spacing: 12) {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 50))
+                                .foregroundColor(appAccentColor)
+
+                            Text("Join an Account")
+                                .font(.appTitle)
+                                .foregroundColor(.textPrimary)
+
+                            Text("Enter the invite code shared with you to connect with a family member or friend")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 24)
+
                         // Code entry
                         codeEntryView
                     }
@@ -83,25 +93,15 @@ struct JoinAccountView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .background(Color.appBackground)
-        .alert("Account Joined!", isPresented: $showSuccess) {
+        .alert("Connected!", isPresented: $showSuccess) {
             Button("OK") {
                 dismissView()
             }
         } message: {
-            Text("You have successfully joined \"\(accountName)\". You can switch to this account from Settings.")
-        }
-        .alert("Existing Profile Found", isPresented: $showDuplicateConfirm) {
-            Button("Use Existing") {
-                guard let invitation = invitation else { return }
-                Task { await joinAccount(invitation: invitation, existingProfileId: duplicateProfile?.id) }
-            }
-            Button("Create New", role: .cancel) {
-                guard let invitation = invitation else { return }
-                Task { await joinAccount(invitation: invitation) }
-            }
-        } message: {
-            if let profile = duplicateProfile {
-                Text("A profile for \"\(profile.fullName)\" already exists in this account. Would you like to link to it? The existing profile will be updated with your information.")
+            if newProfileCreated {
+                Text("You are now connected with \"\(accountName)\" on Unforgotten.\n\nNo matching profile was found, so a new profile was created for you in their account.")
+            } else {
+                Text("You are now connected with \"\(accountName)\" on Unforgotten.")
             }
         }
     }
@@ -204,8 +204,10 @@ struct JoinAccountView: View {
 
             // Action buttons
             VStack(spacing: 12) {
-                PrimaryButton(title: "Join Account", isLoading: isJoining) {
-                    Task { await joinAccount(invitation: invitation) }
+                PrimaryButton(title: "Join Account", isLoading: false) {
+                    withAnimation {
+                        showSharingPreferences = true
+                    }
                 }
 
                 Button {
@@ -219,6 +221,66 @@ struct JoinAccountView: View {
                         .font(.appBodyMedium)
                         .foregroundColor(.textSecondary)
                 }
+            }
+        }
+    }
+
+    // MARK: - Sharing Preferences Content
+    @ViewBuilder
+    private func sharingPreferencesContent(invitation: AccountInvitation) -> some View {
+        VStack(spacing: 24) {
+            VStack(spacing: 12) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(appAccentColor)
+
+                Text("Your Sharing Preferences")
+                    .font(.appTitle)
+                    .foregroundColor(.textPrimary)
+
+                Text("Choose what information from your profile you'd like to share with \"\(accountName)\". You can change these later.")
+                    .font(.appBody)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 4)
+
+            // Sharing Toggles
+            VStack(alignment: .leading, spacing: 12) {
+                Text("SHARING PREFERENCES")
+                    .font(.appCaption)
+                    .foregroundColor(.textSecondary)
+
+                ForEach(SharingCategoryKey.allCases, id: \.self) { category in
+                    SharingToggleRow(
+                        category: category,
+                        isEnabled: Binding(
+                            get: { sharingPreferences[category] ?? true },
+                            set: { sharingPreferences[category] = $0 }
+                        ),
+                        accentColor: appAccentColor
+                    )
+                }
+            }
+
+            if let error = validationError {
+                Text(error)
+                    .font(.appCaption)
+                    .foregroundColor(.medicalRed)
+            }
+
+            PrimaryButton(title: "Connect", isLoading: isJoining) {
+                Task { await joinAccount(invitation: invitation) }
+            }
+
+            Button {
+                withAnimation {
+                    showSharingPreferences = false
+                }
+            } label: {
+                Text("Back")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textSecondary)
             }
         }
     }
@@ -271,7 +333,7 @@ struct JoinAccountView: View {
     }
 
     // MARK: - Join Account
-    private func joinAccount(invitation: AccountInvitation, existingProfileId: UUID? = nil) async {
+    private func joinAccount(invitation: AccountInvitation) async {
         guard let userId = await SupabaseManager.shared.currentUserId else {
             validationError = "You must be signed in."
             return
@@ -294,27 +356,9 @@ struct JoinAccountView: View {
                 }
             }
 
-            // Check for duplicate profiles if we haven't already
-            if existingProfileId == nil {
-                if let profileId = acceptorProfileId, let acceptorProfile = try? await appState.profileRepository.getProfile(id: profileId) {
-                    let matches = try await appState.profileRepository.findMatchingProfiles(
-                        accountId: invitation.accountId,
-                        email: acceptorProfile.email
-                    )
-                    if let match = matches.first {
-                        await MainActor.run {
-                            duplicateProfile = match
-                            showDuplicateConfirm = true
-                            isJoining = false
-                        }
-                        return
-                    }
-                }
-            }
-
-            // Accept with sync
+            // Accept with sync, passing the acceptor's sharing preferences
             #if DEBUG
-            print("🔗 Accept: userId=\(userId), acceptorProfileId=\(acceptorProfileId?.uuidString ?? "nil"), acceptorAccountId=\(acceptorAccountId?.uuidString ?? "nil"), existingProfileId=\(existingProfileId?.uuidString ?? "nil")")
+            print("🔗 Accept: userId=\(userId), acceptorProfileId=\(acceptorProfileId?.uuidString ?? "nil"), acceptorAccountId=\(acceptorAccountId?.uuidString ?? "nil")")
             #endif
             do {
                 let syncResult = try await appState.invitationRepository.acceptInvitationWithSync(
@@ -322,7 +366,7 @@ struct JoinAccountView: View {
                     userId: userId,
                     acceptorProfileId: acceptorProfileId,
                     acceptorAccountId: acceptorAccountId,
-                    existingProfileId: existingProfileId
+                    acceptorSharingPreferences: sharingPreferences
                 )
 
                 #if DEBUG
@@ -332,6 +376,8 @@ struct JoinAccountView: View {
                 if !syncResult.success {
                     print("⚠️ Sync RPC returned success=false, debug: \(syncResult.debug ?? "no debug info")")
                 }
+
+                newProfileCreated = syncResult.newProfileCreated ?? false
 
                 if let syncId = syncResult.syncId {
                     NotificationCenter.default.post(
@@ -348,8 +394,16 @@ struct JoinAccountView: View {
                 try await appState.invitationRepository.acceptInvitation(invitation: invitation, userId: userId)
             }
 
-            // Reload data
+            // Reload account data, then force-refresh profiles so the new synced profiles
+            // created by the RPC are pulled into the local cache and the UI re-renders.
             await appState.loadAccountData()
+            if let accountId = acceptorAccountId {
+                _ = try? await appState.profileRepository.refreshProfiles(accountId: accountId)
+            }
+            if let accountId = appState.currentAccount?.id, accountId != acceptorAccountId {
+                _ = try? await appState.profileRepository.refreshProfiles(accountId: accountId)
+            }
+            NotificationCenter.default.post(name: .profilesDidChange, object: nil)
 
             await MainActor.run {
                 isJoining = false

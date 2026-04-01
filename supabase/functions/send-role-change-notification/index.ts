@@ -7,9 +7,11 @@ const APNS_KEY_ID = Deno.env.get("APNS_KEY_ID")!;
 const APNS_TEAM_ID = Deno.env.get("APNS_TEAM_ID")!;
 const APNS_BUNDLE_ID = Deno.env.get("APNS_BUNDLE_ID")!;
 
-// Use api.sandbox.push.apple.com for development/TestFlight,
-// api.push.apple.com for App Store production.
-const APNS_HOST = "api.sandbox.push.apple.com";
+// APNs endpoints per environment
+const APNS_HOSTS: Record<string, string> = {
+  sandbox: "api.sandbox.push.apple.com",
+  production: "api.push.apple.com",
+};
 
 interface RoleChangePayload {
   target_user_id: string;
@@ -34,11 +36,13 @@ async function generateAPNsToken(): Promise<string> {
 }
 
 async function sendPushNotification(
-  token: string,
+  deviceToken: string,
   payload: object,
-  apnsToken: string
+  apnsToken: string,
+  environment: string
 ): Promise<boolean> {
-  const url = `https://${APNS_HOST}/3/device/${token}`;
+  const host = APNS_HOSTS[environment] || APNS_HOSTS.production;
+  const url = `https://${host}/3/device/${deviceToken}`;
 
   try {
     const response = await fetch(url, {
@@ -56,15 +60,16 @@ async function sendPushNotification(
     if (!response.ok) {
       const body = await response.text();
       console.error(
-        `APNs error for token ${token.substring(0, 8)}...: ${response.status} ${body}`
+        `APNs error for token ${deviceToken.substring(0, 8)}... (${environment} via ${host}): ${response.status} ${body}`
       );
       return false;
     }
 
+    console.log(`APNs success for token ${deviceToken.substring(0, 8)}... (${environment} via ${host})`);
     return true;
   } catch (error) {
     console.error(
-      `Failed to send push to ${token.substring(0, 8)}...: ${error}`
+      `Failed to send push to ${deviceToken.substring(0, 8)}... (${environment}): ${error}`
     );
     return false;
   }
@@ -101,7 +106,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get device tokens for the target user
+    // Get device tokens for the target user (includes environment)
     const { data: tokens, error: tokensError } = await supabase.rpc(
       "get_device_tokens_for_users",
       { p_user_ids: [target_user_id] }
@@ -144,11 +149,13 @@ serve(async (req) => {
 
     let sentCount = 0;
     const sendPromises = tokens.map(
-      async (t: { user_id: string; token: string }) => {
+      async (t: { user_id: string; token: string; environment: string }) => {
+        const env = t.environment || "production";
         const success = await sendPushNotification(
           t.token,
           apnsPayload,
-          apnsToken
+          apnsToken,
+          env
         );
         if (success) sentCount++;
         return success;

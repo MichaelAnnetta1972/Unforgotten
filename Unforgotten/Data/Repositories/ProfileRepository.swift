@@ -9,6 +9,9 @@ protocol ProfileRepositoryProtocol {
     func createProfile(_ profile: ProfileInsert) async throws -> Profile
     func updateProfile(_ profile: Profile) async throws -> Profile
     func deleteProfile(id: UUID) async throws
+    func getDeletedProfiles(accountId: UUID) async throws -> [Profile]
+    func restoreProfile(id: UUID) async throws -> Profile
+    func permanentlyDeleteProfile(id: UUID) async throws
     func updateSortOrders(_ updates: [SortOrderUpdate]) async throws
 
     // Profile Details
@@ -129,8 +132,43 @@ final class ProfileRepository: ProfileRepositoryProtocol {
         return updated
     }
     
-    // MARK: - Delete Profile
+    // MARK: - Delete Profile (soft delete)
     func deleteProfile(id: UUID) async throws {
+        try await supabase
+            .from(TableName.profiles)
+            .update(ProfileSoftDelete(deletedAt: Date()))
+            .eq("id", value: id)
+            .execute()
+    }
+
+    // MARK: - Get Deleted Profiles
+    func getDeletedProfiles(accountId: UUID) async throws -> [Profile] {
+        let profiles: [Profile] = try await supabase
+            .from(TableName.profiles)
+            .select("*, source_user_id, synced_fields, is_local_only, sync_connection_id")
+            .eq("account_id", value: accountId)
+            .not("deleted_at", operator: .is, value: "null")
+            .order("deleted_at", ascending: false)
+            .execute()
+            .value
+        return profiles
+    }
+
+    // MARK: - Restore Profile
+    func restoreProfile(id: UUID) async throws -> Profile {
+        let profile: Profile = try await supabase
+            .from(TableName.profiles)
+            .update(ProfileRestore())
+            .eq("id", value: id)
+            .select()
+            .single()
+            .execute()
+            .value
+        return profile
+    }
+
+    // MARK: - Permanently Delete Profile
+    func permanentlyDeleteProfile(id: UUID) async throws {
         try await supabase
             .from(TableName.profiles)
             .delete()
@@ -491,6 +529,27 @@ private struct ProfileUpdate: Encodable {
         try container.encode(notes, forKey: .notes)
         try container.encode(isFavourite, forKey: .isFavourite)
         try container.encode(photoUrl, forKey: .photoUrl)
+    }
+}
+
+private struct ProfileSoftDelete: Encodable {
+    let deletedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case deletedAt = "deleted_at"
+    }
+}
+
+private struct ProfileRestore: Encodable {
+    let deletedAt: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case deletedAt = "deleted_at"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeNil(forKey: .deletedAt)
     }
 }
 

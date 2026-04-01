@@ -1,5 +1,12 @@
 import SwiftUI
 
+// MARK: - Meal Prefill
+struct MealPrefill: Identifiable {
+    let id = UUID()
+    var date: Date?
+    var mealType: MealType?
+}
+
 // MARK: - Meal Planner View
 struct MealPlannerView: View {
     @EnvironmentObject var appState: AppState
@@ -8,7 +15,6 @@ struct MealPlannerView: View {
     @Environment(\.iPadHomeAction) private var iPadHomeAction
 
     @State private var selectedTab = 0 // 0 = Meal Plan, 1 = Recipes
-    @State private var showAddMeal = false
     @State private var showAddRecipe = false
     @State private var recipes: [Recipe] = []
     @State private var isLoading = true
@@ -32,8 +38,7 @@ struct MealPlannerView: View {
     }
 
     // For pre-filling add meal form
-    @State private var prefillDate: Date?
-    @State private var prefillMealType: MealType?
+    @State private var addMealPrefill: MealPrefill?
     @State private var mealRefreshTrigger = 0
 
     private var canEdit: Bool {
@@ -74,13 +79,12 @@ struct MealPlannerView: View {
                         showAddButton: canEdit,
                         addAction: {
                             if selectedTab == 0 {
-                                prefillDate = nil
-                                prefillMealType = nil
-                                showAddMeal = true
+                                addMealPrefill = MealPrefill()
                             } else {
                                 showAddRecipe = true
                             }
-                        }
+                        },
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Meals.mp4"
                     )
 
                     VStack(spacing: AppDimensions.cardSpacing) {
@@ -154,9 +158,7 @@ struct MealPlannerView: View {
                         if selectedTab == 0 {
                             MealPlanWeekView(
                                 onAddMeal: { date, mealType in
-                                    prefillDate = date
-                                    prefillMealType = mealType
-                                    showAddMeal = true
+                                    addMealPrefill = MealPrefill(date: date, mealType: mealType)
                                 },
                                 onOpenRecipe: { recipeId in
                                     if let recipe = recipes.first(where: { $0.id == recipeId }) {
@@ -204,12 +206,12 @@ struct MealPlannerView: View {
                 mealRefreshTrigger += 1
             }
         }
-        .sheet(isPresented: $showAddMeal, onDismiss: {
+        .sheet(item: $addMealPrefill, onDismiss: {
             mealRefreshTrigger += 1
-        }) {
+        }) { prefill in
             AddPlannedMealView(
-                prefillDate: prefillDate,
-                prefillMealType: prefillMealType
+                prefillDate: prefill.date,
+                prefillMealType: prefill.mealType
             )
             .environmentObject(appState)
         }

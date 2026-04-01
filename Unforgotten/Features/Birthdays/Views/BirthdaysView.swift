@@ -42,7 +42,8 @@ struct BirthdaysView: View {
                             } else {
                                 showUpgradePrompt = true
                             }
-                        }
+                        },
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Birthdays.mp4"
                     )
 
                     // Content

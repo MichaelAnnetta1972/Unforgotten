@@ -1,5 +1,7 @@
 import SwiftUI
 import PhotosUI
+import AVKit
+import AVFoundation
 
 // MARK: - Customizable Header View
 /// A header view that supports custom user-selected background images
@@ -35,6 +37,7 @@ struct CustomizableHeaderView: View {
 
     // Customization
     var showCustomizeButton: Bool = true
+    var tutorialVideoURL: String? = nil
     var roundedTopRightCorner: Bool = false
     var roundedTopLeftCorner: Bool = false
     var useLogo: Bool = false
@@ -58,6 +61,7 @@ struct CustomizableHeaderView: View {
     @State private var showImageAdjuster = false
     @State private var pendingImage: UIImage?
     @State private var headerWidth: CGFloat = UIScreen.main.bounds.width
+    @State private var showTutorialVideo = false
 
     /// The current style's asset for this page
     private var styleAsset: HeaderAsset {
@@ -135,6 +139,11 @@ struct CustomizableHeaderView: View {
 
                     // Top right buttons
                     HStack(spacing: 12) {
+                        // Tutorial help button
+                        if tutorialVideoURL != nil {
+                            TutorialHelpButton(onTap: { showTutorialVideo = true })
+                        }
+
                         // Customize/camera button
                         if showCustomizeButton {
                             CustomizeHeaderButton(
@@ -299,6 +308,11 @@ struct CustomizableHeaderView: View {
                 )
             }
         }
+        .fullScreenCover(isPresented: $showTutorialVideo) {
+            if let urlString = tutorialVideoURL {
+                TutorialVideoPlayerView(videoURL: urlString)
+            }
+        }
     }
 
     // MARK: - Background View
@@ -421,6 +435,119 @@ struct CustomizeHeaderButton: View {
                 .onChanged { _ in isPressed = true }
                 .onEnded { _ in isPressed = false }
         )
+    }
+}
+
+// MARK: - Tutorial Help Button
+struct TutorialHelpButton: View {
+    let onTap: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: onTap) {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 36, height: 36)
+
+                Image(systemName: "questionmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .scaleEffect(isPressed ? 0.9 : 1.0)
+            .opacity(isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
+    }
+}
+
+// MARK: - Tutorial Video Player (URL-based)
+/// A lightweight fullscreen video player that takes a URL string directly
+struct TutorialVideoPlayerView: View {
+    let videoURL: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+                    .onAppear {
+                        player.play()
+                    }
+            } else {
+                ProgressView()
+                    .tint(.white)
+            }
+
+            // Close button
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        player?.pause()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(
+                                Circle()
+                                    .fill(.black.opacity(0.6))
+                            )
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.top, 8)
+                }
+                Spacer()
+            }
+        }
+        .onAppear {
+            // Override silent switch so tutorial audio is always audible
+            configureTutorialAudioSession()
+            if let url = URL(string: videoURL) {
+                player = AVPlayer(url: url)
+            }
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+            // Restore ambient audio session
+            restoreAmbientAudioSession()
+        }
+    }
+
+    private func configureTutorialAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            #if DEBUG
+            print("Failed to configure tutorial audio session: \(error)")
+            #endif
+        }
+    }
+
+    private func restoreAmbientAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: .mixWithOthers)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            #if DEBUG
+            print("Failed to restore ambient audio session: \(error)")
+            #endif
+        }
     }
 }
 

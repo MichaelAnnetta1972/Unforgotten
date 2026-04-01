@@ -6,8 +6,9 @@ protocol InvitationRepositoryProtocol {
     func getInvitations(accountId: UUID) async throws -> [AccountInvitation]
     func getInvitationByCode(_ code: String) async throws -> AccountInvitation?
     func getInvitationsForEmail(_ email: String) async throws -> [AccountInvitation]
-    func createInvitation(accountId: UUID, email: String, role: MemberRole, invitedBy: UUID, sharingPreferences: [SharingCategoryKey: Bool]) async throws -> AccountInvitation
-    func acceptInvitationWithSync(invitation: AccountInvitation, userId: UUID, acceptorProfileId: UUID?, acceptorAccountId: UUID?, existingProfileId: UUID?) async throws -> ProfileSyncResult
+    func createInvitation(accountId: UUID, email: String, role: MemberRole, invitedBy: UUID, linkedProfileId: UUID?, sharingPreferences: [SharingCategoryKey: Bool]) async throws -> AccountInvitation
+    func createInvitation(accountId: UUID, email: String, invitedBy: UUID, linkedProfileId: UUID?, sharingPreferences: [SharingCategoryKey: Bool]) async throws -> AccountInvitation
+    func acceptInvitationWithSync(invitation: AccountInvitation, userId: UUID, acceptorProfileId: UUID?, acceptorAccountId: UUID?, existingProfileId: UUID?, acceptorSharingPreferences: [SharingCategoryKey: Bool]?) async throws -> ProfileSyncResult
     func revokeInvitation(id: UUID) async throws
     func acceptInvitation(invitation: AccountInvitation, userId: UUID) async throws
     func getAccountNameForInvitation(code: String) async throws -> String?
@@ -16,7 +17,7 @@ protocol InvitationRepositoryProtocol {
 // MARK: - Protocol defaults
 extension InvitationRepositoryProtocol {
     func createInvitation(accountId: UUID, email: String, invitedBy: UUID, sharingPreferences: [SharingCategoryKey: Bool] = [:]) async throws -> AccountInvitation {
-        try await createInvitation(accountId: accountId, email: email, role: .viewer, invitedBy: invitedBy, sharingPreferences: sharingPreferences)
+        try await createInvitation(accountId: accountId, email: email, invitedBy: invitedBy, linkedProfileId: nil, sharingPreferences: sharingPreferences)
     }
 }
 
@@ -70,6 +71,7 @@ final class InvitationRepository: InvitationRepositoryProtocol {
         email: String,
         role: MemberRole = .viewer,
         invitedBy: UUID,
+        linkedProfileId: UUID? = nil,
         sharingPreferences: [SharingCategoryKey: Bool] = [:]
     ) async throws -> AccountInvitation {
         let inviteCode = generateInviteCode()
@@ -80,6 +82,7 @@ final class InvitationRepository: InvitationRepositoryProtocol {
             role: role,
             inviteCode: inviteCode,
             invitedBy: invitedBy,
+            linkedProfileId: linkedProfileId,
             sharingProfileFields: sharingPreferences[.profileFields] ?? true,
             sharingMedical: sharingPreferences[.medical] ?? true,
             sharingGiftIdea: sharingPreferences[.giftIdea] ?? true,
@@ -98,6 +101,10 @@ final class InvitationRepository: InvitationRepositoryProtocol {
             .value
 
         return invitation
+    }
+
+    func createInvitation(accountId: UUID, email: String, invitedBy: UUID, linkedProfileId: UUID?, sharingPreferences: [SharingCategoryKey: Bool]) async throws -> AccountInvitation {
+        try await createInvitation(accountId: accountId, email: email, role: .viewer, invitedBy: invitedBy, linkedProfileId: linkedProfileId, sharingPreferences: sharingPreferences)
     }
 
     // MARK: - Revoke Invitation
@@ -210,7 +217,8 @@ final class InvitationRepository: InvitationRepositoryProtocol {
         userId: UUID,
         acceptorProfileId: UUID?,
         acceptorAccountId: UUID?,
-        existingProfileId: UUID? = nil
+        existingProfileId: UUID? = nil,
+        acceptorSharingPreferences: [SharingCategoryKey: Bool]? = nil
     ) async throws -> ProfileSyncResult {
         // Build params dictionary - handle optional parameters
         var params: [String: String] = [
@@ -230,6 +238,18 @@ final class InvitationRepository: InvitationRepositoryProtocol {
             params["p_existing_profile_id"] = existingId.uuidString
         }
 
+        // Build acceptor sharing preferences as JSON string
+        if let prefs = acceptorSharingPreferences {
+            var prefsDict: [String: Bool] = [:]
+            for (key, value) in prefs {
+                prefsDict[key.rawValue] = value
+            }
+            if let jsonData = try? JSONSerialization.data(withJSONObject: prefsDict),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                params["p_acceptor_sharing_prefs"] = jsonString
+            }
+        }
+
         #if DEBUG
         print("📡 RPC accept_invitation_with_sync params:")
         print("📡   p_invitation_id: \(invitation.id.uuidString)")
@@ -237,6 +257,7 @@ final class InvitationRepository: InvitationRepositoryProtocol {
         print("📡   p_acceptor_profile_id: \(acceptorProfileId?.uuidString ?? "not provided")")
         print("📡   p_acceptor_account_id: \(acceptorAccountId?.uuidString ?? "not provided")")
         print("📡   p_existing_profile_id: \(existingProfileId?.uuidString ?? "not provided")")
+        print("📡   p_acceptor_sharing_prefs: \(acceptorSharingPreferences?.description ?? "not provided")")
         #endif
 
         // Call the RPC function that handles invitation acceptance + profile sync atomically
@@ -295,6 +316,7 @@ private struct InvitationInsert: Encodable {
     let role: MemberRole
     let inviteCode: String
     let invitedBy: UUID
+    let linkedProfileId: UUID?
     let sharingProfileFields: Bool
     let sharingMedical: Bool
     let sharingGiftIdea: Bool
@@ -309,6 +331,7 @@ private struct InvitationInsert: Encodable {
         case role
         case inviteCode = "invite_code"
         case invitedBy = "invited_by"
+        case linkedProfileId = "linked_profile_id"
         case sharingProfileFields = "sharing_profile_fields"
         case sharingMedical = "sharing_medical"
         case sharingGiftIdea = "sharing_gift_idea"

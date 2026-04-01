@@ -12,7 +12,7 @@ struct iPadToDoListsView: View {
     @ObservedObject var viewModel: ToDoListsViewModel
     @EnvironmentObject var appState: AppState
     @State private var selectedList: ToDoList?
-    @State private var showingAddList = false
+    @State private var isCreatingList = false
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.iPadViewToDoListAction) private var iPadViewToDoListAction
     @Environment(\.iPadAddToDoListAction) private var iPadAddToDoListAction
@@ -26,7 +26,7 @@ struct iPadToDoListsView: View {
                 if let addAction = iPadAddToDoListAction {
                     addAction()
                 } else {
-                    showingAddList = true
+                    createAndNavigateToNewList()
                 }
             },
             useNavigationLinks: false,
@@ -43,13 +43,17 @@ struct iPadToDoListsView: View {
         )
         .background(Color.appBackgroundLight)
         .navigationBarHidden(true)
-        // Only show local side panel when iPad action is not available
-        .sidePanel(isPresented: iPadAddToDoListAction == nil ? $showingAddList : .constant(false)) {
-            AddToDoListSheet(viewModel: viewModel, onDismiss: { showingAddList = false }) { createdList in
-                // Select and show the newly created list using full-screen overlay
+    }
+
+    private func createAndNavigateToNewList() {
+        guard !isCreatingList else { return }
+        isCreatingList = true
+        Task {
+            let newList = await viewModel.createListAsync(title: "", type: nil, dueDate: nil)
+            isCreatingList = false
+            if let createdList = newList {
                 if let viewAction = iPadViewToDoListAction {
                     viewAction(createdList)
-                    // Don't keep local selection when using full-screen overlay
                     selectedList = nil
                 } else {
                     selectedList = createdList
@@ -301,6 +305,7 @@ struct iPadToDoListDetailView: View {
     @State private var showingDueDatePicker = false
     @State private var focusedItemId: UUID?
     @FocusState private var newItemFocused: Bool
+    @FocusState private var titleFieldFocused: Bool
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(HeaderStyleManager.self) private var headerStyleManager
 
@@ -368,6 +373,7 @@ struct iPadToDoListDetailView: View {
                                 TextField("Enter title", text: $viewModel.listTitle)
                                     .font(.appBody)
                                     .foregroundColor(.textPrimary)
+                                    .focused($titleFieldFocused)
                                     .onChange(of: viewModel.listTitle) { _, _ in
                                         viewModel.saveTitle()
                                     }
@@ -585,6 +591,14 @@ struct iPadToDoListDetailView: View {
         }
         .task {
             await viewModel.loadData(appState: appState)
+        }
+        .onAppear {
+            // Auto-focus title field for newly created lists (empty title)
+            if list.title.isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    titleFieldFocused = true
+                }
+            }
         }
         .onChange(of: viewModel.selectedType) { _, _ in
             viewModel.saveType()

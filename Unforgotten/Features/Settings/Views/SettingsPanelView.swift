@@ -23,6 +23,7 @@ struct SettingsPanelView: View {
         case moodHistory
         case upgrade
         case adminPanel
+        case recentlyDeleted
         case privacyPolicy
         case termsOfService
 
@@ -36,6 +37,7 @@ struct SettingsPanelView: View {
             case .moodHistory: return "moodHistory"
             case .upgrade: return "upgrade"
             case .adminPanel: return "adminPanel"
+            case .recentlyDeleted: return "recentlyDeleted"
             case .privacyPolicy: return "privacyPolicy"
             case .termsOfService: return "termsOfService"
             }
@@ -51,6 +53,7 @@ struct SettingsPanelView: View {
             case .moodHistory: return "Mood History"
             case .upgrade: return "Upgrade to Premium"
             case .adminPanel: return "Admin Panel"
+            case .recentlyDeleted: return "Recently Deleted"
             case .privacyPolicy: return "Privacy Policy"
             case .termsOfService: return "Terms of Service"
             }
@@ -221,7 +224,6 @@ struct SettingsPanelView: View {
                             if newValue {
                                 Task {
                                     _ = await NotificationService.shared.requestPermission()
-                                    await NotificationService.shared.scheduleMorningBriefingTrigger()
                                 }
                             }
                         }
@@ -334,6 +336,17 @@ struct SettingsPanelView: View {
                             ) {
                                 selectSubMenu(.adminPanel)
                             }
+                        }
+                    }
+
+                    // Data section
+                    SettingsPanelSection(title: "DATA") {
+                        SettingsPanelButtonRow(
+                            icon: "trash",
+                            title: "Recently Deleted",
+                            isSelected: selectedSubMenu == .recentlyDeleted
+                        ) {
+                            selectSubMenu(.recentlyDeleted)
                         }
                     }
 
@@ -451,6 +464,8 @@ struct SettingsPanelView: View {
                 UpgradePanelContent()
             case .adminPanel:
                 AdminPanelContentView()
+            case .recentlyDeleted:
+                RecentlyDeletedPanelContent()
             case .privacyPolicy:
                 PrivacyPolicyPanelContent()
             case .termsOfService:
@@ -523,6 +538,8 @@ struct SettingsPanelView: View {
                 UpgradePanelContent()
             case .adminPanel:
                 AdminPanelContentView()
+            case .recentlyDeleted:
+                RecentlyDeletedPanelContent()
             case .privacyPolicy:
                 PrivacyPolicyPanelContent()
             case .termsOfService:

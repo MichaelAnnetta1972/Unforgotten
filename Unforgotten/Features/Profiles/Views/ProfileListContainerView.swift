@@ -100,7 +100,7 @@ struct iPadProfileListView: View {
             }
         } message: {
             if let profile = profileToDelete {
-                Text("Are you sure you want to delete \(profile.displayName)? This action cannot be undone.")
+                Text("\(profile.displayName) will be moved to Recently Deleted and permanently removed after 30 days.")
             }
         }
     }

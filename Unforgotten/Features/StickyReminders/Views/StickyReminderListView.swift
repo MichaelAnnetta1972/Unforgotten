@@ -69,7 +69,8 @@ struct StickyReminderListView: View {
                         } else {
                             showUpgradePrompt = true
                         }
-                    } : nil
+                    } : nil,
+                    tutorialVideoURL: "https://unforgottenapp.com/tutorials/Reminders.mp4"
                 )
 
                 // Content

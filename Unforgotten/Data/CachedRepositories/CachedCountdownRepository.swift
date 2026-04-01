@@ -138,7 +138,18 @@ final class CachedCountdownRepository {
             return try await remoteRepository.getCountdownsInRange(accountId: accountId, startDate: startDate, endDate: endDate)
         }
 
-        return localCountdowns.map { (local: LocalCountdown) in local.toRemote() }
+        let results = localCountdowns.map { (local: LocalCountdown) in local.toRemote() }
+
+        // If any recurring countdown has stale/missing recurrence fields, refresh from remote
+        let hasStaleRecurrence = results.contains { $0.isRecurring && $0.recurrenceUnit == nil }
+        if hasStaleRecurrence && networkMonitor.isConnected {
+            _ = try await refreshFromRemote(accountId: accountId)
+            // Re-fetch from the now-updated local cache
+            let refreshed = try modelContext.fetch(descriptor)
+            return refreshed.map { (local: LocalCountdown) in local.toRemote() }
+        }
+
+        return results
     }
 
     // MARK: - Get Countdowns By IDs (for shared events from other accounts)
@@ -162,7 +173,23 @@ final class CachedCountdownRepository {
         let localCountdowns = try modelContext.fetch(descriptor)
 
         if !localCountdowns.isEmpty {
-            return localCountdowns.map { $0.toRemote() }
+            let results = localCountdowns.map { $0.toRemote() }
+
+            // If any record is marked recurring but missing recurrence fields,
+            // the local cache is stale — fetch from remote and update
+            let hasStaleRecurrence = results.contains { $0.isRecurring && $0.recurrenceUnit == nil }
+            if hasStaleRecurrence && networkMonitor.isConnected {
+                let remoteCountdowns = try await remoteRepository.getCountdownsByGroupId(groupId)
+                for remote in remoteCountdowns {
+                    if let local = localCountdowns.first(where: { $0.id == remote.id }) {
+                        local.update(from: remote)
+                    }
+                }
+                try? modelContext.save()
+                return remoteCountdowns
+            }
+
+            return results
         }
 
         // Fallback to remote
@@ -387,6 +414,9 @@ final class CachedCountdownRepository {
         local.groupId = countdown.groupId
         local.reminderOffsetMinutes = countdown.reminderOffsetMinutes
         local.isRecurring = countdown.isRecurring
+        local.recurrenceUnit = countdown.recurrenceUnit?.rawValue
+        local.recurrenceInterval = countdown.recurrenceInterval
+        local.recurrenceEndDate = countdown.recurrenceEndDate
         local.markAsModified()
 
         // When online, try remote first with local fallback
@@ -507,6 +537,9 @@ final class CachedCountdownRepository {
             local.imageUrl = update.imageUrl
             local.reminderOffsetMinutes = update.reminderOffsetMinutes
             local.isRecurring = update.isRecurring
+            local.recurrenceUnit = update.recurrenceUnit?.rawValue
+            local.recurrenceInterval = update.recurrenceInterval
+            local.recurrenceEndDate = update.recurrenceEndDate
             local.markAsModified()
         }
 

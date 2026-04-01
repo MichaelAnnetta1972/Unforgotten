@@ -114,6 +114,7 @@ struct ProfileCategoryListView: View {
     @State private var medicalListHeight: CGFloat = 0
     @State private var giftListHeight: CGFloat = 0
     @State private var clothingListHeight: CGFloat = 0
+    @State private var skipNextReload = false
 
     /// Whether to use side panel presentation (iPad full-screen)
     private var useSidePanel: Bool {
@@ -469,6 +470,12 @@ struct ProfileCategoryListView: View {
                 return
             }
 
+            // Skip reload if we just updated locally (e.g., gift status change)
+            if skipNextReload {
+                skipNextReload = false
+                return
+            }
+
             Task {
                 // Small delay to allow server transaction to commit
                 try? await Task.sleep(nanoseconds: 500_000_000)
@@ -642,6 +649,7 @@ struct ProfileCategoryListView: View {
             if let index = currentDetails.firstIndex(where: { $0.id == detail.id }) {
                 currentDetails[index] = saved
             }
+            skipNextReload = true
             NotificationCenter.default.post(name: .profileDetailsDidChange, object: nil, userInfo: ["profileId": profile.id])
         } catch {
             #if DEBUG

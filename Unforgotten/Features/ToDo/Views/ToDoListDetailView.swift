@@ -19,7 +19,9 @@ struct ToDoListDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showingDueDatePicker = false
     @State private var focusedItemId: UUID?
+    @State private var showFamilySharingSheet = false
     @FocusState private var newItemFocused: Bool
+    @FocusState private var titleFieldFocused: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(HeaderStyleManager.self) private var headerStyleManager
@@ -93,6 +95,7 @@ struct ToDoListDetailView: View {
                                     .foregroundColor(.textPrimary)
                                     .lineLimit(1...5)
                                     .multilineTextAlignment(.leading)
+                                    .focused($titleFieldFocused)
                                     .onChange(of: viewModel.listTitle) { _, _ in
                                         viewModel.saveTitle()
                                     }
@@ -186,6 +189,26 @@ struct ToDoListDetailView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                    }
+
+                    // Sharing Info Header (shown when shared by someone or shared with others)
+                    if viewModel.isSharedWithMe || viewModel.shareToFamily {
+                        Section {
+                            sharingInfoBanner
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
+                    }
+
+                    // Family Sharing (only for list owner, not for shared-with-me lists)
+                    if !viewModel.isSharedWithMe && appState.hasFamilyAccess {
+                        Section {
+                            familySharingSection
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
                     }
 
                     // To Do Items
@@ -334,6 +357,17 @@ struct ToDoListDetailView: View {
         } message: {
             Text("Are you sure you want to delete '\(typeToDelete?.name ?? "")'?")
         }
+        .sheet(isPresented: $showFamilySharingSheet) {
+            FamilySharingSheet(
+                isEnabled: $viewModel.shareToFamily,
+                selectedMemberIds: $viewModel.selectedMemberIds,
+                onDismiss: {
+                    showFamilySharingSheet = false
+                    Task { await viewModel.saveSharing(appState: appState) }
+                }
+            )
+            .environmentObject(appState)
+        }
         .alert("Delete List", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -352,11 +386,18 @@ struct ToDoListDetailView: View {
             Task { await viewModel.loadData(appState: appState) }
         }
         .onAppear {
-            // Only auto-focus for newly created lists
+            // Auto-focus title field for newly created lists
             if isNewList {
-                showKeyboardToolbar = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    newItemFocused = true
+                    titleFieldFocused = true
+                }
+            }
+        }
+        .onDisappear {
+            // Auto-delete new lists that were left empty
+            if isNewList && viewModel.listTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.items.isEmpty {
+                Task {
+                    await viewModel.deleteList()
                 }
             }
         }
@@ -374,6 +415,84 @@ struct ToDoListDetailView: View {
         Task {
             await viewModel.deleteList()
             dismiss()
+        }
+    }
+
+    // MARK: - Sharing Info Banner
+    @ViewBuilder
+    private var sharingInfoBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 16))
+                .foregroundColor(appAccentColor)
+
+            if viewModel.isSharedWithMe {
+                if let name = viewModel.sharedByDisplayName {
+                    Text("Shared by \(name)")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                } else {
+                    Text("Shared with you")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                }
+            } else if viewModel.shareToFamily && !viewModel.sharedWithDisplayNames.isEmpty {
+                Text("Shared with \(viewModel.sharedWithDisplayNames.joined(separator: ", "))")
+                    .font(.appBody)
+                    .foregroundColor(.textPrimary)
+            }
+
+            Spacer()
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(appAccentColor.opacity(0.15))
+        .cornerRadius(AppDimensions.cardCornerRadius)
+    }
+
+    // MARK: - Family Sharing Section
+    @ViewBuilder
+    private var familySharingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("FAMILY SHARING")
+                .font(.appCaption)
+                .foregroundColor(appAccentColor)
+
+            Button {
+                showFamilySharingSheet = true
+            } label: {
+                HStack {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 18))
+                        .foregroundColor(viewModel.shareToFamily ? appAccentColor : .textSecondary)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.shareToFamily ? "Shared" : "Share with Family")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        if viewModel.shareToFamily && !viewModel.sharedWithDisplayNames.isEmpty {
+                            Text(viewModel.sharedWithDisplayNames.joined(separator: ", "))
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                                .lineLimit(1)
+                        } else if !viewModel.shareToFamily {
+                            Text("Let family members view and edit this list")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.textSecondary)
+                }
+                .padding(AppDimensions.cardPadding)
+                .background(Color.appBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
     }
 

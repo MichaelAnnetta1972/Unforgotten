@@ -108,6 +108,7 @@ struct iPadRootView: View {
     @State private var showSettingsSwitchAccount = false
     @State private var showSettingsEditAccountName = false
     @State private var showSettingsAdminPanel = false
+    @State private var showSettingsHelpTutorials = false
     @State private var showSettingsUpgrade = false
     @State private var showSettingsJoinAccount = false
 
@@ -248,7 +249,12 @@ struct iPadRootView: View {
             .environment(\.iPadAppointmentFilterBinding, $selectedAppointmentTypeFilter)
             .environment(\.iPadAddToDoListAction, {
                 if PremiumLimitsManager.shared.canCreateToDoList(appState: appState, currentCount: toDoListCount) {
-                    showAddToDoList = true
+                    Task {
+                        if let newList = await toDoListsViewModel.createListAsync(title: "", type: nil, dueDate: nil) {
+                            toDoListToView = newList
+                            showViewToDoList = true
+                        }
+                    }
                 } else {
                     showUpgradePrompt = true
                 }
@@ -386,6 +392,7 @@ struct iPadRootView: View {
             .environment(\.iPadShowSwitchAccountAction, { showSettingsSwitchAccount = true })
             .environment(\.iPadShowEditAccountNameAction, { showSettingsEditAccountName = true })
             .environment(\.iPadShowAdminPanelAction, { showSettingsAdminPanel = true })
+            .environment(\.iPadShowHelpTutorialsAction, { showSettingsHelpTutorials = true })
             .environment(\.iPadShowUpgradeAction, { showSettingsUpgrade = true })
             .environment(\.iPadShowJoinAccountAction, { showSettingsJoinAccount = true })
     }
@@ -503,7 +510,12 @@ struct iPadRootView: View {
             onAddToDoList: {
                 if PremiumLimitsManager.shared.canCreateToDoList(appState: appState, currentCount: toDoListCount) {
                     selectedContent = .todoLists
-                    showAddToDoList = true
+                    Task {
+                        if let newList = await toDoListsViewModel.createListAsync(title: "", type: nil, dueDate: nil) {
+                            toDoListToView = newList
+                            showViewToDoList = true
+                        }
+                    }
                 } else {
                     showUpgradePrompt = true
                 }
@@ -643,6 +655,7 @@ struct iPadRootView: View {
             showSettingsSwitchAccount: $showSettingsSwitchAccount,
             showSettingsEditAccountName: $showSettingsEditAccountName,
             showSettingsAdminPanel: $showSettingsAdminPanel,
+            showSettingsHelpTutorials: $showSettingsHelpTutorials,
             showSettingsUpgrade: $showSettingsUpgrade,
             showSettingsJoinAccount: $showSettingsJoinAccount,
             showAddCountdown: $showAddCountdown,

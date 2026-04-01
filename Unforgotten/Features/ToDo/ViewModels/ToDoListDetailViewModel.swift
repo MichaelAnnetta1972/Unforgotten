@@ -18,8 +18,16 @@ class ToDoListDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: Error?
 
+    // Sharing state
+    @Published var shareToFamily = false
+    @Published var selectedMemberIds: Set<UUID> = []
+    @Published var sharedByDisplayName: String?
+    @Published var sharedWithDisplayNames: [String] = []
+    @Published var isSharedWithMe = false
+
     private var repository: ToDoRepositoryProtocol?
     private var accountId: UUID?
+    private var existingShareId: UUID?
 
     /// Default type names shown when user has no custom types
     private static let defaultTypeNames = ["Personal", "Shopping", "Work", "Errands"]
@@ -68,6 +76,99 @@ class ToDoListDetailViewModel: ObservableObject {
             }
 
             availableTypes = types
+
+            // Load sharing state
+            await loadSharingState(appState: appState, accountId: accountId)
+        } catch {
+            self.error = error
+        }
+    }
+
+    private func loadSharingState(appState: AppState, accountId: UUID) async {
+        do {
+            // Check if this list was shared TO the current user
+            if list.isSharedWithMe {
+                isSharedWithMe = true
+                sharedByDisplayName = list.sharedByDisplayName
+
+                // If we don't have the name yet, try to resolve it
+                if sharedByDisplayName == nil, let sharedBy = list.sharedByUserId {
+                    let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                    if let sharerProfile = profiles.first(where: {
+                        ($0.linkedUserId ?? $0.sourceUserId) == sharedBy
+                    }) {
+                        sharedByDisplayName = sharerProfile.displayName
+                    }
+                }
+                return
+            }
+
+            // Check if this list is shared BY the current user
+            if let share = try await appState.familyCalendarRepository.getShareForEvent(
+                eventType: .todoList, eventId: list.id
+            ) {
+                existingShareId = share.id
+                shareToFamily = true
+                let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: share.id)
+                selectedMemberIds = Set(members.map { $0.memberUserId })
+
+                // Resolve member display names
+                let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                var names: [String] = []
+                for member in members {
+                    if let profile = profiles.first(where: {
+                        ($0.linkedUserId ?? $0.sourceUserId) == member.memberUserId
+                    }) {
+                        names.append(profile.displayName)
+                    }
+                }
+                sharedWithDisplayNames = names
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load sharing state: \(error)")
+            #endif
+        }
+    }
+
+    func saveSharing(appState: AppState) async {
+        guard let accountId = self.accountId ?? appState.currentAccount?.id else { return }
+
+        do {
+            // Delete existing share if any
+            try await appState.familyCalendarRepository.deleteShareForEvent(
+                eventType: .todoList, eventId: list.id
+            )
+
+            // Create new share if enabled and members selected
+            if shareToFamily && !selectedMemberIds.isEmpty {
+                let share = try await appState.familyCalendarRepository.createShare(
+                    accountId: accountId,
+                    eventType: .todoList,
+                    eventId: list.id,
+                    memberUserIds: Array(selectedMemberIds)
+                )
+                existingShareId = share.id
+
+                // Resolve display names for the header
+                let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                var names: [String] = []
+                for memberId in selectedMemberIds {
+                    if let profile = profiles.first(where: {
+                        ($0.linkedUserId ?? $0.sourceUserId) == memberId
+                    }) {
+                        names.append(profile.displayName)
+                    }
+                }
+                sharedWithDisplayNames = names
+                list.isSharedWithOthers = true
+                list.sharedWithDisplayNames = names
+            } else {
+                existingShareId = nil
+                sharedWithDisplayNames = []
+                list.isSharedWithOthers = false
+                list.sharedWithDisplayNames = []
+            }
         } catch {
             self.error = error
         }

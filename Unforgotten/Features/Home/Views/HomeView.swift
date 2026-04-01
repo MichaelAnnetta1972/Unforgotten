@@ -121,6 +121,7 @@ struct HomeView: View {
                                 isReordering.toggle()
                             }
                         },
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Home.mp4",
                         useLogo: true,
                         logoImageName: "unforgotten-logo"
                     )

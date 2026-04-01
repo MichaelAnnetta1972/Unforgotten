@@ -189,7 +189,7 @@ struct NotificationContentView: View {
                 .font(NotificationTheme.bodyFont)
                 .foregroundColor(NotificationTheme.textPrimary)
             if let eventType = data.sharedEventType {
-                let typeDisplay = eventType == "appointment" ? "Appointment" : "Countdown"
+                let typeDisplay = eventType == "appointment" ? "Appointment" : "Event"
                 detailRow(label: "Type", value: typeDisplay)
             }
             Spacer()

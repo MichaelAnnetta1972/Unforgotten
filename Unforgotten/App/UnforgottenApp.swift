@@ -96,8 +96,9 @@ enum DailySummaryBackgroundTask {
         // Schedule the next refresh immediately so we don't miss tomorrow
         scheduleNextRefresh()
 
-        // Clear yesterday's suppression so the new day's activity can start
+        // Clear yesterday's suppression and foreground flag so the new day's activity can start
         DailySummaryLiveActivitySuppression.clearSuppression()
+        DailySummaryLiveActivitySuppression.clearForegroundStarted()
 
         // Promote pre-cached tomorrow data to today's slot so we have valid data
         WidgetDataStore.promoteTomorrowToToday()
@@ -115,7 +116,7 @@ enum DailySummaryBackgroundTask {
 
             // Build content state from the promoted widget data (no repos needed)
             let contentState = buildContentStateFromWidgetData()
-            let attributes = DailySummaryAttributes(date: Date())
+            let attributes = DailySummaryAttributes(date: ISO8601DateFormatter().string(from: Date()))
             let content = ActivityContent(state: contentState, staleDate: nil)
 
             do {
@@ -214,6 +215,7 @@ struct UnforgottenApp: App {
     @State private var headerStyleManager = HeaderStyleManager()
     @State private var featureVisibility = FeatureVisibilityManager()
     @State private var showPrivacyOverlay = false
+    @State private var hasCompletedInitialLaunch = false
     @Environment(\.scenePhase) private var scenePhase
 
     // MARK: - Local Storage
@@ -253,6 +255,10 @@ struct UnforgottenApp: App {
                         featureVisibilityManager: featureVisibility
                     )
                 }
+
+                // Start observing push-to-start token for Live Activities.
+                // This runs once on launch and continuously observes token updates.
+                DailySummaryLiveActivityService.shared.observePushToStartToken()
             }
             .onChange(of: appState.currentAccount) { _, newAccount in
                 // When account changes, load preferences from Supabase
@@ -316,10 +322,14 @@ struct UnforgottenApp: App {
                     }
 
                     // Update widget and Live Activity with latest briefing data
-                    Task {
-                        await WidgetBriefingService.shared.updateWidgetData(appState: appState)
-                        await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
+                    // Skip on initial launch — AppState.init already calls startOrUpdateDailySummary
+                    if hasCompletedInitialLaunch {
+                        Task {
+                            await WidgetBriefingService.shared.updateWidgetData(appState: appState)
+                            await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
+                        }
                     }
+                    hasCompletedInitialLaunch = true
 
                 case .inactive, .background:
                     // Show privacy overlay to hide sensitive content in app switcher
@@ -335,7 +345,6 @@ struct UnforgottenApp: App {
                     Task {
                         await WidgetBriefingService.shared.cacheTomorrowsData(appState: appState)
                         await DailySummaryLiveActivityService.shared.uploadBriefingCache(appState: appState)
-                        await NotificationService.shared.scheduleMorningFallbackNotification()
                     }
 
                 @unknown default:
@@ -506,6 +515,7 @@ final class AppState: ObservableObject {
     let familyCalendarRepository = FamilyCalendarRepository()
     let profileSyncRepository = ProfileSyncRepository()
     let profileSharingPreferencesRepository = ProfileSharingPreferencesRepository()
+    let profileGroupRepository = ProfileGroupRepository()
 
     // MARK: - Cached Repositories (offline-first)
     let cachedProfileRepository: CachedProfileRepository
@@ -544,14 +554,21 @@ final class AppState: ObservableObject {
 
     // MARK: - Subscription Tier
 
-    /// The user's current subscription tier
+    /// The user's current subscription tier.
+    /// Priority: complimentary access > SubscriptionManager (StoreKit truth) > UserDefaults > legacy key
     var subscriptionTier: SubscriptionTier {
         // Check for complimentary access first (grants Family Plus)
         if currentAppUser?.hasComplimentaryAccess == true {
             return .familyPlus
         }
 
-        // Check stored subscription tier
+        // Check SubscriptionManager (StoreKit source of truth)
+        let storeKitTier = SubscriptionManager.shared.subscriptionTier
+        if storeKitTier != .free {
+            return storeKitTier
+        }
+
+        // Check stored subscription tier (may be set before StoreKit refreshes)
         if let tierString = UserDefaults.standard.string(forKey: subscriptionTierKey),
            let tier = SubscriptionTier(rawValue: tierString) {
             return tier
@@ -581,6 +598,12 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(tier.rawValue, forKey: subscriptionTierKey)
         // Clear legacy key if present
         UserDefaults.standard.removeObject(forKey: legacyPremiumKey)
+        objectWillChange.send()
+    }
+
+    /// Refresh subscription status from StoreKit and notify observers
+    func refreshSubscriptionStatus() async {
+        await SubscriptionManager.shared.refreshSubscriptionStatus()
         objectWillChange.send()
     }
 
@@ -650,12 +673,13 @@ final class AppState: ObservableObject {
 
         Task {
             await checkAuthState()
+            // Verify subscription status with Apple on launch
+            await SubscriptionManager.shared.refreshSubscriptionStatus()
+            objectWillChange.send()
             // Request notification permissions
             _ = await NotificationService.shared.requestPermission()
             // Re-schedule notifications on app launch
             await rescheduleNotifications()
-            // Schedule daily morning briefing trigger
-            await NotificationService.shared.scheduleMorningBriefingTrigger()
             // Update widget with today's briefing data
             await WidgetBriefingService.shared.updateWidgetData(appState: self)
             // Start or update Lock Screen Live Activity with today's summary
@@ -721,8 +745,8 @@ final class AppState: ObservableObject {
             await syncAppUser(userId: user.id, email: user.email ?? "", appleDisplayName: appleDisplayName)
             await loadAccountData()
             await checkMoodPrompt()
-            // Register any device token that arrived before authentication
-            await DeviceTokenRepository.shared.registerPendingToken()
+            // Ensure device token is registered for push notifications
+            await DeviceTokenRepository.shared.ensureTokenRegistered(userId: user.id)
         } else {
             isAuthenticated = false
             isAppAdmin = false
@@ -1094,7 +1118,10 @@ final class AppState: ObservableObject {
                             notes: countdown.notes,
                             imageUrl: countdown.imageUrl,
                             groupId: groupId,
-                            isRecurring: countdown.isRecurring
+                            isRecurring: countdown.isRecurring,
+                            recurrenceUnit: countdown.recurrenceUnit,
+                            recurrenceInterval: countdown.recurrenceInterval,
+                            recurrenceEndDate: countdown.recurrenceEndDate
                         )
                         _ = try await countdownRepository.createCountdown(insert)
                     }

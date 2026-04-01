@@ -458,6 +458,9 @@ extension Notification.Name {
     /// Posted when a member's role has changed in an account
     /// userInfo keys: "accountId" (UUID), "userId" (UUID), "newRole" (String)
     static let memberRoleDidChange = Notification.Name("memberRoleDidChange")
+
+    /// Posted when profile groups have changed
+    static let profileGroupsDidChange = Notification.Name("profileGroupsDidChange")
 }
 
 // MARK: - Appointment Change Action
@@ -1072,6 +1075,10 @@ private struct iPadShowJoinAccountActionKey: EnvironmentKey {
     static let defaultValue: (() -> Void)? = nil
 }
 
+private struct iPadShowHelpTutorialsActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
 extension EnvironmentValues {
     var iPadShowInviteMemberAction: (() -> Void)? {
         get { self[iPadShowInviteMemberActionKey.self] }
@@ -1121,6 +1128,11 @@ extension EnvironmentValues {
     var iPadShowJoinAccountAction: (() -> Void)? {
         get { self[iPadShowJoinAccountActionKey.self] }
         set { self[iPadShowJoinAccountActionKey.self] = newValue }
+    }
+
+    var iPadShowHelpTutorialsAction: (() -> Void)? {
+        get { self[iPadShowHelpTutorialsActionKey.self] }
+        set { self[iPadShowHelpTutorialsActionKey.self] = newValue }
     }
 }
 

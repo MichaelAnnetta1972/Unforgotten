@@ -9,7 +9,6 @@ struct OnboardingPremiumView: View {
     let accentColor: Color
     let onContinue: () -> Void
 
-    @State private var products: [Product] = []
     @State private var selectedProduct: Product? = nil
     @State private var purchaseState: PurchaseState = .idle
     @State private var errorMessage: String? = nil
@@ -18,6 +17,8 @@ struct OnboardingPremiumView: View {
     @State private var selectedBillingPeriod: BillingPeriod = .monthly
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private let subscriptionManager = SubscriptionManager.shared
 
     private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
@@ -37,14 +38,6 @@ struct OnboardingPremiumView: View {
         case monthly
         case annual
     }
-
-    // Product IDs for StoreKit
-    private let productIds = [
-        "com.unforgotten.premium.monthly",
-        "com.unforgotten.premium.annual",
-        "com.unforgotten.family.monthly",
-        "com.unforgotten.family.annual"
-    ]
 
 
     var body: some View {
@@ -357,35 +350,23 @@ struct OnboardingPremiumView: View {
     // MARK: - StoreKit Methods
 
     private var productsForSelectedTier: [Product] {
-        let prefix = selectedTier == .premium ? "com.unforgotten.premium" : "com.unforgotten.family"
-        return products.filter { $0.id.hasPrefix(prefix) }
+        let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
+        return subscriptionManager.products(for: tier)
     }
 
     private func updateSelectedProduct() {
-        let tierProducts = productsForSelectedTier
-        let suffix = selectedBillingPeriod == .annual ? "annual" : "monthly"
-        selectedProduct = tierProducts.first { $0.id.contains(suffix) } ?? tierProducts.first
+        let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
+        let period: SubscriptionManager.BillingPeriod = selectedBillingPeriod == .annual ? .annual : .monthly
+        selectedProduct = subscriptionManager.product(for: tier, period: period)
     }
 
     private func loadProducts() async {
         purchaseState = .loading
-        do {
-            let storeProducts = try await Product.products(for: productIds)
-            await MainActor.run {
-                products = storeProducts
-                // Select monthly premium by default
-                selectedProduct = storeProducts.first { $0.id == "com.unforgotten.premium.monthly" }
-                    ?? storeProducts.first { $0.id.contains("premium") }
-                purchaseState = .idle
-            }
-        } catch {
-            #if DEBUG
-            print("Failed to load products: \(error)")
-            #endif
-            await MainActor.run {
-                purchaseState = .idle
-            }
-        }
+        await subscriptionManager.loadProducts()
+        // Select monthly premium by default
+        selectedProduct = subscriptionManager.product(for: .premium, period: .monthly)
+            ?? subscriptionManager.products(for: .premium).first
+        purchaseState = .idle
     }
 
     private func purchase() {
@@ -400,53 +381,25 @@ struct OnboardingPremiumView: View {
 
         Task {
             do {
-                let result = try await product.purchase()
+                let transaction = try await subscriptionManager.purchase(product)
 
-                switch result {
-                case .success(let verification):
-                    switch verification {
-                    case .verified(let transaction):
-                        await transaction.finish()
-                        await MainActor.run {
-                            // Determine tier from product ID
-                            let tier: SubscriptionTier = product.id.contains("family") ? .familyPlus : .premium
-                            onboardingData.isPremium = true
-                            onboardingData.subscriptionProductId = product.id
-                            onboardingData.subscriptionTier = tier
-                            purchaseState = .success
-                        }
-
-                    case .unverified(_, let error):
-                        await MainActor.run {
-                            errorMessage = "Purchase verification failed. Please try again."
-                            purchaseState = .idle
-                        }
-                        #if DEBUG
-                        print("Unverified transaction: \(error)")
-                        #endif
-                    }
-
-                case .userCancelled:
-                    await MainActor.run {
-                        purchaseState = .idle
-                    }
-
-                case .pending:
-                    await MainActor.run {
-                        errorMessage = "Purchase is pending approval."
-                        purchaseState = .idle
-                    }
-
-                @unknown default:
-                    await MainActor.run {
-                        purchaseState = .idle
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Purchase failed. Please try again."
+                if transaction != nil {
+                    // Purchase succeeded — SubscriptionManager already updated tier
+                    let tier: SubscriptionTier = product.id.contains("family") ? .familyPlus : .premium
+                    onboardingData.isPremium = true
+                    onboardingData.subscriptionProductId = product.id
+                    onboardingData.subscriptionTier = tier
+                    purchaseState = .success
+                } else {
+                    // User cancelled
                     purchaseState = .idle
                 }
+            } catch let error as SubscriptionError {
+                errorMessage = error.localizedDescription
+                purchaseState = .idle
+            } catch {
+                errorMessage = "Purchase failed. Please try again."
+                purchaseState = .idle
                 #if DEBUG
                 print("Purchase error: \(error)")
                 #endif

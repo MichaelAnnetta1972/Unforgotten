@@ -10,8 +10,15 @@ struct AddPlannedMealView: View {
     var prefillDate: Date?
     var prefillMealType: MealType?
 
-    @State private var selectedDate: Date = Date()
-    @State private var selectedMealType: MealType = .breakfast
+    @State private var selectedDate: Date
+    @State private var selectedMealType: MealType
+
+    init(prefillDate: Date? = nil, prefillMealType: MealType? = nil) {
+        self.prefillDate = prefillDate
+        self.prefillMealType = prefillMealType
+        self._selectedDate = State(initialValue: prefillDate ?? Date())
+        self._selectedMealType = State(initialValue: prefillMealType ?? .breakfast)
+    }
     @State private var selectedRecipe: Recipe?
     @State private var notes = ""
     @State private var isLoading = false
@@ -168,14 +175,6 @@ struct AddPlannedMealView: View {
                 }
             }
             .navigationBarHidden(true)
-        }
-        .onAppear {
-            if let date = prefillDate {
-                selectedDate = date
-            }
-            if let mealType = prefillMealType {
-                selectedMealType = mealType
-            }
         }
         .task {
             await loadRecipes()

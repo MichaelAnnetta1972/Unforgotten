@@ -9,6 +9,7 @@ import Supabase
 enum DailySummaryLiveActivitySuppression {
     private static let suppressedUntilKey = "dailySummaryLA_suppressedUntil"
     private static let lastStartedDayKey = "dailySummaryLA_lastStartedDay"
+    private static let lastForegroundStartedDayKey = "dailySummaryLA_lastForegroundStartedDay"
 
     /// Mark as suppressed until the start of tomorrow.
     static func suppressUntilTomorrow() {
@@ -37,13 +38,25 @@ enum DailySummaryLiveActivitySuppression {
         UserDefaults.standard.set(todayString, forKey: lastStartedDayKey)
     }
 
-    /// Whether we already started a Live Activity earlier today.
-    /// Used to distinguish "first open of the day" from "user dismissed it".
-    static func hasStartedToday() -> Bool {
-        guard let stored = UserDefaults.standard.string(forKey: lastStartedDayKey) else {
+    /// Record that we started a Live Activity from the foreground today.
+    /// Only foreground starts count for dismissal detection.
+    static func markForegroundStartedToday() {
+        let todayString = Self.dayString(for: Date())
+        UserDefaults.standard.set(todayString, forKey: lastForegroundStartedDayKey)
+    }
+
+    /// Whether we already started a Live Activity from the foreground earlier today.
+    /// Used to distinguish "first foreground open of the day" from "user dismissed it".
+    static func hasForegroundStartedToday() -> Bool {
+        guard let stored = UserDefaults.standard.string(forKey: lastForegroundStartedDayKey) else {
             return false
         }
         return stored == Self.dayString(for: Date())
+    }
+
+    /// Clear the foreground started flag (e.g. on new day).
+    static func clearForegroundStarted() {
+        UserDefaults.standard.removeObject(forKey: lastForegroundStartedDayKey)
     }
 
     private static func dayString(for date: Date) -> String {
@@ -62,6 +75,7 @@ enum DailySummaryLiveActivitySuppression {
 final class DailySummaryLiveActivityService {
     static let shared = DailySummaryLiveActivityService()
     private var pushTokenTask: Task<Void, Never>?
+    private var pushToStartTokenTask: Task<Void, Never>?
     private init() {}
 
     // MARK: - Start
@@ -89,7 +103,7 @@ final class DailySummaryLiveActivityService {
 
         let contentState = await buildContentState(appState: appState)
 
-        let attributes = DailySummaryAttributes(date: Date())
+        let attributes = DailySummaryAttributes(date: ISO8601DateFormatter().string(from: Date()))
         let content = ActivityContent(state: contentState, staleDate: nil)
 
         do {
@@ -99,6 +113,7 @@ final class DailySummaryLiveActivityService {
                 pushType: .token
             )
             DailySummaryLiveActivitySuppression.markStartedToday()
+            DailySummaryLiveActivitySuppression.markForegroundStartedToday()
             #if DEBUG
             print("✅ Daily Summary Live Activity started: \(activity.id)")
             #endif
@@ -129,6 +144,29 @@ final class DailySummaryLiveActivityService {
                 }
                 #endif
                 await LiveActivityTokenRepository.shared.registerToken(token)
+            }
+        }
+    }
+
+    // MARK: - Push-to-Start Token Observation
+
+    /// Observe the push-to-start token for DailySummaryAttributes.
+    /// This is a per-Activity-type token (not per-instance) that allows
+    /// the server to remotely START a new Live Activity via APNs push.
+    /// Call once on app launch.
+    func observePushToStartToken() {
+        // Cancel any previous observation
+        pushToStartTokenTask?.cancel()
+
+        pushToStartTokenTask = Task.detached {
+            for await tokenData in Activity<DailySummaryAttributes>.pushToStartTokenUpdates {
+                let token = tokenData.map { String(format: "%02x", $0) }.joined()
+                #if DEBUG
+                await MainActor.run {
+                    print("🔑 Push-to-start token: \(token)")
+                }
+                #endif
+                await LiveActivityTokenRepository.shared.registerPushToStartToken(token)
             }
         }
     }
@@ -178,8 +216,13 @@ final class DailySummaryLiveActivityService {
         if !activities.isEmpty {
             // Activity is still running — just update it
             await updateDailySummary(appState: appState)
-        } else if DailySummaryLiveActivitySuppression.hasStartedToday() {
-            // We started one today but it's gone — user dismissed it
+        } else if DailySummaryLiveActivitySuppression.isSuppressedNow() {
+            // User explicitly dismissed it — respect suppression
+            #if DEBUG
+            print("🚫 Daily Summary Live Activity is suppressed until tomorrow")
+            #endif
+        } else if DailySummaryLiveActivitySuppression.hasForegroundStartedToday() {
+            // We started one from the foreground today but it's gone — user dismissed it
             DailySummaryLiveActivitySuppression.suppressUntilTomorrow()
             #if DEBUG
             print("🚫 User dismissed Live Activity — suppressing until tomorrow")

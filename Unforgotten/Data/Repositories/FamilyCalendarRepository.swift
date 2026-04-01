@@ -177,6 +177,8 @@ final class FamilyCalendarRepository: FamilyCalendarRepositoryProtocol {
                 visibleAppointmentIds.insert(share.eventId)
             case .countdown:
                 visibleCountdownIds.insert(share.eventId)
+            case .todoList:
+                break // To-do list shares are handled separately
             }
         }
 

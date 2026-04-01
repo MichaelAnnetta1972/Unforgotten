@@ -165,7 +165,8 @@ struct CountdownEventsView: View {
                         showHomeButton: iPadHomeAction != nil,
                         homeAction: iPadHomeAction,
                         showAddButton: canEdit,
-                        addAction: canEdit ? openAddCountdown : nil
+                        addAction: canEdit ? openAddCountdown : nil,
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Events.mp4"
                     )
 
                     // Content

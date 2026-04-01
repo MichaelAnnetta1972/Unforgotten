@@ -25,6 +25,7 @@ struct iPadSettingsContentView: View {
     @Environment(\.iPadShowSwitchAccountAction) private var iPadShowSwitchAccountAction
     @Environment(\.iPadShowEditAccountNameAction) private var iPadShowEditAccountNameAction
     @Environment(\.iPadShowAdminPanelAction) private var iPadShowAdminPanelAction
+    @Environment(\.iPadShowHelpTutorialsAction) private var iPadShowHelpTutorialsAction
     @Environment(\.iPadShowUpgradeAction) private var iPadShowUpgradeAction
     @Environment(\.iPadShowJoinAccountAction) private var iPadShowJoinAccountAction
 
@@ -116,7 +117,6 @@ struct iPadSettingsContentView: View {
                                 if newValue {
                                     Task {
                                         _ = await NotificationService.shared.requestPermission()
-                                        await NotificationService.shared.scheduleMorningBriefingTrigger()
                                     }
                                 }
                             }
@@ -237,6 +237,17 @@ struct iPadSettingsContentView: View {
                                 ) {
                                     iPadShowAdminPanelAction?()
                                 }
+                            }
+                        }
+
+                        // Support section
+                        SettingsPanelSection(title: "SUPPORT") {
+                            SettingsPanelButtonRow(
+                                icon: "questionmark.circle.fill",
+                                title: "Help & Tutorials",
+                                isSelected: false
+                            ) {
+                                iPadShowHelpTutorialsAction?()
                             }
                         }
 

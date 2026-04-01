@@ -29,7 +29,7 @@ final class CachedProfileRepository {
     /// Get all profiles for an account from local cache, falling back to network if cache is empty
     func getProfiles(accountId: UUID) async throws -> [Profile] {
         let descriptor = FetchDescriptor<LocalProfile>(
-            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted },
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted && $0.deletedAt == nil },
             sortBy: [SortDescriptor<LocalProfile>(\.sortOrder), SortDescriptor<LocalProfile>(\.fullName)]
         )
 
@@ -138,8 +138,8 @@ final class CachedProfileRepository {
             seenIds.insert(local.id)
 
             // If this local profile's ID is not in the remote set and it's already synced,
-            // it means it was deleted on the server
-            if !remoteIds.contains(local.id) && local.isSynced {
+            // it means it was deleted on the server (but skip pending local deletes)
+            if !remoteIds.contains(local.id) && local.isSynced && !local.locallyDeleted {
                 modelContext.delete(local)
             }
         }
@@ -149,7 +149,7 @@ final class CachedProfileRepository {
         // Return the complete merged set from local cache (remote + local-only unsynced)
         // This ensures newly created but not-yet-synced profiles remain visible after a refresh
         let mergedDescriptor = FetchDescriptor<LocalProfile>(
-            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted },
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted && $0.deletedAt == nil },
             sortBy: [SortDescriptor<LocalProfile>(\.sortOrder), SortDescriptor<LocalProfile>(\.fullName)]
         )
         let mergedProfiles = try modelContext.fetch(mergedDescriptor)
@@ -170,7 +170,7 @@ final class CachedProfileRepository {
     /// Get a specific profile from local cache
     func getProfile(id: UUID) async throws -> Profile? {
         let descriptor = FetchDescriptor<LocalProfile>(
-            predicate: #Predicate { $0.id == id && !$0.locallyDeleted }
+            predicate: #Predicate { $0.id == id && !$0.locallyDeleted && $0.deletedAt == nil }
         )
 
         return try modelContext.fetch(descriptor).first?.toRemote()
@@ -180,7 +180,7 @@ final class CachedProfileRepository {
     func getPrimaryProfile(accountId: UUID) async throws -> Profile? {
         let descriptor = FetchDescriptor<LocalProfile>(
             predicate: #Predicate {
-                $0.accountId == accountId && $0.type == "primary" && !$0.locallyDeleted
+                $0.accountId == accountId && $0.type == "primary" && !$0.locallyDeleted && $0.deletedAt == nil
             }
         )
 
@@ -196,7 +196,7 @@ final class CachedProfileRepository {
     func getProfilesWithBirthdays(accountId: UUID) async throws -> [Profile] {
         let descriptor = FetchDescriptor<LocalProfile>(
             predicate: #Predicate {
-                $0.accountId == accountId && $0.birthday != nil && !$0.locallyDeleted
+                $0.accountId == accountId && $0.birthday != nil && !$0.locallyDeleted && $0.deletedAt == nil
             },
             sortBy: [SortDescriptor<LocalProfile>(\.fullName)]
         )
@@ -355,14 +355,14 @@ final class CachedProfileRepository {
         return local.toRemote()
     }
 
-    /// Delete a profile
+    /// Soft-delete a profile (sets deletedAt, moves it to Recently Deleted)
     func deleteProfile(id: UUID) async throws {
         let descriptor = FetchDescriptor<LocalProfile>(
             predicate: #Predicate { $0.id == id }
         )
 
         if let local = try modelContext.fetch(descriptor).first {
-            local.locallyDeleted = true
+            local.deletedAt = Date()
             local.markAsModified()
 
             // Queue for sync
@@ -377,6 +377,39 @@ final class CachedProfileRepository {
         }
     }
 
+    /// Get soft-deleted profiles for an account
+    func getDeletedProfiles(accountId: UUID) async throws -> [Profile] {
+        try await remoteRepository.getDeletedProfiles(accountId: accountId)
+    }
+
+    /// Restore a soft-deleted profile
+    func restoreProfile(id: UUID) async throws -> Profile {
+        let restored = try await remoteRepository.restoreProfile(id: id)
+
+        // Update local cache
+        let descriptor = FetchDescriptor<LocalProfile>(predicate: #Predicate { $0.id == id })
+        if let local = try? modelContext.fetch(descriptor).first {
+            local.deletedAt = nil
+            local.locallyDeleted = false
+            local.isSynced = true
+            try? modelContext.save()
+        }
+
+        return restored
+    }
+
+    /// Permanently delete a soft-deleted profile
+    func permanentlyDeleteProfile(id: UUID) async throws {
+        try await remoteRepository.permanentlyDeleteProfile(id: id)
+
+        // Remove from local cache
+        let descriptor = FetchDescriptor<LocalProfile>(predicate: #Predicate { $0.id == id })
+        if let local = try? modelContext.fetch(descriptor).first {
+            modelContext.delete(local)
+            try? modelContext.save()
+        }
+    }
+
     // MARK: - Profile Details
 
     /// Get details for a profile, falling back to network if cache is empty
@@ -388,11 +421,13 @@ final class CachedProfileRepository {
             descriptor = FetchDescriptor<LocalProfileDetail>(
                 predicate: #Predicate {
                     $0.profileId == profileId && $0.category == categoryValue && !$0.locallyDeleted
-                }
+                },
+                sortBy: [SortDescriptor(\.label)]
             )
         } else {
             descriptor = FetchDescriptor<LocalProfileDetail>(
-                predicate: #Predicate { $0.profileId == profileId && !$0.locallyDeleted }
+                predicate: #Predicate { $0.profileId == profileId && !$0.locallyDeleted },
+                sortBy: [SortDescriptor(\.label)]
             )
         }
 

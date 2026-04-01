@@ -20,7 +20,7 @@ struct CalendarMemberFilterView: View {
     var body: some View {
         ZStack {
             // Dimmed background - covers entire screen
-            Color.cardBackground.opacity(0.8)
+            Color.appBackground.opacity(0.8)
                 .ignoresSafeArea()
                 .onTapGesture {
                     dismissPanel()
@@ -30,7 +30,8 @@ struct CalendarMemberFilterView: View {
             HStack {
                 Spacer()
 
-                VStack(spacing: 16) {
+                ScrollView {
+                    VStack(spacing: 16) {
                     // Header
                     HStack {
                         Text("Filter by Member")
@@ -68,7 +69,7 @@ struct CalendarMemberFilterView: View {
                         }
                         .padding(.vertical, 24)
                     } else {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 18) {
 
                             ForEach(membersWithEvents) { member in
                                 MemberFilterRow(
@@ -91,7 +92,7 @@ struct CalendarMemberFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.cardBackgroundSoft)
+                                        .background(Color.white.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
 
@@ -103,7 +104,7 @@ struct CalendarMemberFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.cardBackgroundSoft)
+                                        .background(Color.white.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
                             }
@@ -136,17 +137,24 @@ struct CalendarMemberFilterView: View {
                  //           .cornerRadius(AppDimensions.cardCornerRadius)
                  //   }
                  //   .padding(.top, 8)
+                    }
+                    .padding(AppDimensions.cardPadding)
                 }
-                .padding(AppDimensions.cardPadding)
+                .scrollBounceBehavior(.basedOnSize)
                 .frame(width: panelWidth)
-                .background(Color.cardBackgroundLight)
+                .frame(maxHeight: UIScreen.main.bounds.height * 0.80)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(Color.cardBackground.opacity(0.8))
                 .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
-                .shadow(color: .black.opacity(0.3), radius: 12, x: -4, y: 0)
                 .offset(x: offsetX)
                 .opacity(opacity)
                 .padding(.trailing, 20)
+
             }
-            .frame(maxHeight: .infinity, alignment: .center)
+
+           
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.top, 60)
         }
         .transition(.opacity)
         .onAppear {
@@ -219,13 +227,13 @@ struct MemberFilterRow: View {
                     .font(.system(size: 24))
                     .foregroundColor(isSelected ? appAccentColor : .textSecondary)
             }
-            .padding(AppDimensions.cardPadding)
-            .background(style == .filled ? Color.cardBackgroundSoft.opacity(0.4) : Color.clear)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                    .stroke(style == .outlined ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1)
-            )
-            .cornerRadius(AppDimensions.cardCornerRadius)
+            //.padding(AppDimensions.cardPadding)
+            //.background(style == .filled ? Color.cardBackgroundSoft.opacity(0.4) : Color.clear)
+            //.overlay(
+            //     RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+            //         .stroke(style == .outlined ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1)
+            // )
+            // .cornerRadius(AppDimensions.cardCornerRadius)
         }
         .buttonStyle(PlainButtonStyle())
     }

@@ -34,6 +34,9 @@ final class LocalProfile {
     var isLocalOnly: Bool
     var syncConnectionId: UUID?
 
+    // MARK: - Soft Delete
+    var deletedAt: Date?
+
     // MARK: - Sync Properties
     var isSynced: Bool
     var locallyDeleted: Bool
@@ -65,6 +68,7 @@ final class LocalProfile {
         syncedFields: [String]? = nil,
         isLocalOnly: Bool = false,
         syncConnectionId: UUID? = nil,
+        deletedAt: Date? = nil,
         isSynced: Bool = false,
         locallyDeleted: Bool = false
     ) {
@@ -93,6 +97,7 @@ final class LocalProfile {
         self.syncedFields = syncedFields
         self.isLocalOnly = isLocalOnly
         self.syncConnectionId = syncConnectionId
+        self.deletedAt = deletedAt
         self.isSynced = isSynced
         self.locallyDeleted = locallyDeleted
     }
@@ -125,6 +130,7 @@ final class LocalProfile {
             syncedFields: remote.syncedFields,
             isLocalOnly: remote.isLocalOnly,
             syncConnectionId: remote.syncConnectionId,
+            deletedAt: remote.deletedAt,
             isSynced: true,
             locallyDeleted: false
         )
@@ -157,7 +163,8 @@ final class LocalProfile {
             sourceUserId: sourceUserId,
             syncedFields: syncedFields,
             isLocalOnly: isLocalOnly,
-            syncConnectionId: syncConnectionId
+            syncConnectionId: syncConnectionId,
+            deletedAt: deletedAt
         )
     }
 
@@ -187,6 +194,7 @@ final class LocalProfile {
         self.syncedFields = remote.syncedFields
         self.isLocalOnly = remote.isLocalOnly
         self.syncConnectionId = remote.syncConnectionId
+        self.deletedAt = remote.deletedAt
         self.isSynced = true
     }
 

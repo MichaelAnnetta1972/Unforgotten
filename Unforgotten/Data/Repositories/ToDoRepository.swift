@@ -28,6 +28,10 @@ protocol ToDoRepositoryProtocol {
     func updateItem(_ item: ToDoItem) async throws
     func deleteItem(id: UUID) async throws
     func reorderItems(listId: UUID, items: [ToDoItem]) async throws
+
+    // Sharing
+    func getSharedListIds(userId: UUID) async throws -> [UUID]
+    func getListsByIds(_ ids: [UUID]) async throws -> [ToDoList]
 }
 
 // MARK: - Date-Only Encoding Helper
@@ -309,5 +313,60 @@ class ToDoRepository: ToDoRepositoryProtocol {
         for item in items {
             try await updateItem(item)
         }
+    }
+
+    // MARK: - Sharing
+
+    func getSharedListIds(userId: UUID) async throws -> [UUID] {
+        let response = try await client
+            .rpc("get_shared_todo_list_ids", params: ["p_user_id": userId.uuidString])
+            .execute()
+
+        let data = response.data
+        guard !data.isEmpty else { return [] }
+
+        let json = try JSONSerialization.jsonObject(with: data)
+
+        // Format 1: Array of strings ["uuid1", "uuid2", ...]
+        if let strings = json as? [String] {
+            return strings.compactMap { UUID(uuidString: $0) }
+        }
+
+        // Format 2: Array of objects [{"get_shared_todo_list_ids": "uuid"}, ...]
+        if let objects = json as? [[String: Any]] {
+            return objects.compactMap { dict in
+                if let uuidString = dict["get_shared_todo_list_ids"] as? String {
+                    return UUID(uuidString: uuidString)
+                }
+                if let first = dict.values.first as? String {
+                    return UUID(uuidString: first)
+                }
+                return nil
+            }
+        }
+
+        return []
+    }
+
+    func getListsByIds(_ ids: [UUID]) async throws -> [ToDoList] {
+        guard !ids.isEmpty else { return [] }
+
+        let lists: [ToDoList] = try await client
+            .from(TableName.todoLists)
+            .select()
+            .in("id", values: ids.map { $0.uuidString })
+            .order("updated_at", ascending: false)
+            .execute()
+            .value
+
+        // Fetch items for each list
+        var listsWithItems: [ToDoList] = []
+        for var list in lists {
+            let items = try await getItems(listId: list.id)
+            list.items = items
+            listsWithItems.append(list)
+        }
+
+        return listsWithItems
     }
 }

@@ -20,6 +20,7 @@ struct CalendarView: View {
 
     @State private var showingDayDetail = false
     @State private var showingFilterPanel = false
+    @State private var showingMemberFilter = false
 
     // Navigation state for event detail views (iPhone only - iPad uses iPadRootView navigation)
     @State private var selectedAppointment: Appointment?
@@ -56,7 +57,8 @@ struct CalendarView: View {
                             showBackButton: iPadHomeAction == nil,
                             backAction: { dismiss() },
                             showHomeButton: iPadHomeAction != nil,
-                            homeAction: iPadHomeAction
+                            homeAction: iPadHomeAction,
+                            tutorialVideoURL: "https://unforgottenapp.com/tutorials/Calendar.mp4"
                         )
 
                         ViewingAsBar()
@@ -84,6 +86,7 @@ struct CalendarView: View {
                                     backAction: { navigateToHomeTab?() ?? dismiss() },
                                     showHomeButton: false,
                                     homeAction: nil,
+                                    tutorialVideoURL: "https://unforgottenapp.com/tutorials/Calendar.mp4",
                                     heightOverride: AppDimensions.headerHeight
                                 )
 
@@ -159,6 +162,16 @@ struct CalendarView: View {
                     availableCustomTypeNames: viewModel.availableCustomTypeNames
                 )
             }
+
+            // Member filter panel overlay
+            if showingMemberFilter {
+                CalendarMemberFilterView(
+                    selectedMemberFilters: $viewModel.selectedMemberFilters,
+                    isPresented: $showingMemberFilter,
+                    membersWithEvents: viewModel.membersWithEvents,
+                    memberNameResolver: { viewModel.profileName(for: $0) }
+                )
+            }
         }
         .onChange(of: showingDayDetail) { _, isShowing in
             // Clear selection when modal is dismissed (iPhone)
@@ -172,6 +185,12 @@ struct CalendarView: View {
                 iPadCalendarFilterBinding?.wrappedValue = viewModel.selectedFilters
                 iPadCalendarCountdownTypeFilterBinding?.wrappedValue = viewModel.selectedCountdownTypes
                 iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
+            }
+        }
+        .onChange(of: showingMemberFilter) { _, isShowing in
+            // Sync member filter state to iPad bindings when panel closes
+            if !isShowing {
+                iPadCalendarMemberFilterBinding?.wrappedValue = viewModel.selectedMemberFilters
             }
         }
         .navigationDestination(isPresented: Binding(
@@ -362,40 +381,10 @@ struct CalendarView: View {
                     .cornerRadius(AppDimensions.cardCornerRadius)
             }
 
-            // Member Filter menu (only shown when Family tab is selected)
+            // Member Filter button (only shown when Family tab is selected)
             if viewModel.selectedTab == .family {
-                Menu {
-                    if viewModel.membersWithEvents.isEmpty {
-                        Text("No members with events")
-                    } else {
-                        ForEach(viewModel.membersWithEvents) { member in
-                            Button {
-                                toggleMemberFilter(member.userId)
-                            } label: {
-                                if viewModel.selectedMemberFilters.contains(member.userId) {
-                                    Label(viewModel.profileName(for: member), systemImage: "checkmark")
-                                } else {
-                                    Label(viewModel.profileName(for: member), systemImage: "person")
-                                }
-                            }
-                        }
-
-                        Divider()
-
-                        Button {
-                            viewModel.selectedMemberFilters = Set(viewModel.membersWithEvents.map { $0.userId })
-                            iPadCalendarMemberFilterBinding?.wrappedValue = viewModel.selectedMemberFilters
-                        } label: {
-                            Label("Select All", systemImage: "checkmark.circle")
-                        }
-
-                        Button {
-                            viewModel.selectedMemberFilters = []
-                            iPadCalendarMemberFilterBinding?.wrappedValue = viewModel.selectedMemberFilters
-                        } label: {
-                            Label("Clear All", systemImage: "xmark.circle")
-                        }
-                    }
+                Button {
+                    showingMemberFilter = true
                 } label: {
                     Image(systemName: !viewModel.selectedMemberFilters.isEmpty
                         ? "person.2.circle.fill"
@@ -408,7 +397,6 @@ struct CalendarView: View {
                         .background(Color.cardBackgroundSoft)
                         .cornerRadius(AppDimensions.cardCornerRadius)
                 }
-                .tint(appAccentColor)
             }
         }
     }

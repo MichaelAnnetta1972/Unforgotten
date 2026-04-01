@@ -68,13 +68,17 @@ final class SupabaseManager {
                 return date
             }
 
-            // Format 5: Time-only (e.g., "04:00:00" from PostgreSQL time column)
+            // Format 5: Time-only from PostgreSQL time/timetz columns
+            // Handles: "04:00:00", "14:30:00.000000", "14:30:00+00", "14:30:00+00:00"
             // Convert to today's date with the specified time using local timezone
             // This ensures the time displayed matches what the user originally entered
-            if dateString.range(of: "^\\d{2}:\\d{2}:\\d{2}$", options: .regularExpression) != nil {
+            if dateString.range(of: "^\\d{2}:\\d{2}:\\d{2}", options: .regularExpression) != nil,
+               dateString.range(of: "^\\d{4}-", options: .regularExpression) == nil {
                 let calendar = Calendar.current
                 let today = calendar.startOfDay(for: Date())
-                let components = dateString.split(separator: ":").compactMap { Int($0) }
+                // Strip timezone offset and fractional seconds, keep just HH:mm:ss
+                let timeOnly = String(dateString.prefix(8))
+                let components = timeOnly.split(separator: ":").compactMap { Int($0) }
 
                 if components.count == 3 {
                     var dateComponents = calendar.dateComponents([.year, .month, .day], from: today)
@@ -185,6 +189,8 @@ enum TableName {
     static let deviceTokens = "device_tokens"
     static let liveActivityTokens = "live_activity_tokens"
     static let morningBriefingCache = "morning_briefing_cache"
+    static let profileGroups = "profile_groups"
+    static let profileGroupMembers = "profile_group_members"
 }
 
 // MARK: - Supabase Error

@@ -122,7 +122,8 @@ struct MedicationListView: View {
                                     showUpgradePrompt = true
                                 }
                             }
-                        } : nil
+                        } : nil,
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Medications.mp4"
                     )
 
                 // Viewing As Bar (shown when viewing another account)
@@ -2442,15 +2443,6 @@ struct AddMedicationView: View {
             ScrollView {
                 VStack(spacing: 24) {
 
-                    // Photo picker
-                    HStack {
-                        Spacer()
-                        ImageSourcePicker(
-                            selectedImage: $selectedImage,
-                            onImageSelected: { _ in }
-                        )
-                        Spacer()
-                    }
 
                     // Basic info
                     VStack(spacing: 16) {
@@ -2589,6 +2581,19 @@ struct AddMedicationView: View {
                             .font(.appCaption)
                             .foregroundColor(.medicalRed)
                     }
+
+
+                    // Photo picker
+                    HStack {
+                        Spacer()
+                        ImageSourcePicker(
+                            selectedImage: $selectedImage,
+                            onImageSelected: { _ in }
+                        )
+                        Spacer()
+                    }
+
+
                 }
                 .padding(AppDimensions.screenPadding)
             }

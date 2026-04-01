@@ -1212,7 +1212,39 @@ struct EditCountdownView: View {
             Text("This will delete all days of this multi-day event. This action cannot be undone.")
         }
         .task {
+            await refreshRecurrenceFields()
             await loadExistingFamilyShare()
+        }
+    }
+
+    /// Refresh recurrence and reminder fields from the latest data,
+    /// in case the local cache had stale/nil values when the view was initialized
+    private func refreshRecurrenceFields() async {
+        guard let groupId = countdown.groupId else { return }
+        do {
+            let groupCountdowns = try await appState.countdownRepository.getCountdownsByGroupId(groupId)
+            if let representative = groupCountdowns.first {
+                isRecurring = representative.isRecurring
+                if let unit = representative.recurrenceUnit {
+                    recurrenceUnit = unit
+                }
+                if let interval = representative.recurrenceInterval {
+                    recurrenceInterval = interval
+                }
+                if let endDate = representative.recurrenceEndDate {
+                    hasRecurrenceEndDate = true
+                    recurrenceEndDate = endDate
+                } else if !representative.isRecurring {
+                    hasRecurrenceEndDate = false
+                }
+                if let reminder = representative.reminderOffsetMinutes {
+                    reminderMinutes = reminder
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to refresh recurrence fields: \(error)")
+            #endif
         }
     }
 
@@ -1464,6 +1496,13 @@ struct EditGroupCountdownView: View {
     @State private var removePhoto = false
     @State private var showRecurrenceEndDatePicker = false
 
+    // Date range state
+    @State private var startDate: Date
+    @State private var endDate: Date
+    @State private var showStartDatePicker = false
+    @State private var showEndDatePicker = false
+    @State private var groupCountdowns: [Countdown] = []
+
     // Family sharing state
     @State private var shareToFamily = false
     @State private var selectedMemberIds: Set<UUID> = []
@@ -1501,6 +1540,8 @@ struct EditGroupCountdownView: View {
         self._recurrenceInterval = State(initialValue: countdown.recurrenceInterval ?? 1)
         self._hasRecurrenceEndDate = State(initialValue: countdown.recurrenceEndDate != nil)
         self._recurrenceEndDate = State(initialValue: countdown.recurrenceEndDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date())
+        self._startDate = State(initialValue: countdown.date)
+        self._endDate = State(initialValue: countdown.date)
     }
 
     private func dismissView() {
@@ -1558,7 +1599,7 @@ struct EditGroupCountdownView: View {
                         Image(systemName: "info.circle.fill")
                             .font(.system(size: 14))
                             .foregroundColor(appAccentColor)
-                        Text("Changes will apply to all days of this event. Individual dates and subtitles are not affected.")
+                        Text("Changes will apply to all days of this event. Individual subtitles are not affected.")
                             .font(.appCaption)
                             .foregroundColor(.textSecondary)
                     }
@@ -1571,6 +1612,52 @@ struct EditGroupCountdownView: View {
                     )
 
                     AppTextField(placeholder: "Title *", text: $title)
+
+                    // Date range section
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("Start Date")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Button {
+                                showStartDatePicker = true
+                            } label: {
+                                Text(hasTime ? startDate.formatted(date: .abbreviated, time: .shortened) : startDate.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.appBody)
+                                    .foregroundColor(appAccentColor)
+                            }
+                        }
+                        .padding()
+
+                        Divider()
+                            .padding(.horizontal, 16)
+
+                        HStack {
+                            Text("End Date")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Button {
+                                showEndDatePicker = true
+                            } label: {
+                                Text(hasTime ? endDate.formatted(date: .abbreviated, time: .shortened) : endDate.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.appBody)
+                                    .foregroundColor(appAccentColor)
+                            }
+                        }
+                        .padding()
+                    }
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    )
 
                     // Family sharing section
                     groupFamilySharingSection
@@ -1761,7 +1848,34 @@ struct EditGroupCountdownView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.appBackgroundLight)
         .task {
+            await loadGroupCountdowns()
             await loadExistingFamilyShare()
+        }
+        .onChange(of: startDate) { _, newDate in
+            if endDate < newDate {
+                endDate = newDate
+            }
+        }
+        .sheet(isPresented: $showStartDatePicker) {
+            CountdownDatePickerSheet(
+                title: "Start Date",
+                selection: $startDate,
+                hasTime: hasTime
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
+        }
+        .sheet(isPresented: $showEndDatePicker) {
+            CountdownDatePickerSheet(
+                title: "End Date",
+                selection: $endDate,
+                minimumDate: startDate,
+                hasTime: hasTime
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.appBackgroundLight)
         }
         .sheet(isPresented: $showFamilySharingSheet) {
             FamilySharingSheet(
@@ -1777,7 +1891,7 @@ struct EditGroupCountdownView: View {
             CountdownDatePickerSheet(
                 title: "Repeat End Date",
                 selection: $recurrenceEndDate,
-                minimumDate: countdown.date,
+                minimumDate: startDate,
                 hasTime: false
             )
             .presentationDetents([.medium])
@@ -1859,6 +1973,43 @@ struct EditGroupCountdownView: View {
                             .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
                     )
             .opacity(0.7)
+        }
+    }
+
+    private func loadGroupCountdowns() async {
+        do {
+            let countdowns = try await appState.countdownRepository.getCountdownsByGroupId(groupId)
+            let sorted = countdowns.sorted { $0.date < $1.date }
+            groupCountdowns = sorted
+            if let first = sorted.first, let last = sorted.last {
+                startDate = first.date
+                endDate = last.date
+            }
+
+            // Refresh recurrence and reminder state from the fetched data,
+            // in case the local cache had stale/nil values when the view was initialized
+            if let representative = sorted.first {
+                isRecurring = representative.isRecurring
+                if let unit = representative.recurrenceUnit {
+                    recurrenceUnit = unit
+                }
+                if let interval = representative.recurrenceInterval {
+                    recurrenceInterval = interval
+                }
+                if let endDate = representative.recurrenceEndDate {
+                    hasRecurrenceEndDate = true
+                    recurrenceEndDate = endDate
+                } else if !representative.isRecurring {
+                    hasRecurrenceEndDate = false
+                }
+                if let reminder = representative.reminderOffsetMinutes {
+                    reminderMinutes = reminder
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load group countdowns: \(error)")
+            #endif
         }
     }
 
@@ -1956,10 +2107,83 @@ struct EditGroupCountdownView: View {
         )
 
         do {
-            let updated = try await appState.countdownRepository.updateCountdownGroupFields(groupId, update: update)
+            // First update shared fields on all existing group records
+            _ = try await appState.countdownRepository.updateCountdownGroupFields(groupId, update: update)
+
+            // Reconcile date range: add/remove days as needed
+            let calendar = Calendar.current
+            let newStartDay = calendar.startOfDay(for: startDate)
+            let newEndDay = calendar.startOfDay(for: endDate)
+
+            // Build set of existing days (normalized to start of day)
+            var existingByDay: [Date: Countdown] = [:]
+            for cd in groupCountdowns {
+                let day = calendar.startOfDay(for: cd.date)
+                existingByDay[day] = cd
+            }
+
+            // Build set of desired days
+            var desiredDays: [Date] = []
+            var currentDay = newStartDay
+            while currentDay <= newEndDay {
+                desiredDays.append(currentDay)
+                guard let nextDay = calendar.date(byAdding: .day, value: 1, to: currentDay) else { break }
+                currentDay = nextDay
+            }
+            let desiredDaySet = Set(desiredDays)
+
+            // Delete days that are no longer in range
+            for (day, cd) in existingByDay {
+                if !desiredDaySet.contains(day) {
+                    try await appState.countdownRepository.deleteCountdown(id: cd.id)
+                    // Clean up family share for removed day
+                    try? await appState.familyCalendarRepository.deleteShareForEvent(
+                        eventType: .countdown,
+                        eventId: cd.id
+                    )
+                }
+            }
+
+            // Add new days that don't exist yet
+            guard let account = appState.currentAccount else {
+                errorMessage = "No account found"
+                isLoading = false
+                return
+            }
+
+            for day in desiredDays {
+                if existingByDay[day] == nil {
+                    var dayDate = day
+                    if hasTime {
+                        let timeComponents = calendar.dateComponents([.hour, .minute], from: startDate)
+                        dayDate = calendar.date(bySettingHour: timeComponents.hour ?? 0, minute: timeComponents.minute ?? 0, second: 0, of: day) ?? day
+                    }
+
+                    let insert = CountdownInsert(
+                        accountId: account.id,
+                        title: title,
+                        date: dayDate,
+                        hasTime: hasTime,
+                        type: selectedType,
+                        customType: selectedType == .custom ? customTypeName : nil,
+                        notes: update.notes,
+                        imageUrl: imageUrl,
+                        groupId: groupId,
+                        reminderOffsetMinutes: day == newStartDay ? reminderMinutes : nil,
+                        isRecurring: isRecurring,
+                        recurrenceUnit: isRecurring ? recurrenceUnit : nil,
+                        recurrenceInterval: isRecurring ? recurrenceInterval : nil,
+                        recurrenceEndDate: isRecurring && hasRecurrenceEndDate ? recurrenceEndDate : nil
+                    )
+                    _ = try await appState.countdownRepository.createCountdown(insert)
+                }
+            }
+
+            // Re-fetch the updated group
+            let finalCountdowns = try await appState.countdownRepository.getCountdownsByGroupId(groupId)
 
             // Re-schedule notification for earliest day
-            if let earliestDay = updated.sorted(by: { $0.date < $1.date }).first {
+            if let earliestDay = finalCountdowns.sorted(by: { $0.date < $1.date }).first {
                 await NotificationService.shared.cancelCountdownReminder(countdownId: earliestDay.id)
                 if let reminderMinutes = reminderMinutes {
                     await NotificationService.shared.scheduleCountdownReminder(
@@ -1973,16 +2197,14 @@ struct EditGroupCountdownView: View {
             }
 
             // Update family calendar sharing for all group records
-            if let account = appState.currentAccount {
-                await updateFamilyCalendarSharingForGroup(
-                    accountId: account.id,
-                    countdownIds: updated.map { $0.id }
-                )
-            }
+            await updateFamilyCalendarSharingForGroup(
+                accountId: account.id,
+                countdownIds: finalCountdowns.map { $0.id }
+            )
 
             NotificationCenter.default.post(name: .countdownsDidChange, object: nil)
 
-            if let first = updated.first {
+            if let first = finalCountdowns.sorted(by: { $0.date < $1.date }).first {
                 onSave(first)
             }
             dismissView()

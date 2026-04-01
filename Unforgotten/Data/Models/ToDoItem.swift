@@ -43,4 +43,16 @@ struct ToDoItem: Identifiable, Codable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+
+    // Custom decoder for robustness during sync
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        listId = try container.decode(UUID.self, forKey: .listId)
+        text = try container.decode(String.self, forKey: .text)
+        isCompleted = try container.decodeIfPresent(Bool.self, forKey: .isCompleted) ?? false
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
 }

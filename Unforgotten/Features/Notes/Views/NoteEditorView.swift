@@ -239,6 +239,9 @@ struct NoteEditorView: View {
                         onSave?()
                     }
 
+                    // Explicitly persist to disk before view is torn down
+                    try? modelContext.save()
+
                     // Capture all note data into value types NOW, before the view hierarchy
                     // is torn down, so the async sync doesn't need to access the SwiftData model
                     let noteId = note.id
@@ -415,12 +418,15 @@ struct NoteEditorView: View {
 
     private func saveNote() {
         // Update the note properties directly
-        // SwiftData will auto-save changes
         note.title = title
         note.setContent(attributedContent)
         note.isPinned = isPinned
         note.updatedAt = Date()
         note.isSynced = false
+
+        // Explicitly persist to disk — SwiftData auto-save is not reliable
+        // when the app is backgrounded or killed shortly after editing
+        try? modelContext.save()
 
         // Cancel any existing sync task
         syncTask?.cancel()
@@ -477,7 +483,7 @@ struct InlineFormattingToolbar: View {
     var onAttachImage: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             FormatButton(icon: "bold", action: formattingActions.bold, accentColor: accentColor)
             FormatButton(icon: "italic", action: formattingActions.italic, accentColor: accentColor)
             FormatButton(icon: "underline", action: formattingActions.underline, accentColor: accentColor)

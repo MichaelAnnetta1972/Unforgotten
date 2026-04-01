@@ -26,6 +26,7 @@ struct DailySummaryAttributes: ActivityAttributes {
         let typeName: String
     }
 
-    // Static data set when the activity starts (doesn't change)
-    var date: Date
+    // Static data set when the activity starts (doesn't change).
+    // Uses String (ISO8601) instead of Date for push-to-start APNs payload compatibility.
+    var date: String
 }

@@ -39,8 +39,65 @@ class ToDoListsViewModel: ObservableObject {
             async let fetchedLists = repository?.getLists(accountId: accountId)
             async let fetchedTypes = repository?.getListTypes(accountId: accountId)
 
-            lists = try await fetchedLists ?? []
+            var ownLists = try await fetchedLists ?? []
             listTypes = try await fetchedTypes ?? []
+
+            // Mark own lists that are shared with others
+            let ownShares = try await appState.familyCalendarRepository.getAllSharesForAccount(accountId: accountId)
+            let todoShares = ownShares.filter { $0.eventType == .todoList }
+
+            for share in todoShares {
+                if let index = ownLists.firstIndex(where: { $0.id == share.eventId }) {
+                    ownLists[index].isSharedWithOthers = true
+                    // Load shared member names
+                    let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: share.id)
+                    let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                    var names: [String] = []
+                    for member in members {
+                        if let profile = profiles.first(where: {
+                            ($0.linkedUserId ?? $0.sourceUserId) == member.memberUserId
+                        }) {
+                            names.append(profile.displayName)
+                        }
+                    }
+                    ownLists[index].sharedWithDisplayNames = names
+                }
+            }
+
+            // Fetch lists shared WITH the current user from other accounts
+            if let userId = await SupabaseManager.shared.currentUserId {
+                let sharedListIds = try await repository?.getSharedListIds(userId: userId) ?? []
+                // Filter out any IDs that are already in own lists (shouldn't happen, but safety)
+                let ownListIds = Set(ownLists.map { $0.id })
+                let newSharedIds = sharedListIds.filter { !ownListIds.contains($0) }
+
+                if !newSharedIds.isEmpty {
+                    var sharedLists = try await repository?.getListsByIds(newSharedIds) ?? []
+
+                    // Annotate shared lists with sharer info
+                    let visibleShares = try await appState.familyCalendarRepository.getSharesVisibleToUser()
+                    let todoSharesVisible = visibleShares.filter { $0.eventType == .todoList }
+
+                    // Load profiles in current account to resolve sharer names
+                    let currentProfiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+
+                    for i in sharedLists.indices {
+                        if let share = todoSharesVisible.first(where: { $0.eventId == sharedLists[i].id }) {
+                            sharedLists[i].sharedByUserId = share.sharedByUserId
+                            // Find the synced/connected profile in our account that represents the sharer
+                            if let sharerProfile = currentProfiles.first(where: {
+                                ($0.linkedUserId ?? $0.sourceUserId) == share.sharedByUserId
+                            }) {
+                                sharedLists[i].sharedByDisplayName = sharerProfile.displayName
+                            }
+                        }
+                    }
+
+                    ownLists.append(contentsOf: sharedLists)
+                }
+            }
+
+            lists = ownLists
         } catch {
             self.error = error
         }

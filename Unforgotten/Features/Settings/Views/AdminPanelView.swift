@@ -198,13 +198,19 @@ struct AdminUserRow: View {
 
                 // Name / Email
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(user.displayName ?? user.email)
+                    Text(user.displayName ?? (user.isApplePrivateRelayEmail ? "Apple User" : user.email))
                         .font(.appBodyMedium)
                         .foregroundColor(.textPrimary)
                         .lineLimit(1)
 
                     if user.displayName != nil {
-                        Text(user.email)
+                        // Show email as subtitle, but label Apple relay emails clearly
+                        Text(user.isApplePrivateRelayEmail ? "Signed in with Apple" : user.email)
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                    } else if user.isApplePrivateRelayEmail {
+                        Text("Signed in with Apple")
                             .font(.appCaption)
                             .foregroundColor(.textSecondary)
                             .lineLimit(1)
@@ -303,9 +309,11 @@ class AdminPanelViewModel: ObservableObject {
         do {
             var loadedUsers = try await appState.appUserRepository.getAllUsers()
 
-            // For users without a display name, try to find their name from linked profiles
+            // For users without a display name, try to find their name from linked profiles or accounts
             for i in loadedUsers.indices where loadedUsers[i].displayName == nil {
                 let userId = loadedUsers[i].id
+
+                // First try: linked profile
                 let profiles: [Profile] = (try? await SupabaseManager.shared.client
                     .from(TableName.profiles)
                     .select()
@@ -315,10 +323,26 @@ class AdminPanelViewModel: ObservableObject {
                     .value) ?? []
                 if let profile = profiles.first {
                     loadedUsers[i].displayName = profile.displayName
-                    // Also backfill the display name in the database for future use
                     _ = try? await appState.appUserRepository.updateDisplayName(
                         userId: userId,
                         displayName: profile.displayName
+                    )
+                    continue
+                }
+
+                // Second try: account owned by this user
+                let accounts: [Account] = (try? await SupabaseManager.shared.client
+                    .from(TableName.accounts)
+                    .select()
+                    .eq("owner_user_id", value: userId)
+                    .limit(1)
+                    .execute()
+                    .value) ?? []
+                if let account = accounts.first {
+                    loadedUsers[i].displayName = account.displayName
+                    _ = try? await appState.appUserRepository.updateDisplayName(
+                        userId: userId,
+                        displayName: account.displayName
                     )
                 }
             }

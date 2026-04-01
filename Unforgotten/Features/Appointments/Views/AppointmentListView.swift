@@ -155,7 +155,8 @@ struct AppointmentListView: View {
                             // On iPhone, use local state
                             showAddAppointment = true
                         }
-                    } : nil
+                    } : nil,
+                    tutorialVideoURL: "https://unforgottenapp.com/tutorials/Appointments.mp4"
                 )
 
                 // Viewing As Bar (shown when viewing another account)
@@ -270,14 +271,14 @@ struct AppointmentListView: View {
                             .scrollContentBackground(.hidden)
                             .frame(height: listContentHeight)
                             .onChange(of: filteredAppointments.count) { _, count in
-                                let rowHeight: CGFloat = 76
+                                let rowHeight: CGFloat = 88
                                 let spacing: CGFloat = AppDimensions.cardSpacing
-                                listContentHeight = CGFloat(count) * (rowHeight + spacing)
+                                listContentHeight = CGFloat(count) * (rowHeight + spacing) + spacing
                             }
                             .onAppear {
-                                let rowHeight: CGFloat = 76
+                                let rowHeight: CGFloat = 88
                                 let spacing: CGFloat = AppDimensions.cardSpacing
-                                listContentHeight = CGFloat(filteredAppointments.count) * (rowHeight + spacing)
+                                listContentHeight = CGFloat(filteredAppointments.count) * (rowHeight + spacing) + spacing
                             }
                         }
 
@@ -746,8 +747,9 @@ class AppointmentListViewModel: ObservableObject {
 
             // Also load shared appointments from other accounts (via RPC to bypass RLS)
             let ownIds = Set(allAppointments.map { $0.id })
+            let today = Calendar.current.startOfDay(for: Date())
             if let shared = try? await appState.appointmentRepository.getSharedAppointments() {
-                let newShared = shared.filter { !ownIds.contains($0.id) }
+                let newShared = shared.filter { !ownIds.contains($0.id) && $0.date >= today }
                 if !newShared.isEmpty {
                     allAppointments.append(contentsOf: newShared)
                     allAppointments.sort { $0.date < $1.date }
@@ -1260,15 +1262,7 @@ struct AddAppointmentView: View {
             ScrollView {
                 VStack(spacing: 20) {
 
-                    // Photo picker
-                    HStack {
-                        Spacer()
-                        ImageSourcePicker(
-                            selectedImage: $selectedImage,
-                            onImageSelected: { _ in }
-                        )
-                        Spacer()
-                    }
+
 
                     AppTextField(placeholder: "Title *", text: $title)
                         .focused($focusedField)
@@ -1446,6 +1440,16 @@ struct AddAppointmentView: View {
                             .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
                     )
 
+
+                    // Photo picker
+                    HStack {
+                        Spacer()
+                        ImageSourcePicker(
+                            selectedImage: $selectedImage,
+                            onImageSelected: { _ in }
+                        )
+                        Spacer()
+                    }
 
                 }
                 .padding(AppDimensions.screenPadding)

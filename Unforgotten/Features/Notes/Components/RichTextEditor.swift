@@ -33,7 +33,7 @@ struct RichTextEditor: UIViewRepresentable {
         let textView = UITextView()
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
-        textView.font = .systemFont(ofSize: 17)
+        textView.font = .systemFont(ofSize: 19)
         textView.textColor = UIColor.label
         textView.tintColor = UIColor(accentColor)
         textView.isScrollEnabled = true
@@ -148,7 +148,7 @@ struct RichTextEditor: UIViewRepresentable {
         // Default typing attributes
         private var defaultAttributes: [NSAttributedString.Key: Any] {
             [
-                .font: UIFont.systemFont(ofSize: 17),
+                .font: UIFont.systemFont(ofSize: 19),
                 .foregroundColor: UIColor.label
             ]
         }
@@ -162,7 +162,7 @@ struct RichTextEditor: UIViewRepresentable {
 
             let label = UILabel()
             label.text = placeholder
-            label.font = UIFont.systemFont(ofSize: 17)
+            label.font = UIFont.systemFont(ofSize: 19)
             label.textColor = UIColor.placeholderText
             label.translatesAutoresizingMaskIntoConstraints = false
             textView.addSubview(label)
@@ -190,26 +190,39 @@ struct RichTextEditor: UIViewRepresentable {
             toolbar.tintColor = UIColor(accentColor)
             toolbar.sizeToFit()
 
-            // Create compact buttons with reduced spacing
-            let buttonSize: CGFloat = 32
+            // Pack all formatting buttons into a single UIStackView to avoid
+            // UIBarButtonItem per-item padding that causes overflow on smaller screens
+            let buttonSize: CGFloat = 36
+            let iconConfig = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+            let tint = UIColor(accentColor)
 
-            func makeButton(systemName: String, action: Selector) -> UIBarButtonItem {
+            func makeButton(systemName: String, action: Selector) -> UIButton {
                 let button = UIButton(type: .system)
-                button.setImage(UIImage(systemName: systemName), for: .normal)
-                button.tintColor = UIColor(accentColor)
+                button.setImage(UIImage(systemName: systemName, withConfiguration: iconConfig), for: .normal)
+                button.tintColor = tint
                 button.addTarget(self, action: action, for: .touchUpInside)
-                button.frame = CGRect(x: 0, y: 0, width: buttonSize, height: buttonSize)
-                return UIBarButtonItem(customView: button)
+                button.widthAnchor.constraint(equalToConstant: buttonSize).isActive = true
+                button.heightAnchor.constraint(equalToConstant: buttonSize).isActive = true
+                return button
             }
 
-            let boldButton = makeButton(systemName: "bold", action: #selector(boldTapped))
-            let italicButton = makeButton(systemName: "italic", action: #selector(italicTapped))
-            let underlineButton = makeButton(systemName: "underline", action: #selector(underlineTapped))
-            let bulletButton = makeButton(systemName: "list.bullet", action: #selector(bulletTapped))
-            let numberedButton = makeButton(systemName: "list.number", action: #selector(numberedTapped))
-            let headingButton = makeButton(systemName: "textformat.size.larger", action: #selector(headingTapped))
-            let attachButton = makeButton(systemName: "paperclip", action: #selector(attachImageTapped))
+            let buttons = [
+                makeButton(systemName: "bold", action: #selector(boldTapped)),
+                makeButton(systemName: "italic", action: #selector(italicTapped)),
+                makeButton(systemName: "underline", action: #selector(underlineTapped)),
+                makeButton(systemName: "list.bullet", action: #selector(bulletTapped)),
+                makeButton(systemName: "list.number", action: #selector(numberedTapped)),
+                makeButton(systemName: "textformat.size.larger", action: #selector(headingTapped)),
+                makeButton(systemName: "paperclip", action: #selector(attachImageTapped))
+            ]
 
+            let stackView = UIStackView(arrangedSubviews: buttons)
+            stackView.axis = .horizontal
+            stackView.spacing = 2
+            stackView.alignment = .center
+            stackView.distribution = .equalSpacing
+
+            let formattingGroup = UIBarButtonItem(customView: stackView)
             let flexSpace = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
 
             let doneButton = UIBarButtonItem(
@@ -218,17 +231,9 @@ struct RichTextEditor: UIViewRepresentable {
                 target: self,
                 action: #selector(doneTapped)
             )
-            doneButton.tintColor = UIColor(accentColor)
+            doneButton.tintColor = tint
 
-            // All formatting buttons in one continuous group with tight spacing
-            toolbar.items = [
-                boldButton, italicButton, underlineButton,
-                bulletButton, numberedButton, headingButton,
-                attachButton,
-                flexSpace,
-                doneButton
-            ]
-
+            toolbar.items = [formattingGroup, flexSpace, doneButton]
             return toolbar
         }
 
@@ -490,7 +495,7 @@ struct RichTextEditor: UIViewRepresentable {
             } else {
                 // No selection - update typing attributes for next input
                 var typingAttrs = textView.typingAttributes
-                let currentFont = typingAttrs[.font] as? UIFont ?? UIFont.systemFont(ofSize: 17)
+                let currentFont = typingAttrs[.font] as? UIFont ?? UIFont.systemFont(ofSize: 19)
                 var newTraits = currentFont.fontDescriptor.symbolicTraits
 
                 if newTraits.contains(trait) {
@@ -659,7 +664,7 @@ struct RichTextEditor: UIViewRepresentable {
 
             if isHeading {
                 // Remove heading - set to normal
-                let normalFont = UIFont.systemFont(ofSize: 17)
+                let normalFont = UIFont.systemFont(ofSize: 19)
                 mutableAttr.addAttribute(.font, value: normalFont, range: lineRange)
             } else {
                 // Apply heading - larger and bold
@@ -688,23 +693,23 @@ struct RichTextEditor: UIViewRepresentable {
                 .foregroundColor: UIColor.label
             ]))
             attr.append(NSAttributedString(string: "\nThis is ", attributes: [
-                .font: UIFont.systemFont(ofSize: 17),
+                .font: UIFont.systemFont(ofSize: 19),
                 .foregroundColor: UIColor.label
             ]))
             attr.append(NSAttributedString(string: "bold", attributes: [
-                .font: UIFont.boldSystemFont(ofSize: 17),
+                .font: UIFont.boldSystemFont(ofSize: 19),
                 .foregroundColor: UIColor.label
             ]))
             attr.append(NSAttributedString(string: " and ", attributes: [
-                .font: UIFont.systemFont(ofSize: 17),
+                .font: UIFont.systemFont(ofSize: 19),
                 .foregroundColor: UIColor.label
             ]))
             attr.append(NSAttributedString(string: "italic", attributes: [
-                .font: UIFont.italicSystemFont(ofSize: 17),
+                .font: UIFont.italicSystemFont(ofSize: 19),
                 .foregroundColor: UIColor.label
             ]))
             attr.append(NSAttributedString(string: " text.\n\n•  First item\n•  Second item", attributes: [
-                .font: UIFont.systemFont(ofSize: 17),
+                .font: UIFont.systemFont(ofSize: 19),
                 .foregroundColor: UIColor.label
             ]))
             return attr

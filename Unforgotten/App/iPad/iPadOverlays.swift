@@ -329,6 +329,7 @@ struct iPadSidePanelOverlay: View {
     @Binding var showSettingsSwitchAccount: Bool
     @Binding var showSettingsEditAccountName: Bool
     @Binding var showSettingsAdminPanel: Bool
+    @Binding var showSettingsHelpTutorials: Bool
     @Binding var showSettingsUpgrade: Bool
     @Binding var showSettingsJoinAccount: Bool
     @Binding var showAddCountdown: Bool
@@ -346,7 +347,7 @@ struct iPadSidePanelOverlay: View {
         showAddHobbySection || showAddActivitySection || showAddHobbyItem || showAddActivityItem ||
         showSettingsInviteMember || showSettingsManageMembers || showSettingsMoodHistory ||
         showSettingsAppearance || showSettingsFeatureVisibility || showSettingsSwitchAccount || showSettingsEditAccountName ||
-        showSettingsAdminPanel || showSettingsUpgrade || showSettingsJoinAccount || showAddCountdown || showEditCountdown
+        showSettingsAdminPanel || showSettingsHelpTutorials || showSettingsUpgrade || showSettingsJoinAccount || showAddCountdown || showEditCountdown
     }
 
     /// Dismiss action for side panel environment
@@ -417,6 +418,7 @@ struct iPadSidePanelOverlay: View {
             showSettingsSwitchAccount = false
             showSettingsEditAccountName = false
             showSettingsAdminPanel = false
+            showSettingsHelpTutorials = false
             showSettingsUpgrade = false
             showSettingsJoinAccount = false
             showAddCountdown = false
@@ -473,11 +475,6 @@ struct iPadSidePanelOverlay: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isAnyPanelShowing)
-        .task(id: showAddToDoList) {
-            if showAddToDoList {
-                await toDoListsViewModel.loadData(appState: appState)
-            }
-        }
         .task(id: showViewToDoList) {
             if !showViewToDoList {
                 await toDoListsViewModel.loadData(appState: appState)
@@ -528,14 +525,6 @@ struct iPadSidePanelOverlay: View {
             // Edit existing note - NoteEditorView handles its own UI
             EditNoteSheetWrapper(note: note, onDismiss: { dismissAll() })
                 .environmentObject(appState)
-        } else if showAddToDoList {
-            AddToDoListSheet(
-                viewModel: toDoListsViewModel,
-                onDismiss: { dismissAll() }
-            ) { _ in
-                dismissAll()
-            }
-            .environmentObject(appState)
         } else if showAddStickyReminder {
             AddStickyReminderView(
                 onSave: { _ in
@@ -777,6 +766,9 @@ struct iPadSidePanelOverlay: View {
         } else if showSettingsAdminPanel {
             AdminPanelView()
                 .environmentObject(appState)
+                .environment(\.sidePanelDismiss, panelDismissAction)
+        } else if showSettingsHelpTutorials {
+            HelpTutorialsView()
                 .environment(\.sidePanelDismiss, panelDismissAction)
         } else if showSettingsUpgrade {
             UpgradeView(isEmbedded: true)

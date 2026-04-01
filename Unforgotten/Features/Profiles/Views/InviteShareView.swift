@@ -11,12 +11,13 @@ struct InviteShareView: View {
     @Environment(HeaderStyleManager.self) private var headerStyleManager
 
     let profileEmail: String
+    var profileId: UUID? = nil
     var onDismiss: (() -> Void)?
 
     @State private var sharingPreferences: [SharingCategoryKey: Bool] = {
         var prefs: [SharingCategoryKey: Bool] = [:]
         for category in SharingCategoryKey.allCases {
-            prefs[category] = true
+            prefs[category] = category != .importantAccounts
         }
         return prefs
     }()
@@ -159,6 +160,7 @@ struct InviteShareView: View {
                 accountId: account.id,
                 email: profileEmail,
                 invitedBy: userId,
+                linkedProfileId: profileId,
                 sharingPreferences: sharingPreferences
             )
 
@@ -186,31 +188,45 @@ struct InviteShareView: View {
 }
 
 // MARK: - Sharing Toggle Row
-private struct SharingToggleRow: View {
+struct SharingToggleRow: View {
     let category: SharingCategoryKey
     @Binding var isEnabled: Bool
     let accentColor: Color
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(category.displayName)
-                    .font(.appBodyMedium)
-                    .foregroundColor(.textPrimary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(category.displayName)
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
 
-                Text(category.description)
-                    .font(.appCaption)
-                    .foregroundColor(.textSecondary)
+                    Text(category.description)
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $isEnabled)
+                    .tint(accentColor)
+                    .labelsHidden()
             }
 
-            Spacer()
-
-            Toggle("", isOn: $isEnabled)
-                .tint(accentColor)
-                .labelsHidden()
+            if category == .importantAccounts && isEnabled {
+                HStack(spacing: 6) {
+                    // Image(systemName: "exclamationmark.triangle.fill")
+                    //     .font(.system(size: 12))
+                    Text("Warning: This person will be able to see your Important Accounts information. Only enable this if you fully trust them.")
+                        .font(.appCaption)
+                }
+                .foregroundColor(.medicalRed)
+                .padding(.top, 8)
+            }
         }
         .padding(AppDimensions.cardPadding)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
+        .animation(.easeInOut(duration: 0.2), value: isEnabled)
     }
 }

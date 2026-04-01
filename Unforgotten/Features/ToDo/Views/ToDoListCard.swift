@@ -27,12 +27,34 @@ struct ToDoListCard: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(list.title)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-                    .multilineTextAlignment(.leading)
+                HStack(spacing: 6) {
+                    Text(list.title)
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
+                        .multilineTextAlignment(.leading)
+
+                    if list.hasSharing {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(appAccentColor)
+                    }
+                }
 
                 HStack(spacing: 8) {
+                    if list.isSharedWithMe, let name = list.sharedByDisplayName {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.2")
+                                .font(.system(size: 10))
+                            Text("From \(name)")
+                                .font(.appCaption)
+                        }
+                        .foregroundColor(appAccentColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(appAccentColor.opacity(0.15))
+                        .cornerRadius(6)
+                    }
+
                     Text(list.listType ?? "Other")
                         .font(.appCaption)
                         .foregroundColor(.textSecondary)

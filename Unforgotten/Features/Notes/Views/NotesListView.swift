@@ -199,6 +199,7 @@ struct NotesListView: View {
             }, onSave: {
                 // Insert the note into context only when user explicitly saves
                 modelContext.insert(note)
+                try? modelContext.save()
                 newNoteSaved = true
             })
         }

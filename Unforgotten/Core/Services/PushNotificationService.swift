@@ -38,13 +38,17 @@ final class PushNotificationService {
                 memberUserIds: memberUserIds.map { $0.uuidString }
             )
 
-            try await supabase.functions.invoke(
+            #if DEBUG
+            print("📲 Invoking send-share-notification with member_user_ids: \(memberUserIds.map { $0.uuidString })")
+            #endif
+
+            let response: ShareNotificationResponse = try await supabase.functions.invoke(
                 "send-share-notification",
                 options: FunctionInvokeOptions(body: payload)
             )
 
             #if DEBUG
-            print("📲 Share notification sent successfully for \(eventType.rawValue) \(eventId) to \(memberUserIds.count) members")
+            print("📲 Share notification response: sent=\(response.sent ?? -1), total=\(response.total ?? -1), message=\(response.message ?? "nil"), error=\(response.error ?? "nil")")
             #endif
         } catch {
             // Don't throw — push notification failure shouldn't block the sharing flow
@@ -87,6 +91,14 @@ final class PushNotificationService {
             #endif
         }
     }
+}
+
+// MARK: - Response Models
+private struct ShareNotificationResponse: Decodable {
+    let message: String?
+    let error: String?
+    let sent: Int?
+    let total: Int?
 }
 
 // MARK: - Payload Models

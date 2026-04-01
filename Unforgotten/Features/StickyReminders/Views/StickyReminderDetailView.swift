@@ -146,7 +146,7 @@ struct StickyReminderDetailView: View {
                             .foregroundColor(.textPrimary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(Color.cardBackgroundSoft)
+                            .background(appAccentColor.opacity(0.2))
                             .cornerRadius(8)
                     }
                 }

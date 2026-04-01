@@ -171,11 +171,11 @@ struct ToolbarButton: View {
                         .font(.system(size: 15, weight: .medium))
                 } else {
                     Image(systemName: icon)
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: 16, weight: .medium))
                 }
             }
             .foregroundColor(isActive ? accentColor : .notePrimaryText)
-            .frame(width: 36, height: 36)
+            .frame(width: 30, height: 36)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isPressed || isActive ? accentColor.opacity(0.15) : .clear)
@@ -206,7 +206,7 @@ struct ToolbarDivider: View {
         Rectangle()
             .fill(Color.noteDivider)
             .frame(width: 1, height: 24)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
     }
 }
 

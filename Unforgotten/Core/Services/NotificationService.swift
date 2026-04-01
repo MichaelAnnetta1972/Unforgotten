@@ -970,53 +970,6 @@ final class NotificationService: NSObject {
     // MARK: - Re-schedule All Notifications
 
     /// Re-schedule all notifications on app launch (for appointments and birthdays)
-    // MARK: - Morning Briefing Trigger
-
-    /// Schedule a daily notification at midnight (12:00 AM) for the morning briefing
-    func scheduleMorningBriefingTrigger() async {
-        // Remove any existing morning briefing trigger
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["morning-briefing-trigger"])
-
-        guard await isNotificationAllowed() else {
-            #if DEBUG
-            print("📱 Notifications not allowed, skipping morning briefing trigger")
-            #endif
-            return
-        }
-
-        let content = UNMutableNotificationContent()
-        content.title = "Good Morning"
-        content.body = "Your daily briefing is ready. Tap to view today's schedule."
-        content.sound = .default
-        content.categoryIdentifier = NotificationCategory.morningBriefing.rawValue
-        content.userInfo = ["type": "morning_briefing"]
-        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
-
-        // Trigger at 12:00 AM (midnight) every day
-        var dateComponents = DateComponents()
-        dateComponents.hour = 0
-        dateComponents.minute = 0
-
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-
-        let request = UNNotificationRequest(
-            identifier: "morning-briefing-trigger",
-            content: content,
-            trigger: trigger
-        )
-
-        do {
-            try await notificationCenter.add(request)
-            #if DEBUG
-            print("📱 Scheduled morning briefing trigger for 12:00 AM daily")
-            #endif
-        } catch {
-            #if DEBUG
-            print("📱 Failed to schedule morning briefing trigger: \(error)")
-            #endif
-        }
-    }
-
     // MARK: - Daily Summary Notification
 
     /// Schedule or update the daily summary notification at 2:00 AM
@@ -1217,55 +1170,6 @@ final class NotificationService: NSObject {
         #if DEBUG
         print("📱 Cancelled daily summary and fallback notifications")
         #endif
-    }
-
-    // MARK: - Morning Fallback Notification
-
-    /// Schedule a reliable fallback notification for 7:00 AM daily.
-    /// Unlike BGAppRefreshTask, local notifications are guaranteed to fire.
-    /// This ensures the user always gets a morning reminder even if the
-    /// background task or Live Activity didn't start overnight.
-    func scheduleMorningFallbackNotification() async {
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: ["morning-fallback"])
-
-        guard await isNotificationAllowed(), dailySummaryEnabled else { return }
-
-        let content = UNMutableNotificationContent()
-        content.title = "Good Morning"
-        content.body = "Open Unforgotten to see what's on your schedule today."
-        content.sound = .default
-        content.categoryIdentifier = NotificationCategory.morningBriefing.rawValue
-        content.userInfo = ["type": "morning_fallback"]
-        content.interruptionLevel = .timeSensitive
-        applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
-
-        if let attachment = createLogoAttachment() {
-            content.attachments = [attachment]
-        }
-
-        // Trigger at 7:00 AM every day
-        var dateComponents = DateComponents()
-        dateComponents.hour = 7
-        dateComponents.minute = 0
-
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-
-        let request = UNNotificationRequest(
-            identifier: "morning-fallback",
-            content: content,
-            trigger: trigger
-        )
-
-        do {
-            try await notificationCenter.add(request)
-            #if DEBUG
-            print("📱 Scheduled morning fallback notification for 7:00 AM daily")
-            #endif
-        } catch {
-            #if DEBUG
-            print("📱 Failed to schedule morning fallback notification: \(error)")
-            #endif
-        }
     }
 
     /// Schedule a test daily summary notification that fires in 10 seconds

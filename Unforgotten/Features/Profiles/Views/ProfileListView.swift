@@ -15,10 +15,12 @@ struct ProfileListView: View {
     @State private var profileToDelete: Profile?
     @State private var showDeleteConfirmation = false
     @State private var searchText = ""
-    @State private var listContentHeight: CGFloat = 0
     @State private var showInviteEmailPrompt = false
     @State private var inviteEmail = ""
     @State private var showInviteMember = false
+    @State private var showManageGroups = false
+    @State private var profileForGroupAssignment: Profile?
+    @State private var groupedProfileIds: Set<UUID> = []
 
     /// Check if user can add more friend profiles
     private var canAddProfile: Bool {
@@ -68,7 +70,8 @@ struct ProfileListView: View {
                                     showUpgradePrompt = true
                                 }
                             }
-                        }
+                        },
+                        tutorialVideoURL: "https://unforgottenapp.com/tutorials/Profiles.mp4"
                     )
 
                     // Content
@@ -95,6 +98,19 @@ struct ProfileListView: View {
                             .padding(AppDimensions.cardPadding)
                             .background(Color.cardBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
+
+                            // Groups button
+                            Button {
+                                showManageGroups = true
+                            } label: {
+                                Image(systemName: "person.3")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(appAccentColor)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, AppDimensions.cardPadding)
+                                    .background(Color.cardBackground)
+                                    .cornerRadius(AppDimensions.cardCornerRadius)
+                            }
 
                             if appState.currentUserRole?.canManageMembers == true {
                                 Button {
@@ -134,7 +150,9 @@ struct ProfileListView: View {
                                         ProfileListRow(
                                             profile: profile,
                                             isPinned: viewModel.isPinned(profile.id),
-                                            onTogglePin: { viewModel.togglePin(profile.id) }
+                                            hasGroup: groupedProfileIds.contains(profile.id),
+                                            onTogglePin: { viewModel.togglePin(profile.id) },
+                                            onGroupTap: { profileForGroupAssignment = profile }
                                         )
                                     }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -156,17 +174,7 @@ struct ProfileListView: View {
                             .listStyle(.plain)
                             .scrollDisabled(true)
                             .scrollContentBackground(.hidden)
-                            .frame(height: listContentHeight)
-                            .onChange(of: filteredProfiles.count) { _, count in
-                                let rowHeight: CGFloat = 76
-                                let spacing: CGFloat = AppDimensions.cardSpacing
-                                listContentHeight = CGFloat(count) * (rowHeight + spacing)
-                            }
-                            .onAppear {
-                                let rowHeight: CGFloat = 76
-                                let spacing: CGFloat = AppDimensions.cardSpacing
-                                listContentHeight = CGFloat(filteredProfiles.count) * (rowHeight + spacing)
-                            }
+                            .frame(height: calculateListHeight(count: filteredProfiles.count))
                         }
 
                         // Loading state
@@ -268,12 +276,21 @@ struct ProfileListView: View {
         .sidePanel(isPresented: $showInviteMember) {
             InviteShareView(profileEmail: inviteEmail, onDismiss: { showInviteMember = false })
         }
+        .sheet(isPresented: $showManageGroups) {
+            ManageGroupsView()
+                .environmentObject(appState)
+        }
+        .sheet(item: $profileForGroupAssignment) { profile in
+            GroupAssignmentSheet(profile: profile)
+                .environmentObject(appState)
+        }
         .navigationBarHidden(true)
         .task {
             await viewModel.loadProfiles(appState: appState)
+            await loadGroupedProfileIds()
         }
         .refreshable {
-            await viewModel.loadProfiles(appState: appState)
+            await viewModel.loadProfiles(appState: appState, forceRefresh: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .profilesDidChange)) { _ in
             Task {
@@ -285,6 +302,9 @@ struct ProfileListView: View {
             Task {
                 await viewModel.loadProfiles(appState: appState)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .profileGroupsDidChange)) { _ in
+            Task { await loadGroupedProfileIds() }
         }
         .alert("Error", isPresented: .init(
             get: { viewModel.error != nil },
@@ -310,8 +330,31 @@ struct ProfileListView: View {
             }
         } message: {
             if let profile = profileToDelete {
-                Text("Are you sure you want to delete \(profile.displayName)? This action cannot be undone.")
+                Text("\(profile.displayName) will be moved to Recently Deleted and permanently removed after 30 days.")
             }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func calculateListHeight(count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        // Card: 44pt image + 16pt top/bottom padding = 76pt
+        // List row insets: 6pt top + 6pt bottom = 12pt per row
+        // Total per row: 88pt
+        // Plain list adds internal section padding (~35pt total)
+        let rowHeight: CGFloat = 88
+        let listInternalPadding: CGFloat = 36
+        return CGFloat(count) * rowHeight + listInternalPadding
+    }
+
+    private func loadGroupedProfileIds() async {
+        guard let account = appState.currentAccount else { return }
+        do {
+            let allMembers = try await appState.profileGroupRepository.getMembersForAllGroups(accountId: account.id)
+            groupedProfileIds = Set(allMembers.map { $0.profileId })
+        } catch {
+            // Non-critical — icon just stays default color
         }
     }
 }
@@ -324,7 +367,9 @@ struct ProfileListRow: View {
 
     let profile: Profile
     var isPinned: Bool = false
+    var hasGroup: Bool = false
     var onTogglePin: (() -> Void)? = nil
+    var onGroupTap: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -381,6 +426,20 @@ struct ProfileListRow: View {
             }
 
             Spacer()
+
+            // Group button
+            if let onGroupTap = onGroupTap {
+                Button {
+                    onGroupTap()
+                } label: {
+                    Image(systemName: hasGroup ? "person.3.fill" : "person.3")
+                        .font(.system(size: 14))
+                        .foregroundColor(hasGroup ? appAccentColor : .textSecondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
 
             // Pin button
             if let onTogglePin = onTogglePin {
@@ -571,7 +630,32 @@ class ProfileListViewModel: ObservableObject {
     }
 
     func deleteProfile(id: UUID, appState: AppState) async {
+        // Prevent deleting the primary profile
+        if let profile = profiles.first(where: { $0.id == id }), profile.type == .primary {
+            self.error = "Your primary profile cannot be deleted."
+            return
+        }
         do {
+            // If this is a synced profile, sever the sync connection first
+            // so the other user's device also reflects the disconnection
+            if let profile = profiles.first(where: { $0.id == id }),
+               let syncConnectionId = profile.syncConnectionId,
+               !profile.isLocalOnly {
+                do {
+                    try await appState.profileSyncRepository.severSync(syncId: syncConnectionId)
+                    NotificationCenter.default.post(
+                        name: .profileSyncDidChange,
+                        object: nil,
+                        userInfo: ["syncId": syncConnectionId, "action": "severed"]
+                    )
+                } catch {
+                    #if DEBUG
+                    print("⚠️ Failed to sever sync before delete: \(error)")
+                    #endif
+                    // Continue with deletion even if sever fails
+                }
+            }
+
             try await appState.profileRepository.deleteProfile(id: id)
             profiles.removeAll { $0.id == id }
         } catch {
@@ -596,13 +680,19 @@ struct ProfileDetailView: View {
     @State private var showSettings = false
     @State private var showInviteMember = false
     @State private var inviteEmail: String = ""
+    @State private var inviteProfileId: UUID? = nil
+    @State private var showInviteEmailPrompt = false
     @State private var showUpgradePrompt = false
     @State private var showSharingPreferences = false
+    @State private var showAddEmailSheet = false
+    @State private var addEmailText = ""
     @State private var syncedDetailIds: Set<UUID> = []
     @State private var hasActiveSyncConnections = false
     @State private var sharingPreferences: [SharingCategoryKey: Bool] = [:]
     @State private var isSharingLoading = false
     @State private var syncedProfileSharingPrefs: [SharingCategoryKey: Bool] = [:]
+    @State private var showNewProfileBanner = false
+    @State private var dismissedNewProfileBanner = false
     @Environment(\.appAccentColor) private var appAccentColor
 
     /// Whether the current user has full access (owner or admin)
@@ -631,11 +721,19 @@ struct ProfileDetailView: View {
                         } else {
                             showEditProfile = true
                         }
-                    } : nil
+                    } : nil,
+                    tutorialVideoURL: isOwnProfile
+                        ? "https://unforgottenapp.com/tutorials/AboutMe.mp4"
+                        : "https://unforgottenapp.com/tutorials/ProfileDetail.mp4"
                 )
 
                 // Viewing As Bar (shown when viewing another account)
                 ViewingAsBar()
+
+                // Banner for auto-created synced profiles (no email match found)
+                if showNewProfileBanner && !dismissedNewProfileBanner {
+                    newProfileCreatedBanner
+                }
 
                 // Content - simplified for deceased profiles
                 if profile.isDeceased {
@@ -662,7 +760,7 @@ struct ProfileDetailView: View {
             }
         }
         .sidePanel(isPresented: $showInviteMember) {
-            InviteShareView(profileEmail: inviteEmail, onDismiss: { showInviteMember = false })
+            InviteShareView(profileEmail: inviteEmail, profileId: inviteProfileId, onDismiss: { showInviteMember = false })
         }
         .sidePanel(isPresented: $showSharingPreferences) {
             SharingPreferencesView(profile: profile, onDismiss: { showSharingPreferences = false })
@@ -677,6 +775,10 @@ struct ProfileDetailView: View {
                     #if DEBUG
                     print("Error loading synced detail IDs: \(error)")
                     #endif
+                }
+                // Check if this synced profile was auto-created (no email match)
+                if let sync = try? await appState.profileSyncRepository.getSyncForProfile(profileId: profile.id) {
+                    showNewProfileBanner = sync.newProfileCreated ?? false
                 }
             }
             // Load sharing preferences if viewing own profile
@@ -721,6 +823,23 @@ struct ProfileDetailView: View {
                 }
             }
         }
+        .alert("Send Invitation", isPresented: $showInviteEmailPrompt) {
+            TextField("Email address", text: $inviteEmail)
+                .textContentType(.emailAddress)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            Button("Cancel", role: .cancel) {
+                inviteEmail = ""
+                inviteProfileId = nil
+            }
+            Button("Next") {
+                if !inviteEmail.isEmpty {
+                    showInviteMember = true
+                }
+            }
+        } message: {
+            Text("Enter the email address of the person you'd like to invite.")
+        }
         .alert("Error", isPresented: .init(
             get: { viewModel.error != nil },
             set: { if !$0 { viewModel.error = nil } }
@@ -733,6 +852,30 @@ struct ProfileDetailView: View {
         }
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
+        }
+        .sheet(isPresented: $showAddEmailSheet) {
+            AddEmailSheetView(
+                profileName: profile.displayName,
+                emailText: $addEmailText,
+                onSave: {
+                    Task {
+                        var updatedProfile = profile
+                        updatedProfile.email = addEmailText
+                        do {
+                            let saved = try await appState.profileRepository.updateProfile(updatedProfile)
+                            profile = saved
+                            showAddEmailSheet = false
+                        } catch {
+                            viewModel.error = error.localizedDescription
+                            showAddEmailSheet = false
+                        }
+                    }
+                },
+                onCancel: {
+                    showAddEmailSheet = false
+                }
+            )
+            .presentationDetents([.height(280)])
         }
     }
 
@@ -885,6 +1028,45 @@ struct ProfileDetailView: View {
                 } catch { }
             }
         }
+    }
+
+    // MARK: - New Profile Created Banner
+    private var newProfileCreatedBanner: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundColor(appAccentColor)
+                    .font(.system(size: 18))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("New Profile Created")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+                    Text("No matching profile was found in your account, so this profile was created automatically. If you already have a profile for this person, you may want to remove the duplicate.")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Button {
+                    withAnimation {
+                        dismissedNewProfileBanner = true
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(12)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+        .padding(.horizontal, AppDimensions.screenPadding)
+        .padding(.top, 8)
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     // MARK: - Deceased Profile Content
@@ -1116,6 +1298,88 @@ struct ProfileDetailView: View {
                     .padding(.horizontal, AppDimensions.screenPadding)
                 }
 
+                // Invite to Unforgotten / Add Email button (shown for non-synced, non-own profiles when user can manage members)
+                if !profile.isSyncedProfile && !isOwnProfile && appState.currentUserRole?.canManageMembers == true {
+                    if let email = profile.email, !email.isEmpty {
+                        // Profile has email - show invite button
+                        Button(action: {
+                            if PremiumLimitsManager.shared.canInviteMembers(appState: appState) {
+                                inviteProfileId = profile.id
+                                inviteEmail = email
+                                showInviteMember = true
+                            } else {
+                                showUpgradePrompt = true
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.badge.plus")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(appAccentColor)
+                                    .frame(width: 40, height: 40)
+                                    .background(appAccentColor.opacity(0.15))
+                                    .clipShape(Circle())
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Invite to Unforgotten")
+                                        .font(.appCardTitle)
+                                        .foregroundColor(.textPrimary)
+
+                                    Text("Send \(profile.displayName) an invitation to connect")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textSecondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                    } else {
+                        // Profile has no email - show add email button
+                        Button(action: {
+                            addEmailText = ""
+                            showAddEmailSheet = true
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "envelope.badge.plus")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(appAccentColor)
+                                    .frame(width: 40, height: 40)
+                                    .background(appAccentColor.opacity(0.15))
+                                    .clipShape(Circle())
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Add an email address")
+                                        .font(.appCardTitle)
+                                        .foregroundColor(.textPrimary)
+
+                                    Text("Enter an email to invite this person to connect")
+                                        .font(.appCaption)
+                                        .foregroundColor(.textSecondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                            }
+                            .padding(AppDimensions.cardPadding)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                    }
+                }
+
                 // Key Information
                 VStack(alignment: .leading, spacing: AppDimensions.cardSpacing) {
                     Text("KEY INFORMATION")
@@ -1146,20 +1410,11 @@ struct ProfileDetailView: View {
                         }
 
                         if let email = profile.email {
-                            EmailCardWithInvite(
-                                email: email,
+                            DetailItemCard(
+                                label: "Email",
+                                value: email,
                                 isSynced: profile.isFieldSynced("email"),
-                                sourceName: profile.isSyncedProfile ? profile.displayName : nil,
-                                showInviteButton: !profile.isSyncedProfile && !isOwnProfile,
-                                canInvite: appState.currentUserRole?.canManageMembers == true,
-                                onInvite: {
-                                    if PremiumLimitsManager.shared.canInviteMembers(appState: appState) {
-                                        inviteEmail = email
-                                        showInviteMember = true
-                                    } else {
-                                        showUpgradePrompt = true
-                                    }
-                                }
+                                sourceName: profile.isSyncedProfile ? profile.displayName : nil
                             )
                         }
 
@@ -1200,13 +1455,15 @@ struct ProfileDetailHeaderView: View {
     var homeAction: (() -> Void)? = nil
     let onBack: () -> Void
     let onEdit: (() -> Void)?
+    var tutorialVideoURL: String? = nil
 
-    init(profile: Profile, showHomeButton: Bool = false, homeAction: (() -> Void)? = nil, onBack: @escaping () -> Void, onEdit: (() -> Void)? = nil) {
+    init(profile: Profile, showHomeButton: Bool = false, homeAction: (() -> Void)? = nil, onBack: @escaping () -> Void, onEdit: (() -> Void)? = nil, tutorialVideoURL: String? = nil) {
         self.profile = profile
         self.showHomeButton = showHomeButton
         self.homeAction = homeAction
         self.onBack = onBack
         self.onEdit = onEdit
+        self.tutorialVideoURL = tutorialVideoURL
     }
 
     var body: some View {
@@ -1219,7 +1476,8 @@ struct ProfileDetailHeaderView: View {
             homeAction: homeAction,
             showEditButton: onEdit != nil,
             editAction: onEdit,
-            editButtonPosition: .bottomRight
+            editButtonPosition: .bottomRight,
+            tutorialVideoURL: tutorialVideoURL
         )
         .overlay(alignment: .bottomLeading) {
             // Circular profile photo above the name
@@ -1252,71 +1510,6 @@ struct ProfileDetailHeaderView: View {
     }
 }
 
-// MARK: - Email Card With Invite Button
-/// A detail card for email that optionally shows an "Invite" button
-struct EmailCardWithInvite: View {
-    let email: String
-    let isSynced: Bool
-    let sourceName: String?
-    let showInviteButton: Bool
-    let canInvite: Bool
-    let onInvite: () -> Void
-    @Environment(\.appAccentColor) private var appAccentColor
-
-    init(
-        email: String,
-        isSynced: Bool = false,
-        sourceName: String? = nil,
-        showInviteButton: Bool,
-        canInvite: Bool,
-        onInvite: @escaping () -> Void
-    ) {
-        self.email = email
-        self.isSynced = isSynced
-        self.sourceName = sourceName
-        self.showInviteButton = showInviteButton
-        self.canInvite = canInvite
-        self.onInvite = onInvite
-    }
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text("Email")
-                        .font(.appCaption)
-                        .foregroundColor(.textSecondary)
-
-                    if isSynced, let name = sourceName {
-                        SyncIndicator(sourceName: name)
-                    }
-                }
-
-                Text(email)
-                    .font(.appCardTitle)
-                    .foregroundColor(.textPrimary)
-            }
-
-            Spacer()
-
-            if showInviteButton && canInvite {
-                Button(action: onInvite) {
-                    Text("Invite")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(appAccentColor)
-                        .cornerRadius(8)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
-        .padding(AppDimensions.cardPadding)
-        .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.cardCornerRadius)
-    }
-}
 
 // MARK: - Profile Birthday Card
 /// A detail card for birthday on profile detail view with optional sync indicator and age display
@@ -1594,6 +1787,86 @@ class MyCardViewModel: ObservableObject {
         }
         
         isLoading = false
+    }
+}
+
+// MARK: - Add Email Sheet
+
+struct AddEmailSheetView: View {
+    let profileName: String
+    @Binding var emailText: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+    @Environment(\.appAccentColor) private var appAccentColor
+    @FocusState private var isEmailFocused: Bool
+
+    private var isValidEmail: Bool {
+        let pattern = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/
+        return emailText.wholeMatch(of: pattern) != nil
+    }
+
+    var body: some View {
+        ZStack {
+            Color.appBackground.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.textPrimary)
+                            .frame(width: 48, height: 48)
+                            .background(Circle().fill(Color.white.opacity(0.15)))
+                    }
+
+                    Spacer()
+
+                    Text("Add Email")
+                        .font(.appCardTitle)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Button(action: onSave) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(Circle().fill(appAccentColor))
+                    }
+                    .disabled(!isValidEmail)
+                    .opacity(isValidEmail ? 1 : 0.5)
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
+                .padding(.vertical, 16)
+
+                VStack(spacing: 20) {
+                    Text("Enter an email address for \(profileName) so you can send them an invitation to connect.")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
+                    AppTextField(
+                        placeholder: "Email address",
+                        text: $emailText
+                    )
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($isEmailFocused)
+                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                    Spacer()
+                }
+                .padding(.top, 20)
+            }
+        }
+        .onAppear {
+            isEmailFocused = true
+        }
     }
 }
 
