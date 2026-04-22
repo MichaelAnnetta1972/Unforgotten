@@ -175,8 +175,8 @@ struct AccountHeaderButton: View {
                     RoleBadge(role: role)
                 }
 
-                // Dropdown indicator (only show if multiple accounts)
-                if appState.switchableAccounts.count > 1 {
+                // Dropdown indicator (only show for Family Plus with multiple accounts)
+                if appState.subscriptionTier.hasFamilyFeatures && appState.switchableAccounts.count > 1 {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.textSecondary)

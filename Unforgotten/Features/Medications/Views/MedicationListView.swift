@@ -1564,6 +1564,11 @@ struct DayDetailSheet: View {
             }
             // Notify parent to refresh calendar
             await onLogUpdated?()
+
+            // Only marking meds as taken counts as a moment of value
+            if newStatus == .taken {
+                ReviewRequestService.shared.recordSignificantEventAndMaybeRequest()
+            }
         } catch {
             #if DEBUG
             print("Failed to update log status: \(error)")
@@ -2822,7 +2827,7 @@ struct EditMedicationView: View {
                         Spacer()
                         ImageSourcePicker(
                             selectedImage: $selectedImage,
-                            currentImageUrl: medication.imageUrl,
+                            currentImageUrl: removePhoto ? nil : medication.imageUrl,
                             onImageSelected: { _ in removePhoto = false },
                             onRemove: { removePhoto = true }
                         )

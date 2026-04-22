@@ -11,6 +11,8 @@ struct CalendarFilterView: View {
     var availableCountdownTypes: [CountdownType]
     /// Custom type names that are in use
     var availableCustomTypeNames: [String]
+    /// Called after any filter change so the parent can persist settings
+    var onFilterChanged: (() -> Void)? = nil
 
     @Environment(\.appAccentColor) private var appAccentColor
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -233,6 +235,7 @@ struct CalendarFilterView: View {
         } else {
             selectedFilters.insert(filter)
         }
+        onFilterChanged?()
     }
 
     private func toggleCountdownType(_ type: CountdownType) {
@@ -241,6 +244,7 @@ struct CalendarFilterView: View {
         } else {
             selectedCountdownTypes.insert(type)
         }
+        onFilterChanged?()
     }
 
     private func toggleCustomTypeName(_ name: String) {
@@ -249,16 +253,19 @@ struct CalendarFilterView: View {
         } else {
             selectedCustomTypeNames.insert(name)
         }
+        onFilterChanged?()
     }
 
     private func selectAllCountdownSubTypes() {
         selectedCountdownTypes = Set(CountdownType.allCases)
         selectedCustomTypeNames = Set(availableCustomTypeNames)
+        onFilterChanged?()
     }
 
     private func clearAllCountdownSubTypes() {
         selectedCountdownTypes = []
         selectedCustomTypeNames = []
+        onFilterChanged?()
     }
 }
 

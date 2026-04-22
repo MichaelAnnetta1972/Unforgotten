@@ -9,6 +9,7 @@ protocol AuthRepositoryProtocol {
     func signInWithMagicLink(email: String) async throws
     func signInWithApple(credential: ASAuthorizationAppleIDCredential) async throws -> User
     func signOut() async throws
+    func deleteAccount() async throws
     func resetPassword(email: String) async throws
     func updatePassword(newPassword: String) async throws
     func getCurrentUser() async -> User?
@@ -66,6 +67,19 @@ func signUp(email: String, password: String) async throws -> User {
     // MARK: - Sign Out
     func signOut() async throws {
         try await supabase.auth.signOut()
+    }
+
+    // MARK: - Delete Account
+    /// Permanently deletes the authenticated user's account and all associated data.
+    /// Calls the `delete_user_account` RPC which runs SECURITY DEFINER and uses
+    /// `auth.uid()` internally, so no user id needs to be passed from the client.
+    /// Required by App Store Review Guideline 5.1.1(v).
+    func deleteAccount() async throws {
+        try await supabase.rpc("delete_user_account").execute()
+        // After the RPC deletes auth.users, the current session is invalid.
+        // Sign out locally to clear cached tokens; ignore errors because the
+        // user row no longer exists on the server.
+        try? await supabase.auth.signOut()
     }
     
     // MARK: - Reset Password

@@ -20,6 +20,7 @@ struct ToDoListDetailView: View {
     @State private var showingDueDatePicker = false
     @State private var focusedItemId: UUID?
     @State private var showFamilySharingSheet = false
+    @State private var showReShareSheet = false
     @FocusState private var newItemFocused: Bool
     @FocusState private var titleFieldFocused: Bool
     @Environment(\.dismiss) private var dismiss
@@ -209,6 +210,27 @@ struct ToDoListDetailView: View {
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
                         }
+
+                        if let sharingError = viewModel.sharingError {
+                            Section {
+                                Text(sharingError)
+                                    .font(.appCaption)
+                                    .foregroundColor(.medicalRed)
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 0, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                            }
+                        }
+                    }
+
+                    // Re-share section (for lists shared with me, if eligible)
+                    if viewModel.isSharedWithMe && viewModel.canReShare && appState.hasFamilyAccess {
+                        Section {
+                            reShareSection
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
                     }
 
                     // To Do Items
@@ -368,6 +390,18 @@ struct ToDoListDetailView: View {
             )
             .environmentObject(appState)
         }
+        .sheet(isPresented: $showReShareSheet) {
+            FamilySharingSheet(
+                isEnabled: $viewModel.reShareEnabled,
+                selectedMemberIds: $viewModel.reShareMemberIds,
+                onDismiss: {
+                    showReShareSheet = false
+                    Task { await viewModel.saveReSharing(appState: appState) }
+                }
+            )
+            .environmentObject(appState)
+            .presentationDetents([.medium, .large])
+        }
         .alert("Delete List", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -494,6 +528,47 @@ struct ToDoListDetailView: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
+    }
+
+    // MARK: - Re-Share Section
+    @ViewBuilder
+    private var reShareSection: some View {
+        Button {
+            showReShareSheet = true
+        } label: {
+            HStack {
+                Image(systemName: "person.2")
+                    .font(.system(size: 18))
+                    .foregroundColor(viewModel.hasReShared ? appAccentColor : .textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.hasReShared ? "Shared with My Family" : "Share with My Family")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    if viewModel.hasReShared && !viewModel.reShareMemberNames.isEmpty {
+                        Text(viewModel.reShareMemberNames.joined(separator: ", "))
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                    } else if !viewModel.hasReShared {
+                        Text("Share this list with your own family members")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.textSecondary)
+            }
+            .padding(AppDimensions.cardPadding)
+            .background(Color.appBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Type Menu Content

@@ -340,9 +340,15 @@ extension TimeInterval {
 extension Calendar {
     /// Days of the week (Sunday = 0)
     static let daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    
+
     /// Full day names
     static let fullDaysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    /// Returns the start of the week (Sunday) for the given date
+    func startOfWeek(for date: Date) -> Date {
+        let components = dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return self.date(from: components) ?? startOfDay(for: date)
+    }
 }
 
 // MARK: - Binding Extensions

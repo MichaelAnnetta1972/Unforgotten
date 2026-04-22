@@ -7,9 +7,18 @@ const APNS_KEY_ID = Deno.env.get("APNS_KEY_ID")!;
 const APNS_TEAM_ID = Deno.env.get("APNS_TEAM_ID")!;
 const APNS_BUNDLE_ID = Deno.env.get("APNS_BUNDLE_ID")!;
 
-// Use api.sandbox.push.apple.com for development/TestFlight,
-// api.push.apple.com for App Store production.
-const APNS_HOST = "api.sandbox.push.apple.com";
+// APNs hosts — chosen per-recipient based on the environment their token was
+// minted against. Debug builds (Xcode) register tokens valid only against
+// sandbox; TestFlight and App Store builds register tokens valid only against
+// production. Using the wrong host yields BadDeviceToken.
+const APNS_HOST_SANDBOX = "api.sandbox.push.apple.com";
+const APNS_HOST_PRODUCTION = "api.push.apple.com";
+
+type ApnsEnvironment = "sandbox" | "production";
+
+function hostForEnvironment(env: ApnsEnvironment): string {
+  return env === "sandbox" ? APNS_HOST_SANDBOX : APNS_HOST_PRODUCTION;
+}
 
 interface ContentState {
   medicationCount: number;
@@ -23,6 +32,7 @@ interface ContentState {
 interface BriefingRecipient {
   user_id: string;
   push_to_start_token: string;
+  apns_environment: ApnsEnvironment;
   content_state: ContentState;
 }
 
@@ -48,10 +58,12 @@ async function generateAPNsToken(): Promise<string> {
  */
 async function sendPushToStartNotification(
   pushToStartToken: string,
+  environment: ApnsEnvironment,
   contentState: ContentState,
   apnsToken: string
 ): Promise<boolean> {
-  const url = `https://${APNS_HOST}/3/device/${pushToStartToken}`;
+  const host = hostForEnvironment(environment);
+  const url = `https://${host}/3/device/${pushToStartToken}`;
 
   // Ensure lastUpdated is set for the content state
   const now = new Date().toISOString();
@@ -95,18 +107,18 @@ async function sendPushToStartNotification(
 
     if (!response.ok) {
       console.error(
-        `APNs error for token ${pushToStartToken.substring(0, 8)}...: status=${response.status} apns-id=${apnsId} body=${body}`
+        `APNs error for token ${pushToStartToken.substring(0, 8)}... (env=${environment}): status=${response.status} apns-id=${apnsId} body=${body}`
       );
       return false;
     }
 
     console.log(
-      `APNs accepted token ${pushToStartToken.substring(0, 8)}...: status=${response.status} apns-id=${apnsId} body=${body || "(empty)"}`
+      `APNs accepted token ${pushToStartToken.substring(0, 8)}... (env=${environment}): status=${response.status} apns-id=${apnsId} body=${body || "(empty)"}`
     );
     return true;
   } catch (error) {
     console.error(
-      `Failed to send push-to-start to ${pushToStartToken.substring(0, 8)}...: ${error}`
+      `Failed to send push-to-start to ${pushToStartToken.substring(0, 8)}... (env=${environment}): ${error}`
     );
     return false;
   }
@@ -164,6 +176,7 @@ serve(async (req) => {
       async (recipient) => {
         const success = await sendPushToStartNotification(
           recipient.push_to_start_token,
+          recipient.apns_environment,
           recipient.content_state,
           apnsToken
         );

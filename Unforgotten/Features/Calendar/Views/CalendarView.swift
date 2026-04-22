@@ -21,6 +21,7 @@ struct CalendarView: View {
     @State private var showingDayDetail = false
     @State private var showingFilterPanel = false
     @State private var showingMemberFilter = false
+    @State private var filterPulseOpacity: Double = 0.3
 
     // Navigation state for event detail views (iPhone only - iPad uses iPadRootView navigation)
     @State private var selectedAppointment: Appointment?
@@ -48,36 +49,33 @@ struct CalendarView: View {
             Color.appBackgroundLight.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                if isiPad {
-                    // iPad: Fixed Header Section
-                    VStack(spacing: 0) {
-                        CustomizableHeaderView(
-                            pageIdentifier: .calendar,
-                            title: "Calendar",
-                            showBackButton: iPadHomeAction == nil,
-                            backAction: { dismiss() },
-                            showHomeButton: iPadHomeAction != nil,
-                            homeAction: iPadHomeAction,
-                            tutorialVideoURL: "https://unforgottenapp.com/tutorials/Calendar.mp4"
-                        )
-
-                        ViewingAsBar()
-
-                        VStack(spacing: AppDimensions.cardSpacing) {
-                            controlsRow
-                        }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-                        .padding(.top, AppDimensions.cardSpacing)
-                        .padding(.bottom, AppDimensions.cardSpacing)
-                        .background(Color.appBackgroundLight)
-                    }
-                }
-
                 // Scrollable Content Section
                 ScrollView {
                     VStack(spacing: AppDimensions.cardSpacing) {
-                        // iPhone: Header scrolls with content
-                        if !isiPad {
+                        // Header scrolls with content on both iPhone and iPad
+                        if isiPad {
+                            VStack(spacing: 0) {
+                                CustomizableHeaderView(
+                                    pageIdentifier: .calendar,
+                                    title: "Calendar",
+                                    showBackButton: iPadHomeAction == nil,
+                                    backAction: { dismiss() },
+                                    showHomeButton: iPadHomeAction != nil,
+                                    homeAction: iPadHomeAction,
+                                    tutorialVideoURL: "https://unforgottenapp.com/tutorials/Calendar.mp4"
+                                )
+
+                                ViewingAsBar()
+
+                                VStack(spacing: AppDimensions.cardSpacing) {
+                                    controlsRow
+                                }
+                                .padding(.horizontal, AppDimensions.screenPadding)
+                                .padding(.top, AppDimensions.cardSpacing)
+                                .padding(.bottom, AppDimensions.cardSpacing)
+                            }
+                            .padding(.horizontal, -AppDimensions.screenPadding)
+                        } else {
                             VStack(spacing: 0) {
                                 CustomizableHeaderView(
                                     pageIdentifier: .calendar,
@@ -104,22 +102,35 @@ struct CalendarView: View {
                         }
 
                         // Calendar Content
-                        CalendarMonthView(viewModel: viewModel) {
-                            // On iPad, use full-screen overlay from iPadRootView
-                            if let iPadAction = iPadCalendarDayDetailAction,
-                               let selectedDate = viewModel.selectedDate {
-                                iPadAction(selectedDate, viewModel.eventsForSelectedDate) {
-                                    // onDismiss callback - clear the selection
-                                    viewModel.clearSelection()
+                        if viewModel.displayMode == .month {
+                            CalendarMonthView(viewModel: viewModel) {
+                                // On iPad, use full-screen overlay from iPadRootView
+                                if let iPadAction = iPadCalendarDayDetailAction,
+                                   let selectedDate = viewModel.selectedDate {
+                                    iPadAction(selectedDate, viewModel.eventsForSelectedDate) {
+                                        // onDismiss callback - clear the selection
+                                        viewModel.clearSelection()
+                                    }
+                                } else {
+                                    showingDayDetail = true
                                 }
-                            } else {
-                                showingDayDetail = true
                             }
-                        }
 
-                        // Month events list (like Appointment Calendar view)
-                        if !viewModel.eventsForCurrentMonth.isEmpty {
-                            monthEventsSection
+                            // Month events list (like Appointment Calendar view)
+                            if !viewModel.eventsForCurrentMonth.isEmpty {
+                                monthEventsSection
+                            }
+                        } else {
+                            CalendarWeekView(viewModel: viewModel) {
+                                if let iPadAction = iPadCalendarDayDetailAction,
+                                   let selectedDate = viewModel.selectedDate {
+                                    iPadAction(selectedDate, viewModel.eventsForSelectedDate) {
+                                        viewModel.clearSelection()
+                                    }
+                                } else {
+                                    showingDayDetail = true
+                                }
+                            }
                         }
 
                         // Loading state
@@ -159,7 +170,8 @@ struct CalendarView: View {
                     selectedCustomTypeNames: $viewModel.selectedCustomTypeNames,
                     isPresented: $showingFilterPanel,
                     availableCountdownTypes: viewModel.availableCountdownTypes,
-                    availableCustomTypeNames: viewModel.availableCustomTypeNames
+                    availableCustomTypeNames: viewModel.availableCustomTypeNames,
+                    onFilterChanged: { viewModel.saveFilterSettings() }
                 )
             }
 
@@ -237,18 +249,21 @@ struct CalendarView: View {
             // Sync iPad filter binding back to viewModel
             if let newValue = newValue {
                 viewModel.selectedFilters = newValue
+                viewModel.saveFilterSettings()
             }
         }
         .onChange(of: iPadCalendarCountdownTypeFilterBinding?.wrappedValue) { _, newValue in
             // Sync iPad countdown type filter binding back to viewModel
             if let newValue = newValue {
                 viewModel.selectedCountdownTypes = newValue
+                viewModel.saveFilterSettings()
             }
         }
         .onChange(of: iPadCalendarCustomTypeNameFilterBinding?.wrappedValue) { _, newValue in
             // Sync iPad custom type name filter binding back to viewModel
             if let newValue = newValue {
                 viewModel.selectedCustomTypeNames = newValue
+                viewModel.saveFilterSettings()
             }
         }
         .onChange(of: iPadCalendarMemberFilterBinding?.wrappedValue) { _, newValue in
@@ -274,6 +289,14 @@ struct CalendarView: View {
             // After data loads, sync state to iPad bindings
             iPadCalendarMembersWithEventsBinding?.wrappedValue = viewModel.membersWithEvents
             iPadCalendarCustomTypeNameFilterBinding?.wrappedValue = viewModel.selectedCustomTypeNames
+        }
+        .onAppear {
+            withAnimation(
+                .easeInOut(duration: 1.5)
+                .repeatForever(autoreverses: true)
+            ) {
+                filterPulseOpacity = 1.0
+            }
         }
     }
 
@@ -347,6 +370,28 @@ struct CalendarView: View {
                     .cornerRadius(AppDimensions.pillCornerRadius)
             }
 
+            // Month/Week toggle
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    if viewModel.displayMode == .month {
+                        // Sync week start to match current month's context
+                        viewModel.currentWeekStart = Calendar.current.startOfWeek(for: viewModel.selectedDate ?? Date())
+                        viewModel.displayMode = .week
+                    } else {
+                        // Sync month to match current week's context
+                        viewModel.currentMonth = viewModel.currentWeekStart
+                        viewModel.displayMode = .month
+                    }
+                }
+            } label: {
+                Image(systemName: viewModel.displayMode == .month ? "calendar.day.timeline.left" : "calendar")
+                    .font(.system(size: 20))
+                    .foregroundColor(appAccentColor)
+                    .frame(width: 44, height: 44)
+                    .background(Color.cardBackgroundSoft)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+
             Spacer()
 
             // Collapse multi-day events toggle
@@ -379,6 +424,13 @@ struct CalendarView: View {
                     .frame(width: 44, height: 44)
                     .background(Color.cardBackgroundSoft)
                     .cornerRadius(AppDimensions.cardCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(appAccentColor, lineWidth: 1.5)
+                            .opacity(hasActiveFilters || hasActiveCountdownSubFilters
+                                ? filterPulseOpacity
+                                : 0)
+                    )
             }
 
             // Member Filter button (only shown when Family tab is selected)
@@ -396,6 +448,13 @@ struct CalendarView: View {
                         .frame(width: 44, height: 44)
                         .background(Color.cardBackgroundSoft)
                         .cornerRadius(AppDimensions.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                                .stroke(appAccentColor, lineWidth: 1.5)
+                                .opacity(!viewModel.selectedMemberFilters.isEmpty
+                                    ? filterPulseOpacity
+                                    : 0)
+                        )
                 }
             }
         }

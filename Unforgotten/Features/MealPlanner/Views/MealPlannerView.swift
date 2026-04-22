@@ -627,8 +627,15 @@ struct EditRecipeSheet: View {
     @State private var websiteUrl: String = ""
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
+    @State private var showImageActionSheet = false
+    @State private var showFullScreenImage = false
+    @State private var removePhoto = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    private var hasExistingImage: Bool {
+        selectedImage != nil || (!removePhoto && recipe.imageUrl != nil)
+    }
 
     var body: some View {
         NavigationStack {
@@ -748,7 +755,11 @@ struct EditRecipeSheet: View {
                             }
                             // Recipe image
                             Button {
-                                showImagePicker = true
+                                if hasExistingImage {
+                                    showImageActionSheet = true
+                                } else {
+                                    showImagePicker = true
+                                }
                             } label: {
                                 GeometryReader { geo in
                                     if let image = selectedImage {
@@ -758,7 +769,7 @@ struct EditRecipeSheet: View {
                                             .frame(width: geo.size.width, height: geo.size.width)
                                             .clipped()
                                             .cornerRadius(AppDimensions.cardCornerRadius)
-                                    } else if let imageUrl = recipe.imageUrl, let url = URL(string: imageUrl) {
+                                    } else if !removePhoto, let imageUrl = recipe.imageUrl, let url = URL(string: imageUrl) {
                                         AsyncImage(url: url) { phase in
                                             switch phase {
                                             case .success(let image):
@@ -787,6 +798,19 @@ struct EditRecipeSheet: View {
                                 }
                                 .aspectRatio(1, contentMode: .fit)
                             }
+                            .confirmationDialog("Photo", isPresented: $showImageActionSheet) {
+                                Button("View Photo") {
+                                    showFullScreenImage = true
+                                }
+                                Button("Change Photo") {
+                                    showImagePicker = true
+                                }
+                                Button("Remove Photo", role: .destructive) {
+                                    selectedImage = nil
+                                    removePhoto = true
+                                }
+                                Button("Cancel", role: .cancel) {}
+                            }
                             if let error = errorMessage {
                                 Text(error)
                                     .font(.appCaption)
@@ -800,6 +824,18 @@ struct EditRecipeSheet: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(image: $selectedImage)
+            }
+            .onChange(of: selectedImage) { _, newImage in
+                if newImage != nil {
+                    removePhoto = false
+                }
+            }
+            .fullScreenCover(isPresented: $showFullScreenImage) {
+                ZoomableImageViewer(
+                    uiImage: selectedImage,
+                    imageUrl: recipe.imageUrl,
+                    onDismiss: { showFullScreenImage = false }
+                )
             }
         }
         .onAppear {
@@ -834,6 +870,12 @@ struct EditRecipeSheet: View {
             if let image = selectedImage {
                 let imageUrl = try await ImageUploadService.shared.uploadRecipePhoto(image: image, recipeId: recipe.id)
                 updated.imageUrl = imageUrl
+            } else if removePhoto {
+                if recipe.imageUrl != nil {
+                    let storagePath = "recipes/\(recipe.id.uuidString)/photo.jpg"
+                    try? await ImageUploadService.shared.deleteImage(bucket: SupabaseConfig.recipePhotosBucket, path: storagePath)
+                }
+                updated.imageUrl = nil
             }
 
             updated.name = name.trimmingCharacters(in: .whitespacesAndNewlines)

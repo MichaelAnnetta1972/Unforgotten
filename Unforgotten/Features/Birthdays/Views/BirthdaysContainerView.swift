@@ -220,7 +220,7 @@ struct iPadBirthdayRowView: View {
 
     private var turningAge: Int? {
         guard let age = birthday.profile.age else { return nil }
-        return age + 1
+        return birthday.daysUntil == 0 ? age : age + 1
     }
 
     var body: some View {
@@ -255,7 +255,7 @@ struct iPadBirthdayRowView: View {
                             .foregroundColor(birthday.daysUntil == 0 ? appAccentColor : .textMuted)
 
                         if let age = turningAge {
-                            Text("Turns \(age)")
+                            Text(birthday.daysUntil == 0 ? "Turned \(age)" : "Turns \(age)")
                                 .font(.appCaptionSmall)
                                 .foregroundColor(.textMuted)
                         }
@@ -319,7 +319,7 @@ struct iPadBirthdayDetailPane: View {
 
     private var turningAge: Int? {
         guard let age = birthday.profile.age else { return nil }
-        return age + 1
+        return birthday.daysUntil == 0 ? age : age + 1
     }
 
     var body: some View {
@@ -421,7 +421,7 @@ struct iPadBirthdayDetailPane: View {
                     Text("\(age)")
                         .font(.system(size: 36, weight: .bold))
                         .foregroundColor(appAccentColor)
-                    Text("Turning")
+                    Text(birthday.daysUntil == 0 ? "Turned" : "Turning")
                         .font(.appCaption)
                         .foregroundColor(.textSecondary)
                 }

@@ -806,6 +806,12 @@ struct AppointmentDetailView: View {
     @State private var sharedByName: String?
     @State private var isSharedByMe = false
     @State private var showRemoveSharedConfirmation = false
+    @State private var canReShare = false
+    @State private var hasReShared = false
+    @State private var reShareMemberIds: Set<UUID> = []
+    @State private var reShareEnabled = false
+    @State private var showReShareSheet = false
+    @State private var reShareMemberNames: [String] = []
 
     /// Whether this appointment belongs to another account (shared via family calendar)
     private var isSharedFromOtherAccount: Bool {
@@ -986,8 +992,13 @@ struct AppointmentDetailView: View {
                                 .disabled(isDeleting)
                             }
 
-                            // Remove button for shared appointments
+                            // Re-share and remove buttons for shared appointments
                             if isSharedFromOtherAccount {
+                                // Re-share with my family button
+                                if canReShare && appState.hasFamilyAccess {
+                                    reShareSection
+                                }
+
                                 Button {
                                     showRemoveSharedConfirmation = true
                                 } label: {
@@ -1025,9 +1036,22 @@ struct AppointmentDetailView: View {
                 appointment = updatedAppointment
             }
         }
+        .sheet(isPresented: $showReShareSheet) {
+            FamilySharingSheet(
+                isEnabled: $reShareEnabled,
+                selectedMemberIds: $reShareMemberIds,
+                onDismiss: {
+                    showReShareSheet = false
+                    Task { await saveReShare() }
+                }
+            )
+            .environmentObject(appState)
+            .presentationDetents([.medium, .large])
+        }
         .task {
             if isSharedFromOtherAccount {
                 await loadSharedByName()
+                await loadReShareState()
             } else {
                 if let _ = try? await appState.familyCalendarRepository.getShareForEvent(
                     eventType: .appointment, eventId: appointment.id
@@ -1139,6 +1163,115 @@ struct AppointmentDetailView: View {
             dismiss()
         } catch {
             isDeleting = false
+        }
+    }
+
+    // MARK: - Re-Share Section
+    @ViewBuilder
+    private var reShareSection: some View {
+        Button {
+            showReShareSheet = true
+        } label: {
+            HStack {
+                Image(systemName: "person.2")
+                    .font(.system(size: 18))
+                    .foregroundColor(hasReShared ? appAccentColor : .textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hasReShared ? "Shared with My Family" : "Share with My Family")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    if hasReShared && !reShareMemberNames.isEmpty {
+                        Text(reShareMemberNames.joined(separator: ", "))
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                    } else if !hasReShared {
+                        Text("Share this appointment with your own family members")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.textSecondary)
+            }
+            .padding(AppDimensions.cardPadding)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func loadReShareState() async {
+        do {
+            canReShare = try await appState.familyCalendarRepository.canReShareEvent(
+                eventType: .appointment, eventId: appointment.id
+            )
+
+            guard canReShare else { return }
+
+            if let reShare = try? await appState.familyCalendarRepository.getReShareForEvent(
+                eventType: .appointment, eventId: appointment.id
+            ) {
+                hasReShared = true
+                reShareEnabled = true
+                let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: reShare.id)
+                reShareMemberIds = Set(members.map { $0.memberUserId })
+
+                if let accountId = appState.currentAccount?.id {
+                    let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                    reShareMemberNames = members.compactMap { member in
+                        profiles.first(where: {
+                            ($0.linkedUserId ?? $0.sourceUserId) == member.memberUserId
+                        })?.displayName
+                    }
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load re-share state: \(error)")
+            #endif
+        }
+    }
+
+    private func saveReShare() async {
+        guard let accountId = appState.currentAccount?.id else { return }
+
+        do {
+            if let existing = try? await appState.familyCalendarRepository.getReShareForEvent(
+                eventType: .appointment, eventId: appointment.id
+            ) {
+                try await appState.familyCalendarRepository.deleteShare(shareId: existing.id)
+            }
+
+            if reShareEnabled && !reShareMemberIds.isEmpty {
+                _ = try await appState.familyCalendarRepository.reShareEvent(
+                    accountId: accountId,
+                    eventType: .appointment,
+                    eventId: appointment.id,
+                    memberUserIds: Array(reShareMemberIds)
+                )
+                hasReShared = true
+
+                let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                reShareMemberNames = reShareMemberIds.compactMap { memberId in
+                    profiles.first(where: {
+                        ($0.linkedUserId ?? $0.sourceUserId) == memberId
+                    })?.displayName
+                }
+            } else {
+                hasReShared = false
+                reShareMemberNames = []
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to save re-share: \(error)")
+            #endif
         }
     }
 
@@ -1634,26 +1767,20 @@ struct AddAppointmentView: View {
 
             // Create family calendar share if enabled
             if shareToFamily && !selectedMemberIds.isEmpty {
-                do {
-                    _ = try await appState.familyCalendarRepository.createShare(
-                        accountId: account.id,
-                        eventType: .appointment,
-                        eventId: appointment.id,
-                        memberUserIds: Array(selectedMemberIds)
-                    )
-                    // Send push notification to shared members
-                    await PushNotificationService.shared.sendShareNotification(
-                        eventType: .appointment,
-                        eventId: appointment.id,
-                        eventTitle: appointment.title,
-                        sharedByName: appState.currentAppUser?.displayName ?? "Someone",
-                        memberUserIds: Array(selectedMemberIds)
-                    )
-                } catch {
-                    #if DEBUG
-                    print("Failed to create family share: \(error)")
-                    #endif
-                }
+                _ = try await appState.familyCalendarRepository.createShare(
+                    accountId: account.id,
+                    eventType: .appointment,
+                    eventId: appointment.id,
+                    memberUserIds: Array(selectedMemberIds)
+                )
+                // Send push notification to shared members
+                await PushNotificationService.shared.sendShareNotification(
+                    eventType: .appointment,
+                    eventId: appointment.id,
+                    eventTitle: appointment.title,
+                    sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                    memberUserIds: Array(selectedMemberIds)
+                )
             }
 
             onSave(appointment)
@@ -2182,7 +2309,7 @@ struct EditAppointmentView: View {
 
             // Update family calendar sharing
             if let account = appState.currentAccount {
-                await updateFamilyCalendarSharing(accountId: account.id, appointmentId: saved.id)
+                try await updateFamilyCalendarSharing(accountId: account.id, appointmentId: saved.id)
             }
 
             onSave(saved)
@@ -2194,35 +2321,29 @@ struct EditAppointmentView: View {
         isLoading = false
     }
 
-    private func updateFamilyCalendarSharing(accountId: UUID, appointmentId: UUID) async {
-        do {
-            // First, delete existing share for this appointment
-            try await appState.familyCalendarRepository.deleteShareForEvent(
-                eventType: .appointment,
-                eventId: appointmentId
-            )
+    private func updateFamilyCalendarSharing(accountId: UUID, appointmentId: UUID) async throws {
+        // First, delete existing share for this appointment
+        try await appState.familyCalendarRepository.deleteShareForEvent(
+            eventType: .appointment,
+            eventId: appointmentId
+        )
 
-            // Then create new share if sharing is enabled
-            if shareToFamily && !selectedMemberIds.isEmpty {
-                _ = try await appState.familyCalendarRepository.createShare(
-                    accountId: accountId,
-                    eventType: .appointment,
-                    eventId: appointmentId,
-                    memberUserIds: Array(selectedMemberIds)
-                )
-                // Send push notification to shared members
-                await PushNotificationService.shared.sendShareNotification(
-                    eventType: .appointment,
-                    eventId: appointmentId,
-                    eventTitle: title,
-                    sharedByName: appState.currentAppUser?.displayName ?? "Someone",
-                    memberUserIds: Array(selectedMemberIds)
-                )
-            }
-        } catch {
-            #if DEBUG
-            print("Failed to update family calendar sharing: \(error)")
-            #endif
+        // Then create new share if sharing is enabled
+        if shareToFamily && !selectedMemberIds.isEmpty {
+            _ = try await appState.familyCalendarRepository.createShare(
+                accountId: accountId,
+                eventType: .appointment,
+                eventId: appointmentId,
+                memberUserIds: Array(selectedMemberIds)
+            )
+            // Send push notification to shared members
+            await PushNotificationService.shared.sendShareNotification(
+                eventType: .appointment,
+                eventId: appointmentId,
+                eventTitle: title,
+                sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                memberUserIds: Array(selectedMemberIds)
+            )
         }
     }
 }

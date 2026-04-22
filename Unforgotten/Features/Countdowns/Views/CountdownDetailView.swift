@@ -17,6 +17,12 @@ struct CountdownDetailView: View {
     @State private var showEditGroupSheet = false
     @State private var showDeleteGroupConfirmation = false
     @State private var groupDayInfo: (current: Int, total: Int)?
+    @State private var canReShare = false
+    @State private var hasReShared = false
+    @State private var reShareMemberIds: Set<UUID> = []
+    @State private var reShareEnabled = false
+    @State private var showReShareSheet = false
+    @State private var reShareMemberNames: [String] = []
 
     /// Whether this countdown belongs to another account (shared via family calendar)
     private var isSharedFromOtherAccount: Bool {
@@ -79,8 +85,13 @@ struct CountdownDetailView: View {
                             actionButtons
                         }
 
-                        // Remove button for shared events
+                        // Re-share and remove buttons for shared events
                         if isSharedFromOtherAccount {
+                            // Re-share with my family button
+                            if canReShare && appState.hasFamilyAccess {
+                                reShareSection
+                            }
+
                             Button {
                                 showRemoveSharedConfirmation = true
                             } label: {
@@ -124,9 +135,22 @@ struct CountdownDetailView: View {
                 RemoteFullscreenImageView(imageUrl: imageUrl, title: countdown.title)
             }
         }
+        .sheet(isPresented: $showReShareSheet) {
+            FamilySharingSheet(
+                isEnabled: $reShareEnabled,
+                selectedMemberIds: $reShareMemberIds,
+                onDismiss: {
+                    showReShareSheet = false
+                    Task { await saveReShare() }
+                }
+            )
+            .environmentObject(appState)
+            .presentationDetents([.medium, .large])
+        }
         .task {
             if isSharedFromOtherAccount {
                 await loadSharedByName()
+                await loadReShareState()
             } else {
                 // Check if this countdown has been shared by the current user
                 if let _ = try? await appState.familyCalendarRepository.getShareForEvent(
@@ -311,9 +335,10 @@ struct CountdownDetailView: View {
                 Text(countdown.formattedDateShort)
                     .font(.appBody)
                     .foregroundColor(.textSecondary)
-            }   
+            }
 
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(AppDimensions.cardPaddingLarge)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
@@ -531,74 +556,61 @@ struct CountdownDetailView: View {
     // MARK: - Action Buttons
     private var actionButtons: some View {
         VStack(spacing: 12) {
-            // Edit button
-            Button {
-                showEditCountdown = true
-            } label: {
-                HStack {
-                    Image(systemName: "square.and.pencil")
-                    Text(countdown.groupId != nil ? "Edit This Day" : "Edit Event")
-                }
-                .font(.appBodyMedium)
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(appAccentColor)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-            }
-
-            // Group actions for multi-day events
             if countdown.groupId != nil {
-                Button {
+                // Multi-day event: two row cards
+                actionRow(title: "This Day") {
+                    showEditCountdown = true
+                } onDelete: {
+                    showDeleteConfirmation = true
+                }
+
+                actionRow(title: "All Days") {
                     showEditGroupSheet = true
-                } label: {
-                    HStack {
-                        Image(systemName: "pencil.circle.fill")
-                        Text("Edit All Days")
-                    }
-                    .font(.appBodyMedium)
-                    .foregroundColor(appAccentColor)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
-                }
-            }
-
-            // Delete button
-            Button {
-                showDeleteConfirmation = true
-            } label: {
-                HStack {
-                    Image(systemName: "trash")
-                    Text(countdown.groupId != nil ? "Delete This Day" : "Delete Event")
-                }
-                .font(.appBodyMedium)
-                .foregroundColor(.medicalRed)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.cardCornerRadius)
-            }
-
-            // Delete all days button for grouped events
-            if countdown.groupId != nil {
-                Button {
+                } onDelete: {
                     showDeleteGroupConfirmation = true
-                } label: {
-                    HStack {
-                        Image(systemName: "trash.fill")
-                        Text("Delete All Days")
-                    }
-                    .font(.appBodyMedium)
-                    .foregroundColor(.medicalRed)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.medicalRed.opacity(0.1))
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+                }
+            } else {
+                // Single event: one row card
+                actionRow(title: "Event") {
+                    showEditCountdown = true
+                } onDelete: {
+                    showDeleteConfirmation = true
                 }
             }
         }
+    }
+
+    private func actionRow(title: String, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) -> some View {
+        HStack {
+            Text(title)
+                .font(.appBodyMedium)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            HStack(spacing: 16) {
+                Button(action: onEdit) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 18))
+                        .foregroundColor(appAccentColor)
+                        .frame(width: 40, height: 40)
+                        .background(appAccentColor.opacity(0.15))
+                        .clipShape(Circle())
+                }
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16))
+                        .foregroundColor(.medicalRed)
+                        .frame(width: 40, height: 40)
+                        .background(Color.medicalRed.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 
     // MARK: - Helper Methods
@@ -652,7 +664,9 @@ struct CountdownDetailView: View {
                 NotificationCenter.default.post(name: .countdownsDidChange, object: nil)
                 dismiss()
             } catch {
+                #if DEBUG
                 print("Error deleting countdown: \(error)")
+                #endif
             }
         }
     }
@@ -693,8 +707,125 @@ struct CountdownDetailView: View {
                 NotificationCenter.default.post(name: .countdownsDidChange, object: nil)
                 dismiss()
             } catch {
+                #if DEBUG
                 print("Error deleting countdown group: \(error)")
+                #endif
             }
+        }
+    }
+
+    // MARK: - Re-Share Section
+    @ViewBuilder
+    private var reShareSection: some View {
+        Button {
+            showReShareSheet = true
+        } label: {
+            HStack {
+                Image(systemName: "person.2")
+                    .font(.system(size: 18))
+                    .foregroundColor(hasReShared ? appAccentColor : .textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hasReShared ? "Shared with My Family" : "Share with My Family")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    if hasReShared && !reShareMemberNames.isEmpty {
+                        Text(reShareMemberNames.joined(separator: ", "))
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                    } else if !hasReShared {
+                        Text("Share this event with your own family members")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.textSecondary)
+            }
+            .padding(AppDimensions.cardPadding)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func loadReShareState() async {
+        do {
+            // Check if this user can re-share (is a direct recipient of an original share)
+            canReShare = try await appState.familyCalendarRepository.canReShareEvent(
+                eventType: .countdown, eventId: countdown.id
+            )
+
+            guard canReShare else { return }
+
+            // Check if we already have a re-share
+            if let reShare = try? await appState.familyCalendarRepository.getReShareForEvent(
+                eventType: .countdown, eventId: countdown.id
+            ) {
+                hasReShared = true
+                reShareEnabled = true
+                let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: reShare.id)
+                reShareMemberIds = Set(members.map { $0.memberUserId })
+
+                // Resolve display names
+                if let accountId = appState.currentAccount?.id {
+                    let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                    reShareMemberNames = members.compactMap { member in
+                        profiles.first(where: {
+                            ($0.linkedUserId ?? $0.sourceUserId) == member.memberUserId
+                        })?.displayName
+                    }
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load re-share state: \(error)")
+            #endif
+        }
+    }
+
+    private func saveReShare() async {
+        guard let accountId = appState.currentAccount?.id else { return }
+
+        do {
+            // Delete existing re-share if any
+            if let existing = try? await appState.familyCalendarRepository.getReShareForEvent(
+                eventType: .countdown, eventId: countdown.id
+            ) {
+                try await appState.familyCalendarRepository.deleteShare(shareId: existing.id)
+            }
+
+            // Create new re-share if enabled and members selected
+            if reShareEnabled && !reShareMemberIds.isEmpty {
+                _ = try await appState.familyCalendarRepository.reShareEvent(
+                    accountId: accountId,
+                    eventType: .countdown,
+                    eventId: countdown.id,
+                    memberUserIds: Array(reShareMemberIds)
+                )
+                hasReShared = true
+
+                // Resolve display names
+                let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                reShareMemberNames = reShareMemberIds.compactMap { memberId in
+                    profiles.first(where: {
+                        ($0.linkedUserId ?? $0.sourceUserId) == memberId
+                    })?.displayName
+                }
+            } else {
+                hasReShared = false
+                reShareMemberNames = []
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to save re-share: \(error)")
+            #endif
         }
     }
 

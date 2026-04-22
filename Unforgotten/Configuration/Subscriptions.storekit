@@ -1,183 +1,160 @@
 {
-  "identifier" : "8A3B5C2D-1E4F-6A7B-8C9D-0E1F2A3B4C5D",
-  "type" : "com.apple.product-type.storekit",
-  "version" : 3,
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : "https://unforgottenapp.com/privacy"
+      }
+    ]
+  },
+  "identifier" : "05054676",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
   "subscriptionGroups" : [
     {
-      "id" : "unforgotten_pro",
+      "id" : "D6A16E25",
       "localizations" : [
-        {
-          "description" : "Unlock all premium features in Unforgotten",
-          "displayName" : "Unforgotten Pro",
-          "locale" : "en_US"
-        }
+
       ],
       "name" : "Unforgotten Pro",
       "subscriptions" : [
         {
-          "adHocOffers" : [],
-          "codeOffers" : [],
-          "displayPrice" : "5.99",
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "premium_monthly_001",
-          "introductoryOffer" : {
-            "internalID" : "premium_monthly_trial",
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W",
-            "displayPrice" : "0",
-            "numberOfPeriods" : 1
-          },
+          "internalID" : "D5264F04",
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited medications, profiles, notes, contacts, and more",
-              "displayName" : "Premium Monthly",
+              "description" : "Full access to all features including medications, appointments, mood tracking, and more.",
+              "displayName" : "Unforgotten Premium Monthly",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.unforgotten.premium.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Premium Monthly",
-          "subscriptionGroupID" : "unforgotten_pro",
-          "type" : "RecurringSubscription"
+          "subscriptionGroupID" : "D6A16E25",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         },
         {
-          "adHocOffers" : [],
-          "codeOffers" : [],
-          "displayPrice" : "39.99",
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "29.99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "premium_annual_001",
-          "introductoryOffer" : {
-            "internalID" : "premium_annual_trial",
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W",
-            "displayPrice" : "0",
-            "numberOfPeriods" : 1
-          },
+          "internalID" : "96E7650E",
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited medications, profiles, notes, contacts, and more — save with annual billing",
-              "displayName" : "Premium Annual",
+              "description" : "Full access to all features including medications, appointments, mood tracking, and more. Save with an annual plan.",
+              "displayName" : "Unforgotten Premium Annual",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.unforgotten.premium.annual",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Premium Annual",
-          "subscriptionGroupID" : "unforgotten_pro",
-          "type" : "RecurringSubscription"
+          "subscriptionGroupID" : "D6A16E25",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         },
         {
-          "adHocOffers" : [],
-          "codeOffers" : [],
-          "displayPrice" : "9.99",
-          "familyShareable" : true,
-          "groupNumber" : 2,
-          "internalID" : "family_monthly_001",
-          "introductoryOffer" : {
-            "internalID" : "family_monthly_trial",
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W",
-            "displayPrice" : "0",
-            "numberOfPeriods" : 1
-          },
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "7.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A3DEEE15",
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Everything in Premium plus family sharing and collaboration",
-              "displayName" : "Family Plus Monthly",
+              "description" : "Everything in Premium plus multi-account support for the whole family to stay connected.",
+              "displayName" : "Unforgotten Family Plus Monthly",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.unforgotten.family.monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Family Plus Monthly",
-          "subscriptionGroupID" : "unforgotten_pro",
-          "type" : "RecurringSubscription"
+          "referenceName" : "Family Plus",
+          "subscriptionGroupID" : "D6A16E25",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         },
         {
-          "adHocOffers" : [],
-          "codeOffers" : [],
-          "displayPrice" : "69.99",
-          "familyShareable" : true,
-          "groupNumber" : 2,
-          "internalID" : "family_annual_001",
-          "introductoryOffer" : {
-            "internalID" : "family_annual_trial",
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P1W",
-            "displayPrice" : "0",
-            "numberOfPeriods" : 1
-          },
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "59.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "95BE3D2D",
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Everything in Premium plus family sharing and collaboration — save with annual billing",
-              "displayName" : "Family Plus Annual",
+              "description" : "Everything in Premium plus multi-account support for the whole family to stay connected. Save with an annual plan.",
+              "displayName" : "Unforgotten Family Plus Annual",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.unforgotten.family.annual",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Family Plus Annual",
-          "subscriptionGroupID" : "unforgotten_pro",
-          "type" : "RecurringSubscription"
+          "subscriptionGroupID" : "D6A16E25",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         }
       ]
     }
   ],
-  "settings" : {
-    "_applicationInternalID" : "unforgotten_app",
-    "_developerTeamID" : "",
-    "_failTransactionsEnabled" : false,
-    "_locale" : "en_US",
-    "_storefront" : "USA",
-    "_storeKitErrors" : [
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Load Products"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Purchase"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Verification"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "App Store Sync"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Subscription Status"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "App Transaction"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Manage Subscriptions Sheet"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Refund Request Sheet"
-      },
-      {
-        "current" : null,
-        "enabled" : false,
-        "name" : "Offer Code Redeem Sheet"
-      }
-    ],
-    "_timeRate" : 6
+  "version" : {
+    "major" : 4,
+    "minor" : 0
   }
 }

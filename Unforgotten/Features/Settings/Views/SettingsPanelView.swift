@@ -20,10 +20,12 @@ struct SettingsPanelView: View {
         case editAccountName
         case manageMembers
         case switchAccount
+        case joinAccount
         case moodHistory
         case upgrade
         case adminPanel
         case recentlyDeleted
+        case helpTutorials
         case privacyPolicy
         case termsOfService
 
@@ -34,10 +36,12 @@ struct SettingsPanelView: View {
             case .editAccountName: return "editAccountName"
             case .manageMembers: return "manageMembers"
             case .switchAccount: return "switchAccount"
+            case .joinAccount: return "joinAccount"
             case .moodHistory: return "moodHistory"
             case .upgrade: return "upgrade"
             case .adminPanel: return "adminPanel"
             case .recentlyDeleted: return "recentlyDeleted"
+            case .helpTutorials: return "helpTutorials"
             case .privacyPolicy: return "privacyPolicy"
             case .termsOfService: return "termsOfService"
             }
@@ -50,10 +54,12 @@ struct SettingsPanelView: View {
             case .editAccountName: return "Edit Account Name"
             case .manageMembers: return "Manage Members"
             case .switchAccount: return "Switch Account"
+            case .joinAccount: return "Join an Account"
             case .moodHistory: return "Mood History"
             case .upgrade: return "Upgrade to Premium"
             case .adminPanel: return "Admin Panel"
             case .recentlyDeleted: return "Recently Deleted"
+            case .helpTutorials: return "Help & Tutorials"
             case .privacyPolicy: return "Privacy Policy"
             case .termsOfService: return "Terms of Service"
             }
@@ -62,10 +68,18 @@ struct SettingsPanelView: View {
 
     @State private var selectedSubMenu: SettingsSubMenu?
     @State private var showSignOutConfirm = false
+    @State private var showDeleteAccountConfirm = false
+    @State private var showDeleteAccountFinalConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     @State private var showUpgradePrompt = false
+    @State private var feedbackKindToSend: FeedbackKind?
+    @State private var showMailUnavailableAlert = false
+    @State private var showHelpTutorials = false
     @State private var userEmail: String = ""
     @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
     @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
+    @State private var morningBriefingEnabled: Bool = NotificationService.shared.dailySummaryEnabled
 
 
     /// Whether to show split view (side-by-side) on iPad
@@ -126,10 +140,61 @@ struct SettingsPanelView: View {
         } message: {
             Text("Are you sure you want to sign out?")
         }
+        .alert("Delete Account?", isPresented: $showDeleteAccountConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Continue", role: .destructive) {
+                showDeleteAccountFinalConfirm = true
+            }
+        } message: {
+            Text("This will permanently delete your account, profiles, medications, appointments, and all other data associated with your account. This action cannot be undone.")
+        }
+        .alert("Are you absolutely sure?", isPresented: $showDeleteAccountFinalConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete My Account", role: .destructive) {
+                Task {
+                    isDeletingAccount = true
+                    do {
+                        try await appState.deleteAccount()
+                        onDismiss?()
+                    } catch {
+                        deleteAccountError = error.localizedDescription
+                    }
+                    isDeletingAccount = false
+                }
+            }
+        } message: {
+            Text("Your account and all associated data will be permanently deleted. This cannot be undone.")
+        }
+        .alert("Couldn't Delete Account", isPresented: Binding(
+            get: { deleteAccountError != nil },
+            set: { if !$0 { deleteAccountError = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteAccountError = nil }
+        } message: {
+            Text(deleteAccountError ?? "")
+        }
+        .sheet(item: $feedbackKindToSend) { kind in
+            FeedbackMailView(kind: kind) {
+                feedbackKindToSend = nil
+            }
+        }
+        .alert("Mail Not Available", isPresented: $showMailUnavailableAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("We couldn't open a mail composer. The feedback address has been copied to your clipboard:\n\n\(AppConfiguration.feedbackEmail)")
+        }
         .task {
             if let user = await SupabaseManager.shared.currentUser {
                 userEmail = user.email ?? ""
             }
+        }
+    }
+
+    private func handleFeedbackTap(_ kind: FeedbackKind) {
+        if FeedbackPresenter.canSendInAppMail() {
+            feedbackKindToSend = kind
+        } else if !FeedbackPresenter.openMailtoFallback(for: kind) {
+            showMailUnavailableAlert = true
         }
     }
 
@@ -190,6 +255,10 @@ struct SettingsPanelView: View {
                     }
                     .padding(.top, 16)
 
+                    // Viewing As Bar (shown when viewing another account)
+                    ViewingAsBar(showOnIPad: true)
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
                     // Appearance section
                     SettingsPanelSection(title: "APPEARANCE") {
                         SettingsPanelButtonRow(
@@ -238,6 +307,19 @@ struct SettingsPanelView: View {
                                 NotificationService.shared.hideNotificationPreviews = newValue
                             }
 
+                            SettingsPanelToggleRow(
+                                icon: "sunrise.fill",
+                                title: "Morning Briefing",
+                                isOn: $morningBriefingEnabled
+                            )
+                            .onChange(of: morningBriefingEnabled) { _, newValue in
+                                NotificationService.shared.dailySummaryEnabled = newValue
+                                if newValue {
+                                    Task {
+                                        await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -277,6 +359,12 @@ struct SettingsPanelView: View {
                                     value: userEmail
                                 )
                             }
+
+                            SettingsPanelInfoRow(
+                                icon: appState.subscriptionTier == .free ? "star" : "star.fill",
+                                title: "Current Plan",
+                                value: appState.subscriptionTier.displayName
+                            )
                         }
 
                         // Only show manage members if user can manage members
@@ -290,8 +378,8 @@ struct SettingsPanelView: View {
                             }
                         }
 
-                        // Switch Account (only show if multiple accounts)
-                        if appState.switchableAccounts.count > 1 {
+                        // Switch Account (only show for Family Plus with multiple accounts)
+                        if appState.subscriptionTier.hasFamilyFeatures && appState.switchableAccounts.count > 1 {
                             SettingsPanelButtonRow(
                                 icon: "arrow.left.arrow.right",
                                 title: "Switch Account",
@@ -299,6 +387,15 @@ struct SettingsPanelView: View {
                             ) {
                                 selectSubMenu(.switchAccount)
                             }
+                        }
+
+                        // Join an Account
+                        SettingsPanelButtonRow(
+                            icon: "person.badge.plus",
+                            title: "Join an Account",
+                            isSelected: selectedSubMenu == .joinAccount
+                        ) {
+                            selectSubMenu(.joinAccount)
                         }
                     }
 
@@ -348,6 +445,34 @@ struct SettingsPanelView: View {
                         ) {
                             selectSubMenu(.recentlyDeleted)
                         }
+                        SyncStatusSettingsRow(syncEngine: appState.syncEngine)
+                    }
+
+                    // Support section
+                    SettingsPanelSection(title: "SUPPORT") {
+                        SettingsPanelButtonRow(
+                            icon: "questionmark.circle.fill",
+                            title: "Help & Tutorials",
+                            isSelected: selectedSubMenu == .helpTutorials
+                        ) {
+                            selectSubMenu(.helpTutorials)
+                        }
+
+                        SettingsPanelButtonRow(
+                            icon: "ladybug",
+                            title: "Report a Bug",
+                            isSelected: false
+                        ) {
+                            handleFeedbackTap(.bugReport)
+                        }
+
+                        SettingsPanelButtonRow(
+                            icon: "bubble.left.and.bubble.right",
+                            title: "Send Feedback",
+                            isSelected: false
+                        ) {
+                            handleFeedbackTap(.generalFeedback)
+                        }
                     }
 
                     // About section
@@ -357,6 +482,14 @@ struct SettingsPanelView: View {
                             title: "Version",
                             value: "1.0.0"
                         )
+
+                        SettingsPanelButtonRow(
+                            icon: "star",
+                            title: "Rate Unforgotten",
+                            isSelected: false
+                        ) {
+                            ReviewRequestService.shared.openAppStoreReviewPage()
+                        }
 
                         SettingsPanelButtonRow(
                             icon: "lock.shield",
@@ -391,6 +524,37 @@ struct SettingsPanelView: View {
                         .cornerRadius(AppDimensions.cardCornerRadius)
                     }
                     .padding(.horizontal, AppDimensions.screenPadding)
+
+                    // Delete account
+                    Button {
+                        showDeleteAccountConfirm = true
+                    } label: {
+                        HStack {
+                            if isDeletingAccount {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .medicalRed))
+                            } else {
+                                Image(systemName: "trash")
+                            }
+                            Text(isDeletingAccount ? "Deleting…" : "Delete Account")
+                        }
+                        .font(.appBodyMedium)
+                        .foregroundColor(.medicalRed)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                    }
+                    .disabled(isDeletingAccount)
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.top, 8)
+
+                    Text("Permanently deletes your account and all your data. This cannot be undone.")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .padding(.top, 6)
 
                     Spacer()
                         .frame(height: 40)
@@ -466,6 +630,10 @@ struct SettingsPanelView: View {
                 AdminPanelContentView()
             case .recentlyDeleted:
                 RecentlyDeletedPanelContent()
+            case .joinAccount:
+                JoinAccountPanelContent()
+            case .helpTutorials:
+                HelpTutorialsPanelContent()
             case .privacyPolicy:
                 PrivacyPolicyPanelContent()
             case .termsOfService:
@@ -540,6 +708,10 @@ struct SettingsPanelView: View {
                 AdminPanelContentView()
             case .recentlyDeleted:
                 RecentlyDeletedPanelContent()
+            case .joinAccount:
+                JoinAccountPanelContent()
+            case .helpTutorials:
+                HelpTutorialsPanelContent()
             case .privacyPolicy:
                 PrivacyPolicyPanelContent()
             case .termsOfService:
@@ -1448,6 +1620,20 @@ struct AdminPanelContentView: View {
         return viewModel.users.filter { user in
             user.email.localizedCaseInsensitiveContains(searchText)
         }
+    }
+}
+
+// MARK: - Join Account Panel Content
+struct JoinAccountPanelContent: View {
+    var body: some View {
+        JoinAccountView()
+    }
+}
+
+// MARK: - Help Tutorials Panel Content
+struct HelpTutorialsPanelContent: View {
+    var body: some View {
+        HelpTutorialsView()
     }
 }
 

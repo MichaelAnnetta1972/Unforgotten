@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B4351D652F7DC42700E7F4B5 /* Subscriptions.storekit in Resources */ = {isa = PBXBuildFile; fileRef = B4351D642F7DC42700E7F4B5 /* Subscriptions.storekit */; };
 		B46F85E52F3A805800CBFEFE /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B46F85A82F3A095400CBFEFE /* UserNotifications.framework */; };
 		B46F85E62F3A805800CBFEFE /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B46F85AA2F3A095400CBFEFE /* UserNotificationsUI.framework */; };
 		B46F85F02F3A805800CBFEFE /* UnforgottenNotificationContent.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B46F85E42F3A805800CBFEFE /* UnforgottenNotificationContent.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -49,6 +50,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B4351D642F7DC42700E7F4B5 /* Subscriptions.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Subscriptions.storekit; path = Unforgotten/Configuration/Subscriptions.storekit; sourceTree = "<group>"; };
 		B46F85A82F3A095400CBFEFE /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		B46F85AA2F3A095400CBFEFE /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
 		B46F85E42F3A805800CBFEFE /* UnforgottenNotificationContent.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UnforgottenNotificationContent.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -140,6 +142,7 @@
 		B4AA7C0F2EDC6A4800EF105A = {
 			isa = PBXGroup;
 			children = (
+				B4351D642F7DC42700E7F4B5 /* Subscriptions.storekit */,
 				B4AA7C1A2EDC6A4800EF105A /* Unforgotten */,
 				B46F85E72F3A805800CBFEFE /* UnforgottenNotificationContent */,
 				B4MB00052F3B900000000001 /* UnforgottenMorningBriefing */,
@@ -301,6 +304,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B4351D652F7DC42700E7F4B5 /* Subscriptions.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -361,7 +365,7 @@
 				INFOPLIST_FILE = UnforgottenNotificationContent/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UnforgottenNotificationContent/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -391,7 +395,7 @@
 				INFOPLIST_FILE = UnforgottenNotificationContent/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = UnforgottenNotificationContent/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -540,7 +544,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Unforgotten/Unforgotten.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 858892J9XC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -576,7 +580,7 @@
 				CODE_SIGN_ENTITLEMENTS = Unforgotten/Unforgotten.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 858892J9XC;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

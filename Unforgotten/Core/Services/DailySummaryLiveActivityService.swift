@@ -211,6 +211,13 @@ final class DailySummaryLiveActivityService {
     ///   dismissed it — suppress until tomorrow.
     /// - If none is running and it's the first open of the day, start a new one.
     func startOrUpdateDailySummary(appState: AppState) async {
+        // Respect the user preference — when the Morning Briefing is disabled,
+        // end any in-flight activity and do nothing further.
+        guard NotificationService.shared.dailySummaryEnabled else {
+            await endAllDailySummaryActivities()
+            return
+        }
+
         let activities = Activity<DailySummaryAttributes>.activities
 
         if !activities.isEmpty {

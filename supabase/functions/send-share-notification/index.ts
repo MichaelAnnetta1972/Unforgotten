@@ -14,7 +14,7 @@ const APNS_HOSTS: Record<string, string> = {
 };
 
 interface ShareNotificationPayload {
-  event_type: "appointment" | "countdown";
+  event_type: "appointment" | "countdown" | "todo_list";
   event_id: string;
   event_title: string;
   shared_by_name: string;
@@ -132,7 +132,7 @@ serve(async (req) => {
     const apnsToken = await generateAPNsToken();
 
     // Build the notification payload
-    const eventTypeDisplay = event_type === "appointment" ? "an appointment" : "a countdown";
+    const eventTypeDisplay = event_type === "appointment" ? "an appointment" : event_type === "todo_list" ? "a to do list" : "a countdown";
     const apnsPayload = {
       aps: {
         alert: {

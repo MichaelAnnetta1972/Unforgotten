@@ -10,6 +10,11 @@ protocol FamilyCalendarRepositoryProtocol {
     func deleteShareForEvent(eventType: CalendarEventType, eventId: UUID) async throws
     func removeSelfFromShare(eventType: CalendarEventType, eventId: UUID) async throws
 
+    // Re-sharing
+    func canReShareEvent(eventType: CalendarEventType, eventId: UUID) async throws -> Bool
+    func reShareEvent(accountId: UUID, eventType: CalendarEventType, eventId: UUID, memberUserIds: [UUID]) async throws -> FamilyCalendarShare
+    func getReShareForEvent(eventType: CalendarEventType, eventId: UUID) async throws -> FamilyCalendarShare?
+
     // Queries
     func getShareForEvent(eventType: CalendarEventType, eventId: UUID) async throws -> FamilyCalendarShare?
     func getMembersForShare(shareId: UUID) async throws -> [FamilyCalendarShareMember]
@@ -91,12 +96,15 @@ final class FamilyCalendarRepository: FamilyCalendarRepositoryProtocol {
     }
 
     // MARK: - Delete Share for Event
+    /// Deletes only the ORIGINAL share for an event, leaving any re-shares untouched.
+    /// Re-shares will be cleaned up by the DB cascade when the source share is removed.
     func deleteShareForEvent(eventType: CalendarEventType, eventId: UUID) async throws {
         try await supabase
             .from(TableName.familyCalendarShares)
             .delete()
             .eq("event_type", value: eventType.rawValue)
             .eq("event_id", value: eventId)
+            .is("source_share_id", value: nil)
             .execute()
     }
 
@@ -121,13 +129,104 @@ final class FamilyCalendarRepository: FamilyCalendarRepositoryProtocol {
             .execute()
     }
 
+    // MARK: - Can Re-Share Event
+    /// Checks if the current user can re-share an event (must be a direct recipient of an original share)
+    func canReShareEvent(eventType: CalendarEventType, eventId: UUID) async throws -> Bool {
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            throw SupabaseError.notAuthenticated
+        }
+
+        let result: Bool = try await supabase
+            .rpc("can_reshare_event", params: [
+                "p_user_id": userId.uuidString,
+                "p_event_type": eventType.rawValue,
+                "p_event_id": eventId.uuidString
+            ])
+            .execute()
+            .value
+
+        return result
+    }
+
+    // MARK: - Re-Share Event
+    /// Creates a re-share: a new share record referencing the original share, with the current user as sharer
+    func reShareEvent(accountId: UUID, eventType: CalendarEventType, eventId: UUID, memberUserIds: [UUID]) async throws -> FamilyCalendarShare {
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            throw SupabaseError.notAuthenticated
+        }
+
+        // Get the source share ID (the original share that granted us access)
+        let sourceShareId: UUID = try await supabase
+            .rpc("get_source_share_id", params: [
+                "p_user_id": userId.uuidString,
+                "p_event_type": eventType.rawValue,
+                "p_event_id": eventId.uuidString
+            ])
+            .execute()
+            .value
+
+        let insert = FamilyCalendarReShareInsert(
+            accountId: accountId,
+            eventType: eventType.rawValue,
+            eventId: eventId,
+            sharedByUserId: userId,
+            sourceShareId: sourceShareId
+        )
+
+        let share: FamilyCalendarShare = try await supabase
+            .from(TableName.familyCalendarShares)
+            .insert(insert)
+            .select()
+            .single()
+            .execute()
+            .value
+
+        // Add members
+        if !memberUserIds.isEmpty {
+            let memberInserts = memberUserIds.map { memberId in
+                FamilyCalendarShareMemberInsert(shareId: share.id, memberUserId: memberId)
+            }
+
+            try await supabase
+                .from(TableName.familyCalendarShareMembers)
+                .insert(memberInserts)
+                .execute()
+        }
+
+        return share
+    }
+
+    // MARK: - Get Re-Share for Event
+    /// Gets the current user's re-share for a specific event (if they have re-shared it)
+    func getReShareForEvent(eventType: CalendarEventType, eventId: UUID) async throws -> FamilyCalendarShare? {
+        guard let userId = await SupabaseManager.shared.currentUserId else {
+            throw SupabaseError.notAuthenticated
+        }
+
+        let shares: [FamilyCalendarShare] = try await supabase
+            .from(TableName.familyCalendarShares)
+            .select()
+            .eq("event_type", value: eventType.rawValue)
+            .eq("event_id", value: eventId.uuidString)
+            .eq("shared_by_user_id", value: userId.uuidString)
+            .not("source_share_id", operator: .is, value: "null")
+            .execute()
+            .value
+
+        return shares.first
+    }
+
     // MARK: - Get Share for Event
+    /// Returns the ORIGINAL share for an event (source_share_id IS NULL).
+    /// Since re-sharing was introduced, multiple share rows can exist for one event:
+    /// one original and any number of re-shares. The edit view always wants the original.
     func getShareForEvent(eventType: CalendarEventType, eventId: UUID) async throws -> FamilyCalendarShare? {
         let shares: [FamilyCalendarShare] = try await supabase
             .from(TableName.familyCalendarShares)
             .select()
             .eq("event_type", value: eventType.rawValue)
             .eq("event_id", value: eventId)
+            .is("source_share_id", value: nil)
             .execute()
             .value
 
@@ -301,6 +400,22 @@ private struct FamilyCalendarShareInsert: Encodable {
         case eventType = "event_type"
         case eventId = "event_id"
         case sharedByUserId = "shared_by_user_id"
+    }
+}
+
+private struct FamilyCalendarReShareInsert: Encodable {
+    let accountId: UUID
+    let eventType: String
+    let eventId: UUID
+    let sharedByUserId: UUID
+    let sourceShareId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case accountId = "account_id"
+        case eventType = "event_type"
+        case eventId = "event_id"
+        case sharedByUserId = "shared_by_user_id"
+        case sourceShareId = "source_share_id"
     }
 }
 

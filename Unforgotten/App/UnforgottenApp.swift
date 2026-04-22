@@ -223,10 +223,21 @@ struct UnforgottenApp: App {
     @StateObject private var appState: AppState
 
     init() {
-        // Initialize the local storage container
+        // Initialize the local storage container.
+        //
+        // If iOS launches us headlessly (e.g. for a background task or push)
+        // before the user has unlocked the device for the first time after a
+        // reboot, the SwiftData store is protected and cannot be opened. In
+        // that case exit cleanly rather than crashing — the system will
+        // relaunch us once protected data is available.
         let container: ModelContainer
         do {
             container = try LocalStorageContainer.create()
+        } catch is LocalStorageContainer.ProtectedDataUnavailableError {
+            #if DEBUG
+            print("⚠️ Protected data unavailable at launch — exiting cleanly.")
+            #endif
+            exit(0)
         } catch {
             fatalError("Failed to create local storage container: \(error)")
         }
@@ -448,12 +459,17 @@ struct AppRootView: View {
     }
 }
 
+// MARK: - Startup Timeout
+
+private struct StartupTimeoutError: Error {}
+
 // MARK: - App State
 @MainActor
 final class AppState: ObservableObject {
     // MARK: - Published Properties
     @Published var isAuthenticated = false
     @Published var isLoading = true
+    @Published var startupError = false
     @Published var currentAccount: Account?
     @Published var currentUserRole: MemberRole?
     @Published var showMoodPrompt = false
@@ -502,6 +518,13 @@ final class AppState: ObservableObject {
 
     // MARK: - Post-Onboarding Navigation
     @Published var pendingOnboardingAction: OnboardingFirstAction?
+
+    // MARK: - Sign in with Apple Prefill
+    // Name provided by Apple's Authentication Services framework on first sign-in.
+    // Apple requires that we not ask users to re-enter information they've already
+    // provided via Sign in with Apple, so we capture it here and prefill onboarding.
+    @Published var pendingAppleFirstName: String?
+    @Published var pendingAppleLastName: String?
 
     // MARK: - Local Storage & Sync
     private let modelContext: ModelContext
@@ -672,21 +695,24 @@ final class AppState: ObservableObject {
         NotificationService.shared.delegate = self
 
         Task {
+            // checkAuthState must complete first — it sets up account data needed by other operations
             await checkAuthState()
-            // Verify subscription status with Apple on launch
-            await SubscriptionManager.shared.refreshSubscriptionStatus()
-            objectWillChange.send()
-            // Request notification permissions
-            _ = await NotificationService.shared.requestPermission()
-            // Re-schedule notifications on app launch
-            await rescheduleNotifications()
-            // Update widget with today's briefing data
-            await WidgetBriefingService.shared.updateWidgetData(appState: self)
-            // Start or update Lock Screen Live Activity with today's summary
-            await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: self)
+
+            // Everything below is independent of each other — run in parallel
+            async let subscriptionRefresh: Void = {
+                await SubscriptionManager.shared.refreshSubscriptionStatus()
+                self.objectWillChange.send()
+            }()
+            async let notificationPermission: Void = {
+                _ = await NotificationService.shared.requestPermission()
+            }()
+            async let notificationReschedule: Void = rescheduleNotifications()
+            async let widgetUpdate: Void = WidgetBriefingService.shared.updateWidgetData(appState: self)
+            async let liveActivityUpdate: Void = DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: self)
+
+            _ = await (subscriptionRefresh, notificationPermission, notificationReschedule, widgetUpdate, liveActivityUpdate)
+
             // Process any pending notifications after app is fully loaded
-            // Small delay to ensure views are mounted and ready to observe changes
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             await MainActor.run {
                 NotificationService.shared.processPendingNotifications()
             }
@@ -739,21 +765,54 @@ final class AppState: ObservableObject {
     // MARK: - Auth State
     func checkAuthState(appleDisplayName: String? = nil) async {
         isLoading = true
+        startupError = false
 
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { @MainActor in
+                    await self.performAuthStartup(appleDisplayName: appleDisplayName)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                    throw StartupTimeoutError()
+                }
+                try await group.next()
+                group.cancelAll()
+            }
+        } catch {
+            #if DEBUG
+            print("🔐 Startup timed out or failed: \(error) — showing connection error screen")
+            #endif
+            // If we have cached accounts, proceed into the app offline rather than blocking the user
+            if !allAccounts.isEmpty && currentAccount != nil {
+                isAuthenticated = true
+            } else {
+                startupError = true
+            }
+        }
+
+        isLoading = false
+    }
+
+    /// Retry startup after a connection error. Called from the connection error screen.
+    func retryStartup() async {
+        await checkAuthState()
+    }
+
+    /// The actual auth + account load work, extracted so it can be raced against a timeout.
+    private func performAuthStartup(appleDisplayName: String?) async {
         if let user = await authRepository.getCurrentUser() {
             isAuthenticated = true
             await syncAppUser(userId: user.id, email: user.email ?? "", appleDisplayName: appleDisplayName)
             await loadAccountData()
-            await checkMoodPrompt()
-            // Ensure device token is registered for push notifications
-            await DeviceTokenRepository.shared.ensureTokenRegistered(userId: user.id)
+            async let moodCheck: Void = checkMoodPrompt()
+            async let tokenRegistration: Void = DeviceTokenRepository.shared.ensureTokenRegistered(userId: user.id)
+            _ = await (moodCheck, tokenRegistration)
         } else {
             isAuthenticated = false
             isAppAdmin = false
             currentAppUser = nil
         }
-
-        isLoading = false
     }
 
     // MARK: - Sync App User
@@ -1248,7 +1307,29 @@ final class AppState: ObservableObject {
             #endif
         }
     }
-    
+
+    // MARK: - Delete Account
+    /// Permanently deletes the authenticated user's account and all associated
+    /// data, then tears down local state exactly like `signOut()`. Required by
+    /// App Store Review Guideline 5.1.1(v).
+    func deleteAccount() async throws {
+        // Stop realtime and cancel pending notifications before we nuke the user.
+        await RealtimeSyncService.shared.stopListening()
+        NotificationService.shared.removeAllPendingNotifications()
+
+        try await authRepository.deleteAccount()
+
+        isAuthenticated = false
+        currentAccount = nil
+        currentUserRole = nil
+        allAccounts = []
+        isViewingOtherAccount = false
+        hasCompletedOnboarding = false
+        isAppAdmin = false
+        currentAppUser = nil
+        UserDefaults.standard.removeObject(forKey: selectedAccountIdKey)
+    }
+
     // MARK: - Complete Onboarding
     func completeOnboarding(accountName: String, primaryProfileName: String, birthday: Date?, firstAction: OnboardingFirstAction? = nil) async throws {
         #if DEBUG
@@ -1401,25 +1482,35 @@ final class AppState: ObservableObject {
         #endif
 
         do {
-            // Fetch upcoming appointments (next 30 days)
-            let appointments = try await appointmentRepository.getUpcomingAppointments(
+            // Fetch all data in parallel — these are independent network calls
+            async let appointmentsFetch = appointmentRepository.getUpcomingAppointments(
                 accountId: account.id,
                 days: 30
             )
+            async let profilesFetch = profileRepository.getProfiles(accountId: account.id)
+            async let medicationsFetch = medicationRepository.getMedications(accountId: account.id)
+            async let stickyRemindersFetch = stickyReminderRepository.getReminders(accountId: account.id)
 
-            // Fetch all profiles (for birthday reminders)
-            let profiles = try await profileRepository.getProfiles(accountId: account.id)
+            let (appointments, profiles, medications, allStickyReminders) = try await (
+                appointmentsFetch, profilesFetch, medicationsFetch, stickyRemindersFetch
+            )
 
-            // Fetch medications and their schedules
-            let medications = try await medicationRepository.getMedications(accountId: account.id)
-            var schedules: [UUID: [MedicationSchedule]] = [:]
-            for medication in medications {
-                let medicationSchedules = try await medicationRepository.getSchedules(medicationId: medication.id)
-                schedules[medication.id] = medicationSchedules
+            // Fetch medication schedules in parallel using TaskGroup
+            let schedules: [UUID: [MedicationSchedule]] = try await withThrowingTaskGroup(
+                of: (UUID, [MedicationSchedule]).self
+            ) { group in
+                for medication in medications {
+                    group.addTask {
+                        let medicationSchedules = try await self.medicationRepository.getSchedules(medicationId: medication.id)
+                        return (medication.id, medicationSchedules)
+                    }
+                }
+                var result: [UUID: [MedicationSchedule]] = [:]
+                for try await (id, medSchedules) in group {
+                    result[id] = medSchedules
+                }
+                return result
             }
-
-            // Fetch all sticky reminders (including dismissed) to properly cancel dismissed ones
-            let allStickyReminders = try await stickyReminderRepository.getReminders(accountId: account.id)
             let activeStickyReminders = allStickyReminders.filter { $0.isActive && !$0.isDismissed }
 
             // Re-schedule all notifications

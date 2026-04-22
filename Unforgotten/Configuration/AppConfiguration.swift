@@ -47,6 +47,18 @@ enum AppConfiguration {
     /// Support email
     static let supportEmail = "support@unforgottenapp.com"
 
+    /// Feedback and bug report email
+    static let feedbackEmail = "feedback@unforgottenapp.com"
+
+    /// App Store ID — replace with the real ID once the app is approved in App Store Connect.
+    /// Find this in App Store Connect → your app → App Information → Apple ID.
+    static let appStoreID = "6760533999"
+
+    /// Deep link that opens the App Store write-review page for this app.
+    static var appStoreReviewURL: String {
+        "https://apps.apple.com/app/id\(appStoreID)?action=write-review"
+    }
+
     // MARK: - Private Helpers
 
     /// Reads a configuration value from Info.plist or environment variables

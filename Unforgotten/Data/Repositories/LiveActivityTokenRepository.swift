@@ -12,6 +12,18 @@ final class LiveActivityTokenRepository {
 
     private init() {}
 
+    /// Which APNs environment the tokens minted by this build are valid against.
+    /// Xcode debug builds register with sandbox APNs; TestFlight and App Store
+    /// builds register with production APNs. The edge function uses this to
+    /// pick the correct host when sending push-to-start notifications.
+    private var apnsEnvironment: String {
+        #if DEBUG
+        return "sandbox"
+        #else
+        return "production"
+        #endif
+    }
+
     /// Register or update a per-activity Live Activity push token
     func registerToken(_ token: String) async {
         guard let userId = await SupabaseManager.shared.currentUserId else {
@@ -25,7 +37,12 @@ final class LiveActivityTokenRepository {
             try await supabase
                 .from(TableName.liveActivityTokens)
                 .upsert(
-                    LATokenInsert(userId: userId, token: token, tokenType: "activity"),
+                    LATokenInsert(
+                        userId: userId,
+                        token: token,
+                        tokenType: "activity",
+                        apnsEnvironment: apnsEnvironment
+                    ),
                     onConflict: "user_id,token"
                 )
                 .execute()
@@ -64,7 +81,12 @@ final class LiveActivityTokenRepository {
             try await supabase
                 .from(TableName.liveActivityTokens)
                 .insert(
-                    LATokenInsert(userId: userId, token: token, tokenType: "push_to_start")
+                    LATokenInsert(
+                        userId: userId,
+                        token: token,
+                        tokenType: "push_to_start",
+                        apnsEnvironment: apnsEnvironment
+                    )
                 )
                 .execute()
 
@@ -106,10 +128,12 @@ private struct LATokenInsert: Encodable {
     let userId: UUID
     let token: String
     let tokenType: String
+    let apnsEnvironment: String
 
     enum CodingKeys: String, CodingKey {
         case userId = "user_id"
         case token
         case tokenType = "token_type"
+        case apnsEnvironment = "apns_environment"
     }
 }

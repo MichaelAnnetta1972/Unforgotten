@@ -2424,8 +2424,15 @@ struct FamilyCalendarShare: Codable, Identifiable, Equatable {
     let eventType: CalendarEventType
     let eventId: UUID
     let sharedByUserId: UUID
+    let sourceShareId: UUID?
     let createdAt: Date
     var updatedAt: Date
+
+    /// Whether this is an original share (not a re-share)
+    var isOriginalShare: Bool { sourceShareId == nil }
+
+    /// Whether this is a re-share of another share
+    var isReShare: Bool { sourceShareId != nil }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -2433,6 +2440,7 @@ struct FamilyCalendarShare: Codable, Identifiable, Equatable {
         case eventType = "event_type"
         case eventId = "event_id"
         case sharedByUserId = "shared_by_user_id"
+        case sourceShareId = "source_share_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -2624,7 +2632,7 @@ enum CalendarEvent: Identifiable {
         case .countdown(let cd, _, _): return cd.subtitle ?? cd.notes
         case .birthday(let bday):
             if let age = bday.profile.age {
-                return "Turning \(age + 1)"
+                return bday.daysUntil == 0 ? "Turned \(age)" : "Turning \(age + 1)"
             }
             return nil
         case .medication(let med, let entry, _):

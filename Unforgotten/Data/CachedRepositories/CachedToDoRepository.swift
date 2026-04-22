@@ -134,6 +134,16 @@ final class CachedToDoRepository {
         return nil
     }
 
+    // MARK: - Shared List Operations (via RPC, bypasses RLS)
+
+    func getSharedListIds(userId: UUID) async throws -> [UUID] {
+        return try await remoteRepository.getSharedListIds(userId: userId)
+    }
+
+    func getListsByIds(_ ids: [UUID]) async throws -> [ToDoList] {
+        return try await remoteRepository.getListsByIds(ids)
+    }
+
     // MARK: - List Write Operations
 
     /// Create a new list

@@ -32,11 +32,19 @@ struct iPadSettingsContentView: View {
     let onClose: () -> Void
 
     @State private var showSignOutConfirm = false
+    @State private var showDeleteAccountConfirm = false
+    @State private var showDeleteAccountFinalConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
+    @State private var showRecentlyDeleted = false
+    @State private var feedbackKindToSend: FeedbackKind?
+    @State private var showMailUnavailableAlert = false
     @State private var userEmail: String = ""
     @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
     @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
+    @State private var morningBriefingEnabled: Bool = NotificationService.shared.dailySummaryEnabled
 
     var body: some View {
         settingsListView
@@ -53,17 +61,71 @@ struct iPadSettingsContentView: View {
             } message: {
                 Text("Are you sure you want to sign out?")
             }
+            .alert("Delete Account?", isPresented: $showDeleteAccountConfirm) {
+                Button("Cancel", role: .cancel) { }
+                Button("Continue", role: .destructive) {
+                    showDeleteAccountFinalConfirm = true
+                }
+            } message: {
+                Text("This will permanently delete your account, profiles, medications, appointments, and all other data associated with your account. This action cannot be undone.")
+            }
+            .alert("Are you absolutely sure?", isPresented: $showDeleteAccountFinalConfirm) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete My Account", role: .destructive) {
+                    Task {
+                        isDeletingAccount = true
+                        do {
+                            try await appState.deleteAccount()
+                            onClose()
+                        } catch {
+                            deleteAccountError = error.localizedDescription
+                        }
+                        isDeletingAccount = false
+                    }
+                }
+            } message: {
+                Text("Your account and all associated data will be permanently deleted. This cannot be undone.")
+            }
+            .alert("Couldn't Delete Account", isPresented: Binding(
+                get: { deleteAccountError != nil },
+                set: { if !$0 { deleteAccountError = nil } }
+            )) {
+                Button("OK", role: .cancel) { deleteAccountError = nil }
+            } message: {
+                Text(deleteAccountError ?? "")
+            }
             .sheet(isPresented: $showPrivacyPolicy) {
                 PrivacyPolicyView()
             }
             .sheet(isPresented: $showTermsOfService) {
                 TermsOfServiceView()
             }
+            .sheet(isPresented: $showRecentlyDeleted) {
+                RecentlyDeletedView()
+            }
+            .sheet(item: $feedbackKindToSend) { kind in
+                FeedbackMailView(kind: kind) {
+                    feedbackKindToSend = nil
+                }
+            }
+            .alert("Mail Not Available", isPresented: $showMailUnavailableAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("We couldn't open a mail composer. The feedback address has been copied to your clipboard:\n\n\(AppConfiguration.feedbackEmail)")
+            }
             .task {
                 if let user = await SupabaseManager.shared.currentUser {
                     userEmail = user.email ?? ""
                 }
             }
+    }
+
+    private func handleFeedbackTap(_ kind: FeedbackKind) {
+        if FeedbackPresenter.canSendInAppMail() {
+            feedbackKindToSend = kind
+        } else if !FeedbackPresenter.openMailtoFallback(for: kind) {
+            showMailUnavailableAlert = true
+        }
     }
 
     // MARK: - Settings List View
@@ -83,6 +145,10 @@ struct iPadSettingsContentView: View {
                     )
 
                     VStack(spacing: 24) {
+                        // Viewing As Bar (shown when viewing another account)
+                        ViewingAsBar(showOnIPad: true)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+
                         // Appearance section
                         SettingsPanelSection(title: "APPEARANCE") {
                             SettingsPanelButtonRow(
@@ -130,6 +196,20 @@ struct iPadSettingsContentView: View {
                                 .onChange(of: hideNotificationPreviews) { _, newValue in
                                     NotificationService.shared.hideNotificationPreviews = newValue
                                 }
+
+                                SettingsPanelToggleRow(
+                                    icon: "sunrise.fill",
+                                    title: "Morning Briefing",
+                                    isOn: $morningBriefingEnabled
+                                )
+                                .onChange(of: morningBriefingEnabled) { _, newValue in
+                                    NotificationService.shared.dailySummaryEnabled = newValue
+                                    if newValue {
+                                        Task {
+                                            await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -169,6 +249,12 @@ struct iPadSettingsContentView: View {
                                         value: userEmail
                                     )
                                 }
+
+                                SettingsPanelInfoRow(
+                                    icon: appState.subscriptionTier == .free ? "star" : "star.fill",
+                                    title: "Current Plan",
+                                    value: appState.subscriptionTier.displayName
+                                )
                             }
 
                             // Only show manage members if user can manage members
@@ -182,8 +268,8 @@ struct iPadSettingsContentView: View {
                                 }
                             }
 
-                            // Switch Account (only show if multiple accounts)
-                            if appState.switchableAccounts.count > 1 {
+                            // Switch Account (only show for Family Plus with multiple accounts)
+                            if appState.subscriptionTier.hasFamilyFeatures && appState.switchableAccounts.count > 1 {
                                 SettingsPanelButtonRow(
                                     icon: "arrow.left.arrow.right",
                                     title: "Switch Account",
@@ -240,6 +326,18 @@ struct iPadSettingsContentView: View {
                             }
                         }
 
+                        // Data section
+                        SettingsPanelSection(title: "DATA") {
+                            SettingsPanelButtonRow(
+                                icon: "trash",
+                                title: "Recently Deleted",
+                                isSelected: false
+                            ) {
+                                showRecentlyDeleted = true
+                            }
+                            SyncStatusSettingsRow(syncEngine: appState.syncEngine)
+                        }
+
                         // Support section
                         SettingsPanelSection(title: "SUPPORT") {
                             SettingsPanelButtonRow(
@@ -248,6 +346,22 @@ struct iPadSettingsContentView: View {
                                 isSelected: false
                             ) {
                                 iPadShowHelpTutorialsAction?()
+                            }
+
+                            SettingsPanelButtonRow(
+                                icon: "ladybug",
+                                title: "Report a Bug",
+                                isSelected: false
+                            ) {
+                                handleFeedbackTap(.bugReport)
+                            }
+
+                            SettingsPanelButtonRow(
+                                icon: "bubble.left.and.bubble.right",
+                                title: "Send Feedback",
+                                isSelected: false
+                            ) {
+                                handleFeedbackTap(.generalFeedback)
                             }
                         }
 
@@ -258,6 +372,14 @@ struct iPadSettingsContentView: View {
                                 title: "Version",
                                 value: "1.0.0"
                             )
+
+                            SettingsPanelButtonRow(
+                                icon: "star",
+                                title: "Rate Unforgotten",
+                                isSelected: false
+                            ) {
+                                ReviewRequestService.shared.openAppStoreReviewPage()
+                            }
 
                             SettingsPanelButtonRow(
                                 icon: "lock.shield",
@@ -292,6 +414,37 @@ struct iPadSettingsContentView: View {
                             .cornerRadius(AppDimensions.cardCornerRadius)
                         }
                         .padding(.horizontal, AppDimensions.screenPadding)
+
+                        // Delete account
+                        Button {
+                            showDeleteAccountConfirm = true
+                        } label: {
+                            HStack {
+                                if isDeletingAccount {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .medicalRed))
+                                } else {
+                                    Image(systemName: "trash")
+                                }
+                                Text(isDeletingAccount ? "Deleting…" : "Delete Account")
+                            }
+                            .font(.appBodyMedium)
+                            .foregroundColor(.medicalRed)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                        .disabled(isDeletingAccount)
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .padding(.top, 8)
+
+                        Text("Permanently deletes your account and all your data. This cannot be undone.")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                            .padding(.top, 6)
 
                         Spacer()
                             .frame(height: 40)

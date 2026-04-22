@@ -559,18 +559,12 @@ struct AddCountdownView: View {
                 // Create family shares for all days
                 if shareToFamily && !selectedMemberIds.isEmpty {
                     for countdown in countdowns {
-                        do {
-                            _ = try await appState.familyCalendarRepository.createShare(
-                                accountId: account.id,
-                                eventType: .countdown,
-                                eventId: countdown.id,
-                                memberUserIds: Array(selectedMemberIds)
-                            )
-                        } catch {
-                            #if DEBUG
-                            print("Failed to create family share for day: \(error)")
-                            #endif
-                        }
+                        _ = try await appState.familyCalendarRepository.createShare(
+                            accountId: account.id,
+                            eventType: .countdown,
+                            eventId: countdown.id,
+                            memberUserIds: Array(selectedMemberIds)
+                        )
                     }
                     // Send one push notification for the event (not per-day)
                     if let firstDay = countdowns.first {
@@ -638,26 +632,20 @@ struct AddCountdownView: View {
 
                 // Create family calendar share if enabled
                 if shareToFamily && !selectedMemberIds.isEmpty {
-                    do {
-                        _ = try await appState.familyCalendarRepository.createShare(
-                            accountId: account.id,
-                            eventType: .countdown,
-                            eventId: countdown.id,
-                            memberUserIds: Array(selectedMemberIds)
-                        )
-                        // Send push notification to shared members
-                        await PushNotificationService.shared.sendShareNotification(
-                            eventType: .countdown,
-                            eventId: countdown.id,
-                            eventTitle: countdown.title,
-                            sharedByName: appState.currentAppUser?.displayName ?? "Someone",
-                            memberUserIds: Array(selectedMemberIds)
-                        )
-                    } catch {
-                        #if DEBUG
-                        print("Failed to create family share: \(error)")
-                        #endif
-                    }
+                    _ = try await appState.familyCalendarRepository.createShare(
+                        accountId: account.id,
+                        eventType: .countdown,
+                        eventId: countdown.id,
+                        memberUserIds: Array(selectedMemberIds)
+                    )
+                    // Send push notification to shared members
+                    await PushNotificationService.shared.sendShareNotification(
+                        eventType: .countdown,
+                        eventId: countdown.id,
+                        eventTitle: countdown.title,
+                        sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                        memberUserIds: Array(selectedMemberIds)
+                    )
                 }
 
                 onSave(countdown)
@@ -1367,35 +1355,29 @@ struct EditCountdownView: View {
         }
     }
 
-    private func updateFamilyCalendarSharing(accountId: UUID, countdownId: UUID) async {
-        do {
-            // First, delete existing share for this countdown
-            try await appState.familyCalendarRepository.deleteShareForEvent(
-                eventType: .countdown,
-                eventId: countdownId
-            )
+    private func updateFamilyCalendarSharing(accountId: UUID, countdownId: UUID) async throws {
+        // First, delete existing share for this countdown
+        try await appState.familyCalendarRepository.deleteShareForEvent(
+            eventType: .countdown,
+            eventId: countdownId
+        )
 
-            // Then create new share if sharing is enabled
-            if shareToFamily && !selectedMemberIds.isEmpty {
-                _ = try await appState.familyCalendarRepository.createShare(
-                    accountId: accountId,
-                    eventType: .countdown,
-                    eventId: countdownId,
-                    memberUserIds: Array(selectedMemberIds)
-                )
-                // Send push notification to shared members
-                await PushNotificationService.shared.sendShareNotification(
-                    eventType: .countdown,
-                    eventId: countdownId,
-                    eventTitle: title,
-                    sharedByName: appState.currentAppUser?.displayName ?? "Someone",
-                    memberUserIds: Array(selectedMemberIds)
-                )
-            }
-        } catch {
-            #if DEBUG
-            print("Failed to update family calendar sharing: \(error)")
-            #endif
+        // Then create new share if sharing is enabled
+        if shareToFamily && !selectedMemberIds.isEmpty {
+            _ = try await appState.familyCalendarRepository.createShare(
+                accountId: accountId,
+                eventType: .countdown,
+                eventId: countdownId,
+                memberUserIds: Array(selectedMemberIds)
+            )
+            // Send push notification to shared members
+            await PushNotificationService.shared.sendShareNotification(
+                eventType: .countdown,
+                eventId: countdownId,
+                eventTitle: title,
+                sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                memberUserIds: Array(selectedMemberIds)
+            )
         }
     }
 
@@ -1456,7 +1438,7 @@ struct EditCountdownView: View {
 
             // Update family calendar sharing
             if let account = appState.currentAccount {
-                await updateFamilyCalendarSharing(accountId: account.id, countdownId: saved.id)
+                try await updateFamilyCalendarSharing(accountId: account.id, countdownId: saved.id)
             }
 
             onSave(saved)

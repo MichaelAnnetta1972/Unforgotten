@@ -1,3 +1,4 @@
+import Lottie
 import SwiftUI
 import SwiftData
 
@@ -10,12 +11,14 @@ struct RootView: View {
             if appState.isLoading || !minimumSplashTimeElapsed {
                 LoadingScreen()
                     .task {
-                        try? await Task.sleep(for: .seconds(3))
+                        try? await Task.sleep(for: .seconds(1.5))
                         guard !Task.isCancelled else { return }
                         withAnimation(.easeInOut(duration: 0.5)) {
                             minimumSplashTimeElapsed = true
                         }
                     }
+            } else if appState.startupError {
+                ConnectionErrorScreen()
             } else if !appState.isAuthenticated {
                 AuthView()
             } else if !appState.hasCompletedOnboarding {
@@ -33,6 +36,7 @@ struct RootView: View {
         .animation(.easeInOut, value: appState.isAuthenticated)
         .animation(.easeInOut, value: appState.hasCompletedOnboarding)
         .animation(.easeInOut, value: minimumSplashTimeElapsed)
+        .animation(.easeInOut, value: appState.startupError)
     }
 }
 
@@ -48,6 +52,7 @@ struct LoadingScreen: View {
             Image("splash-background")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                 .opacity(0.4)
                 .ignoresSafeArea()
 
@@ -55,7 +60,7 @@ struct LoadingScreen: View {
             Color.black.opacity(0.4)
                 .ignoresSafeArea()
 
-            VStack(spacing: 12) {
+            VStack(spacing: 20) {
                 // App icon with entrance animation
                 Image("unforgotten-logo-stacked")
                     .resizable()
@@ -72,16 +77,86 @@ struct LoadingScreen: View {
                     .multilineTextAlignment(.center)
                     .opacity(logoOpacity)
 
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: appAccentColor))
-                    .scaleEffect(1.2)
+                // Lottie loading animation
+                LottieView(animation: .named("loading"))
+                    .looping()
+                    .resizable()
+                    .frame(width: 600, height: 100)
                     .opacity(logoOpacity)
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .ignoresSafeArea()
         .onAppear {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
                 logoScale = 1.0
                 logoOpacity = 1.0
+            }
+        }
+    }
+}
+
+// MARK: - Connection Error Screen
+
+struct ConnectionErrorScreen: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.appAccentColor) private var appAccentColor
+    @State private var isRetrying = false
+
+    var body: some View {
+        ZStack {
+            Image("splash-background")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .opacity(0.4)
+                .ignoresSafeArea()
+
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 64, weight: .regular))
+                    .foregroundColor(appAccentColor)
+
+                VStack(spacing: 12) {
+                    Text("Can't connect right now")
+                        .font(.appTitle)
+                        .foregroundColor(.textPrimary)
+                        .multilineTextAlignment(.center)
+
+                    Text("We couldn't reach the Unforgotten servers. Please check your internet connection and try again.")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+
+                Button {
+                    Task {
+                        isRetrying = true
+                        await appState.retryStartup()
+                        isRetrying = false
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isRetrying {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                                .scaleEffect(0.9)
+                        }
+                        Text(isRetrying ? "Trying..." : "Try Again")
+                            .font(.appBodyMedium)
+                    }
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(appAccentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .disabled(isRetrying)
+                .padding(.horizontal, 40)
+                .padding(.top, 8)
             }
         }
     }
@@ -591,6 +666,7 @@ extension iPadSidebarItem {
 // MARK: - iPhone Main View
 struct IPhoneMainView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: NavDestination = .home
     @State private var slideDirection: SlideDirection = .none
     @State private var showAddProfile = false
@@ -779,6 +855,15 @@ struct IPhoneMainView: View {
         }
         .task {
             await loadFeatureCounts()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active && selectedTab != .home {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedTab = .home
+                    homePath = NavigationPath()
+                    currentHomeDestination = nil
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .profilesDidChange)) { _ in
             Task { await loadFeatureCounts() }

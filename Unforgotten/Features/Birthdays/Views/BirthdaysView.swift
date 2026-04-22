@@ -167,7 +167,14 @@ struct BirthdayCard: View {
 
     private var turningAge: Int? {
         guard let age = birthday.profile.age else { return nil }
-        return age + 1
+        return birthday.daysUntil == 0 ? age : age + 1
+    }
+
+    private var turningLabel: String {
+        if birthday.profile.isDeceased {
+            return "Would be"
+        }
+        return birthday.daysUntil == 0 ? "Turned" : "Turns"
     }
 
     var body: some View {
@@ -225,7 +232,7 @@ struct BirthdayCard: View {
             // Right side - Age badge (show "Would be" for deceased)
             if let age = turningAge {
                 VStack(spacing: 1) {
-                    Text(birthday.profile.isDeceased ? "Would be" : "Turns")
+                    Text(turningLabel)
                         .font(.appCaption)
                         .foregroundColor(.white)
 

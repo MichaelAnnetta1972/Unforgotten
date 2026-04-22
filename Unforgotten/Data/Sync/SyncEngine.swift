@@ -111,56 +111,30 @@ final class SyncEngine: ObservableObject {
             status = .syncing(entity: "uploading changes", progress: 0.05)
             await processPendingChanges()
 
-            // 2. Pull and merge remote changes for each entity type
-            let entities: [(String, Double)] = [
-                ("profiles", 0.10),
-                ("profileDetails", 0.20),
-                ("medications", 0.30),
-                ("schedules", 0.38),
-                ("logs", 0.46),
-                ("appointments", 0.54),
-                ("contacts", 0.62),
-                ("todos", 0.70),
-                ("countdowns", 0.76),
-                ("reminders", 0.82),
-                ("mood", 0.86),
-                ("recipes", 0.90),
-                ("plannedMeals", 0.94),
-                ("importantAccounts", 0.97)
-            ]
-
+            // 2. Pull and merge remote changes using batched parallelism
+            // Entities are grouped by dependency: later batches may depend on earlier ones
+            // Batch 1: profiles & medications (independent roots)
+            // Batch 2: profileDetails (needs profiles), schedules & logs (need medications), plus all independent entities
             var totalChanges = 0
             var failedEntities: [String] = []
 
-            for (entity, progress) in entities {
-                guard !Task.isCancelled else { return }
+            // Batch 1: Root entities that other entities depend on (profiles & medications)
+            status = .syncing(entity: "profiles & medications", progress: 0.10)
+            let batch1Results = await syncEntitiesConcurrently(["profiles", "medications"], accountId: accountId)
+            totalChanges += batch1Results.changes
+            failedEntities.append(contentsOf: batch1Results.failures)
 
-                status = .syncing(entity: entity, progress: progress)
-                do {
-                    let changes = try await syncEntity(entity, accountId: accountId)
-                    totalChanges += changes
-                } catch {
-                    let detail = Self.describeError(error)
-                    failedEntities.append("\(entity) (\(detail))")
-                    #if DEBUG
-                    print("🔄 Sync error for \(entity): \(error)")
-                    if let decodingError = error as? DecodingError {
-                        switch decodingError {
-                        case .typeMismatch(let type, let context):
-                            print("  Type mismatch: expected \(type), path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
-                        case .valueNotFound(let type, let context):
-                            print("  Value not found: expected \(type), path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
-                        case .keyNotFound(let key, let context):
-                            print("  Key not found: \(key.stringValue), path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
-                        case .dataCorrupted(let context):
-                            print("  Data corrupted: path: \(context.codingPath.map(\.stringValue).joined(separator: ".")), \(context.debugDescription)")
-                        @unknown default:
-                            print("  Unknown decoding error: \(decodingError)")
-                        }
-                    }
-                    #endif
-                }
-            }
+            guard !Task.isCancelled else { return }
+
+            // Batch 2: All remaining entities in parallel (depend on batch 1)
+            status = .syncing(entity: "syncing data", progress: 0.40)
+            let batch2Results = await syncEntitiesConcurrently([
+                "profileDetails", "schedules", "logs",
+                "appointments", "contacts", "todos", "countdowns",
+                "reminders", "mood", "recipes", "plannedMeals", "importantAccounts"
+            ], accountId: accountId)
+            totalChanges += batch2Results.changes
+            failedEntities.append(contentsOf: batch2Results.failures)
 
             // 3. Generate medication logs locally for today
             status = .syncing(entity: "medication logs", progress: 0.98)
@@ -199,6 +173,40 @@ final class SyncEngine: ObservableObject {
             #endif
             status = .failed(error: error.localizedDescription)
         }
+    }
+
+    // MARK: - Concurrent Entity Sync Helper
+    private func syncEntitiesConcurrently(_ entities: [String], accountId: UUID) async -> (changes: Int, failures: [String]) {
+        var totalChanges = 0
+        var failedEntities: [String] = []
+
+        await withTaskGroup(of: (String, Result<Int, Error>).self) { group in
+            for entity in entities {
+                let accountId = accountId
+                group.addTask {
+                    do {
+                        let changes = try await self.syncEntity(entity, accountId: accountId)
+                        return (entity, .success(changes))
+                    } catch {
+                        return (entity, .failure(error))
+                    }
+                }
+            }
+            for await (entity, result) in group {
+                switch result {
+                case .success(let changes):
+                    totalChanges += changes
+                case .failure(let error):
+                    let detail = Self.describeError(error)
+                    failedEntities.append("\(entity) (\(detail))")
+                    #if DEBUG
+                    print("🔄 Sync error for \(entity): \(error)")
+                    #endif
+                }
+            }
+        }
+
+        return (totalChanges, failedEntities)
     }
 
     // MARK: - Entity Sync

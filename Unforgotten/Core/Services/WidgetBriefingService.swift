@@ -68,7 +68,7 @@ class WidgetBriefingService {
             for profile in todayBirthdays {
                 let ageText: String
                 if let age = profile.age {
-                    ageText = "Turning \(age + 1)"
+                    ageText = "Turned \(age)"
                 } else {
                     ageText = ""
                 }

@@ -93,7 +93,7 @@ struct iPadHomeSidebar: View {
                     CustomizableHeaderView(
                         pageIdentifier: .home,
                         title: "Unforgotten",
-                        showAccountSwitcherButton: appState.switchableAccounts.count > 1,
+                        showAccountSwitcherButton: appState.subscriptionTier.hasFamilyFeatures && appState.switchableAccounts.count > 1,
                         accountSwitcherAction: { showAccountSwitcher = true },
                         showSettingsButton: true,
                         settingsAction: { selectedContent = .settings },
@@ -759,7 +759,7 @@ struct iPadSidebarBirthdayRow: View {
                         .lineLimit(1)
 
                     if let age = profile.age {
-                        Text("Turning \(age + 1)")
+                        Text("Turned \(age)")
                             .font(.appCaption)
                             .foregroundColor(.textSecondary)
                     }

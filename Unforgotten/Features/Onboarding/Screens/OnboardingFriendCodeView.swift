@@ -381,14 +381,14 @@ struct InviteCodeInfoSheet: View {
                 InfoRow(
                     icon: "person.2.fill",
                     title: "Connect with family",
-                    description: "An invite code lets you join an existing Unforgotten account that a family member or friend has already set up.",
+                    description: "An invite code lets you connect with an existing Unforgotten user so you can collaborate with them.",
                     accentColor: accentColor
                 )
 
                 InfoRow(
                     icon: "square.and.arrow.up.fill",
                     title: "Shared by someone you know",
-                    description: "The person who created the account can generate an invite code from their Settings and share it with you.",
+                    description: "You'll have access to a shared Family Calendar, and be able to share your profile information with them.",
                     accentColor: accentColor
                 )
 

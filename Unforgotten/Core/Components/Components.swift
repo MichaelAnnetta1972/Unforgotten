@@ -559,9 +559,9 @@ struct BottomNavBar: View {
     @State private var showAddMenu = false
     @Namespace private var navBarNamespace
 
-    /// Only show the + button when on the home screen (home tab at root)
+    /// Only show the + button when on the home screen (home tab at root) or calendar
     private var showAddButton: Bool {
-        currentPage == .home && isAtHomeRoot
+        (currentPage == .home && isAtHomeRoot) || currentPage == .calendar
     }
 
     init(
@@ -1765,4 +1765,120 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Zoomable Image Viewer
+
+struct ZoomableImageViewer: View {
+    let uiImage: UIImage?
+    var imageUrl: String? = nil
+    let onDismiss: () -> Void
+
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            GeometryReader { geo in
+                if let image = uiImage {
+                    zoomableContent(geo: geo) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    }
+                } else if let urlString = imageUrl, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            zoomableContent(geo: geo) {
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                            }
+                        case .failure:
+                            Text("Failed to load image")
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        case .empty:
+                            ProgressView()
+                                .tint(.white)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                }
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding()
+                    }
+                }
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func zoomableContent<Content: View>(geo: GeometryProxy, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(width: geo.size.width, height: geo.size.height)
+            .scaleEffect(scale)
+            .offset(offset)
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let newScale = lastScale * value.magnification
+                        scale = min(max(newScale, 1.0), 5.0)
+                    }
+                    .onEnded { _ in
+                        lastScale = scale
+                        if scale <= 1.0 {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                offset = .zero
+                                lastOffset = .zero
+                            }
+                        }
+                    }
+                    .simultaneously(with:
+                        DragGesture()
+                            .onChanged { value in
+                                if scale > 1.0 {
+                                    offset = CGSize(
+                                        width: lastOffset.width + value.translation.width,
+                                        height: lastOffset.height + value.translation.height
+                                    )
+                                }
+                            }
+                            .onEnded { _ in
+                                lastOffset = offset
+                            }
+                    )
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    if scale > 1.0 {
+                        scale = 1.0
+                        lastScale = 1.0
+                        offset = .zero
+                        lastOffset = .zero
+                    } else {
+                        scale = 3.0
+                        lastScale = 3.0
+                    }
+                }
+            }
+    }
 }

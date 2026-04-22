@@ -24,6 +24,14 @@ class ToDoListDetailViewModel: ObservableObject {
     @Published var sharedByDisplayName: String?
     @Published var sharedWithDisplayNames: [String] = []
     @Published var isSharedWithMe = false
+    @Published var sharingError: String?
+
+    // Re-sharing state
+    @Published var canReShare = false
+    @Published var hasReShared = false
+    @Published var reShareEnabled = false
+    @Published var reShareMemberIds: Set<UUID> = []
+    @Published var reShareMemberNames: [String] = []
 
     private var repository: ToDoRepositoryProtocol?
     private var accountId: UUID?
@@ -100,6 +108,9 @@ class ToDoListDetailViewModel: ObservableObject {
                         sharedByDisplayName = sharerProfile.displayName
                     }
                 }
+
+                // Load re-share state
+                await loadReShareState(appState: appState, accountId: accountId)
                 return
             }
 
@@ -132,7 +143,12 @@ class ToDoListDetailViewModel: ObservableObject {
     }
 
     func saveSharing(appState: AppState) async {
-        guard let accountId = self.accountId ?? appState.currentAccount?.id else { return }
+        guard let accountId = self.accountId ?? appState.currentAccount?.id else {
+            print("[ToDoSharing] saveSharing aborted: no accountId")
+            return
+        }
+
+        print("[ToDoSharing] saveSharing called: shareToFamily=\(shareToFamily), selectedMemberIds=\(selectedMemberIds), listId=\(list.id)")
 
         do {
             // Delete existing share if any
@@ -149,6 +165,16 @@ class ToDoListDetailViewModel: ObservableObject {
                     memberUserIds: Array(selectedMemberIds)
                 )
                 existingShareId = share.id
+                print("[ToDoSharing] Share created successfully: \(share.id)")
+
+                // Send push notification to shared members
+                await PushNotificationService.shared.sendShareNotification(
+                    eventType: .todoList,
+                    eventId: list.id,
+                    eventTitle: list.title,
+                    sharedByName: appState.currentAppUser?.displayName ?? "Someone",
+                    memberUserIds: Array(selectedMemberIds)
+                )
 
                 // Resolve display names for the header
                 let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
@@ -164,13 +190,85 @@ class ToDoListDetailViewModel: ObservableObject {
                 list.isSharedWithOthers = true
                 list.sharedWithDisplayNames = names
             } else {
+                print("[ToDoSharing] Sharing disabled or no members selected, clearing share")
                 existingShareId = nil
                 sharedWithDisplayNames = []
                 list.isSharedWithOthers = false
                 list.sharedWithDisplayNames = []
             }
         } catch {
+            print("[ToDoSharing] ERROR in saveSharing: \(error)")
+            sharingError = error.localizedDescription
             self.error = error
+        }
+    }
+
+    // MARK: - Re-Sharing
+
+    private func loadReShareState(appState: AppState, accountId: UUID) async {
+        do {
+            canReShare = try await appState.familyCalendarRepository.canReShareEvent(
+                eventType: .todoList, eventId: list.id
+            )
+
+            guard canReShare else { return }
+
+            if let reShare = try? await appState.familyCalendarRepository.getReShareForEvent(
+                eventType: .todoList, eventId: list.id
+            ) {
+                hasReShared = true
+                reShareEnabled = true
+                let members = try await appState.familyCalendarRepository.getMembersForShare(shareId: reShare.id)
+                reShareMemberIds = Set(members.map { $0.memberUserId })
+
+                let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                reShareMemberNames = members.compactMap { member in
+                    profiles.first(where: {
+                        ($0.linkedUserId ?? $0.sourceUserId) == member.memberUserId
+                    })?.displayName
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to load re-share state: \(error)")
+            #endif
+        }
+    }
+
+    func saveReSharing(appState: AppState) async {
+        guard let accountId = self.accountId ?? appState.currentAccount?.id else { return }
+
+        do {
+            // Delete existing re-share if any
+            if let existing = try? await appState.familyCalendarRepository.getReShareForEvent(
+                eventType: .todoList, eventId: list.id
+            ) {
+                try await appState.familyCalendarRepository.deleteShare(shareId: existing.id)
+            }
+
+            if reShareEnabled && !reShareMemberIds.isEmpty {
+                _ = try await appState.familyCalendarRepository.reShareEvent(
+                    accountId: accountId,
+                    eventType: .todoList,
+                    eventId: list.id,
+                    memberUserIds: Array(reShareMemberIds)
+                )
+                hasReShared = true
+
+                let profiles = try await appState.profileRepository.getProfiles(accountId: accountId)
+                reShareMemberNames = reShareMemberIds.compactMap { memberId in
+                    profiles.first(where: {
+                        ($0.linkedUserId ?? $0.sourceUserId) == memberId
+                    })?.displayName
+                }
+            } else {
+                hasReShared = false
+                reShareMemberNames = []
+            }
+        } catch {
+            #if DEBUG
+            print("Failed to save re-share: \(error)")
+            #endif
         }
     }
 

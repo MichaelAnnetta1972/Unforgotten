@@ -224,7 +224,18 @@ struct ToDoListsView: View {
                 destination: newlyCreatedList.map { ToDoListDetailView(list: $0, isNewList: true) },
                 isActive: Binding(
                     get: { newlyCreatedList != nil },
-                    set: { if !$0 { newlyCreatedList = nil } }
+                    set: { if !$0 {
+                        if let list = newlyCreatedList {
+                            // Remove the placeholder immediately so it doesn't flash in the list
+                            viewModel.lists.removeAll { $0.id == list.id }
+                        }
+                        newlyCreatedList = nil
+                        // Reload after a brief delay to let onDisappear's delete complete
+                        Task {
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            await viewModel.loadData(appState: appState)
+                        }
+                    }}
                 )
             ) {
                 EmptyView()

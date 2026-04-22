@@ -140,10 +140,11 @@ struct MoodPromptView: View {
     
     private func saveMood() async {
         guard let rating = selectedRating else { return }
-        
+
         isSubmitting = true
         await appState.recordMood(rating: rating, note: note.isBlank ? nil : note)
         isSubmitting = false
+        ReviewRequestService.shared.recordSignificantEventAndMaybeRequest()
         dismiss()
     }
 }

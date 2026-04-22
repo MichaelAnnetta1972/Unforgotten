@@ -110,7 +110,7 @@ struct HomeView: View {
                     CustomizableHeaderView(
                         pageIdentifier: .home,
                         title: "Unforgotten",
-                        showAccountSwitcherButton: appState.switchableAccounts.count > 1,
+                        showAccountSwitcherButton: appState.subscriptionTier.hasFamilyFeatures && appState.switchableAccounts.count > 1,
                         accountSwitcherAction: { showAccountSwitcher = true },
                         //showSettingsButton: true,
                         settingsAction: { showSettings = true },
@@ -664,7 +664,7 @@ struct TodayBirthdayRow: View {
                             .foregroundColor(.textPrimary)
 
                         if let age = profile.age {
-                            Text("Turning \(age + 1)")
+                            Text("Turned \(age)")
                                 .font(.appCaption)
                                 .foregroundColor(.textSecondary)
                         }
@@ -924,13 +924,19 @@ class HomeViewModel: ObservableObject {
             print("🏠 HomeViewModel: Showing \(todayMedications.count) medications for today")
             #endif
 
-            // Load today's appointments
+            // Load today's appointments (own + shared)
             let calendar = Calendar.current
             let startOfDay = calendar.startOfDay(for: Date())
             let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
 
-            todayAppointments = try await appState.appointmentRepository.getAppointments(accountId: accountId)
-                .filter { $0.date >= startOfDay && $0.date < endOfDay }
+            var allAppointments = try await appState.appointmentRepository.getAppointments(accountId: accountId)
+            // Merge shared appointments from other accounts
+            let ownAppointmentIds = Set(allAppointments.map { $0.id })
+            if let shared = try? await appState.appointmentRepository.getSharedAppointments() {
+                let newShared = shared.filter { !ownAppointmentIds.contains($0.id) }
+                allAppointments.append(contentsOf: newShared)
+            }
+            todayAppointments = allAppointments.filter { $0.date >= startOfDay && $0.date < endOfDay }
 
             // Load today's birthdays
             let allProfiles = try await appState.profileRepository.getProfiles(accountId: accountId)
@@ -939,18 +945,31 @@ class HomeViewModel: ObservableObject {
                 return birthday.daysUntilNextOccurrence() == 0
             }
 
-            // Load today's countdowns
-            let allCountdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: accountId, days: 365)
+            // Load today's countdowns (own + shared)
+            var allCountdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: accountId, days: 365)
+            // Merge shared countdowns from other accounts
+            let ownCountdownIds = Set(allCountdowns.map { $0.id })
+            if let shared = try? await appState.countdownRepository.getSharedCountdowns() {
+                let newShared = shared.filter { !ownCountdownIds.contains($0.id) }
+                allCountdowns.append(contentsOf: newShared)
+            }
             todayCountdowns = allCountdowns.filter { $0.daysUntilNextOccurrence == 0 }
 
-            // Load to-do lists due today
-            let calendar2 = Calendar.current
-            let todayStart = calendar2.startOfDay(for: Date())
-            let todayEnd = calendar2.date(byAdding: .day, value: 1, to: todayStart)!
-            let allLists = try await appState.toDoRepository.getLists(accountId: accountId)
+            // Load to-do lists due today (own + shared)
+            var allLists = try await appState.toDoRepository.getLists(accountId: accountId)
+            // Merge shared to-do lists from other accounts
+            if let userId = await SupabaseManager.shared.currentUserId {
+                let ownListIds = Set(allLists.map { $0.id })
+                let sharedListIds = try await appState.toDoRepository.getSharedListIds(userId: userId)
+                let newSharedIds = sharedListIds.filter { !ownListIds.contains($0) }
+                if !newSharedIds.isEmpty {
+                    let sharedLists = try await appState.toDoRepository.getListsByIds(newSharedIds)
+                    allLists.append(contentsOf: sharedLists)
+                }
+            }
             todayToDoLists = allLists.compactMap { list in
                 guard let dueDate = list.dueDate,
-                      dueDate >= todayStart && dueDate < todayEnd else { return nil }
+                      dueDate >= startOfDay && dueDate < endOfDay else { return nil }
                 let pending = list.items.filter { !$0.isCompleted }.count
                 guard pending > 0 else { return nil }
                 return (list: list, pendingCount: pending)

@@ -59,6 +59,25 @@ struct OnboardingContainerView: View {
         } message: {
             Text("Are you sure you want to cancel? You'll need to sign in again to continue.")
         }
+        .onAppear {
+            applyAppleCredentialPrefill()
+        }
+    }
+
+    // MARK: - Sign in with Apple Prefill
+    /// Apple's App Review guidelines require that when Sign in with Apple provides
+    /// the user's name, the app must not ask them to re-enter it. If we captured
+    /// name parts from the Apple credential during sign-in, prefill them here and
+    /// skip the profile-setup screen entirely.
+    private func applyAppleCredentialPrefill() {
+        if let first = appState.pendingAppleFirstName, !first.isEmpty, onboardingData.firstName.isEmpty {
+            onboardingData.firstName = first
+        }
+        if let last = appState.pendingAppleLastName, !last.isEmpty, onboardingData.lastName.isEmpty {
+            onboardingData.lastName = last
+        }
+        appState.pendingAppleFirstName = nil
+        appState.pendingAppleLastName = nil
     }
 
     // MARK: - Close Button
@@ -118,7 +137,13 @@ struct OnboardingContainerView: View {
             switch currentScreen {
             case .welcome:
                 OnboardingWelcomeView(onContinue: {
-                    navigateTo(.profileSetup)
+                    // If Sign in with Apple already provided the user's name,
+                    // skip the profile-setup screen per Apple's App Review rules.
+                    if onboardingData.isProfileValid {
+                        navigateTo(.themeSelection)
+                    } else {
+                        navigateTo(.profileSetup)
+                    }
                 })
 
             case .profileSetup:
@@ -217,7 +242,13 @@ struct OnboardingContainerView: View {
     }
 
     private func navigateBack() {
-        guard let previous = currentScreen.previous else { return }
+        guard var previous = currentScreen.previous else { return }
+        // Skip back past profile-setup if Sign in with Apple already supplied the
+        // user's name — we never showed that screen on the way forward.
+        if previous == .profileSetup, onboardingData.isProfileValid,
+           let beforeProfile = OnboardingScreen.profileSetup.previous {
+            previous = beforeProfile
+        }
         slideDirection = .backward
         withAnimation(reduceMotion ? .none : .easeInOut(duration: 0.3)) {
             currentScreen = previous

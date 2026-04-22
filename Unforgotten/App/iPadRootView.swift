@@ -450,8 +450,8 @@ struct iPadRootView: View {
                 ZStack(alignment: .bottomTrailing) {
                     contentAreaWithEnvironments
 
-                    // Floating add button with gradient (only shown on home page)
-                    if showFloatingAddButton && selectedContent == .none {
+                    // Floating add button with gradient (shown on home and calendar pages)
+                    if showFloatingAddButton && (selectedContent == .none || selectedContent == .calendar) {
                         iPadFloatingAddButtonOverlay(
                             showAddMenu: $showAddMenu
                         )

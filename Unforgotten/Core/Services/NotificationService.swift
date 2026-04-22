@@ -83,11 +83,12 @@ final class NotificationService: NSObject {
         set { UserDefaults.standard.set(newValue, forKey: NotificationPreferenceKey.hideNotificationPreviews) }
     }
 
-    /// Whether the daily summary notification at 2:00 AM is enabled
+    /// Whether the Morning Briefing (daily summary notification + Live Activity) is enabled.
+    /// Defaults to `false` — users must opt in from Settings → Notifications.
     var dailySummaryEnabled: Bool {
         get {
             if UserDefaults.standard.object(forKey: NotificationPreferenceKey.dailySummaryEnabled) == nil {
-                return true
+                return false
             }
             return UserDefaults.standard.bool(forKey: NotificationPreferenceKey.dailySummaryEnabled)
         }
@@ -95,6 +96,9 @@ final class NotificationService: NSObject {
             UserDefaults.standard.set(newValue, forKey: NotificationPreferenceKey.dailySummaryEnabled)
             if !newValue {
                 cancelDailySummary()
+                Task {
+                    await DailySummaryLiveActivityService.shared.endAllDailySummaryActivities()
+                }
             }
         }
     }

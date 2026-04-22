@@ -68,11 +68,19 @@ final class SubscriptionManager: ObservableObject {
     // MARK: - Load Products
     /// Fetches available products from the App Store
     func loadProducts() async {
-        guard products.isEmpty else { return }
+        guard products.isEmpty else {
+            #if DEBUG
+            print("🛒 Products already loaded: \(products.map { $0.id })")
+            #endif
+            return
+        }
 
         isLoading = true
         do {
             let storeProducts = try await Product.products(for: Self.productIds)
+            #if DEBUG
+            print("🛒 Loaded \(storeProducts.count) products: \(storeProducts.map { $0.id })")
+            #endif
             // Sort: premium before family, monthly before annual
             products = storeProducts.sorted { a, b in
                 if a.id.contains("premium") && b.id.contains("family") { return true }

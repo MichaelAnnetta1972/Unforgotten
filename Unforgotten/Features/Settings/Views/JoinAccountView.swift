@@ -374,7 +374,9 @@ struct JoinAccountView: View {
                 #endif
 
                 if !syncResult.success {
+                    #if DEBUG
                     print("⚠️ Sync RPC returned success=false, debug: \(syncResult.debug ?? "no debug info")")
+                    #endif
                 }
 
                 newProfileCreated = syncResult.newProfileCreated ?? false

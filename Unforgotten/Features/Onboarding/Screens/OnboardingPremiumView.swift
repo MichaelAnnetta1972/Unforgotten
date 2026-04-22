@@ -47,7 +47,7 @@ struct OnboardingPremiumView: View {
                     .frame(height: isRegularWidth ? 60 : 40)
 
                 // Header
-                Text("Try Unforgotten Pro for free")
+                Text("Upgrade to Unforgotten Pro")
                     .font(.appLargeTitle)
                     .foregroundColor(.textPrimary)
                     .multilineTextAlignment(.center)
@@ -199,7 +199,7 @@ struct OnboardingPremiumView: View {
                 // Monthly option
                 pricingOptionRow(
                     title: "Monthly",
-                    price: selectedTier == .premium ? "$5.99/month" : "$9.99/month",
+                    price: monthlyDisplayPrice + "/month",
                     isSelected: selectedBillingPeriod == .monthly,
                     onSelect: { selectedBillingPeriod = .monthly; updateSelectedProduct() }
                 )
@@ -207,7 +207,7 @@ struct OnboardingPremiumView: View {
                 // Annual option
                 pricingOptionRow(
                     title: "Annual",
-                    price: selectedTier == .premium ? "$39.99/year" : "$69.99/year",
+                    price: annualDisplayPrice + "/year",
                     isSelected: selectedBillingPeriod == .annual,
                     onSelect: { selectedBillingPeriod = .annual; updateSelectedProduct() }
                 )
@@ -325,7 +325,7 @@ struct OnboardingPremiumView: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         } else {
-                            Text("Start your 7 day free trial")
+                            Text("Subscribe")
                                 .font(.appBodyMedium)
                         }
                     }
@@ -354,6 +354,16 @@ struct OnboardingPremiumView: View {
         return subscriptionManager.products(for: tier)
     }
 
+    private var monthlyDisplayPrice: String {
+        let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
+        return subscriptionManager.product(for: tier, period: .monthly)?.displayPrice ?? "---"
+    }
+
+    private var annualDisplayPrice: String {
+        let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
+        return subscriptionManager.product(for: tier, period: .annual)?.displayPrice ?? "---"
+    }
+
     private func updateSelectedProduct() {
         let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
         let period: SubscriptionManager.BillingPeriod = selectedBillingPeriod == .annual ? .annual : .monthly
@@ -370,16 +380,23 @@ struct OnboardingPremiumView: View {
     }
 
     private func purchase() {
-        guard let product = selectedProduct ?? productsForSelectedTier.first else {
-            // If no StoreKit products available, just continue
-            onContinue()
-            return
-        }
-
         purchaseState = .purchasing
         errorMessage = nil
 
         Task {
+            // If no product selected, try loading products first
+            if selectedProduct == nil && productsForSelectedTier.isEmpty {
+                await subscriptionManager.loadProducts()
+                selectedProduct = subscriptionManager.product(for: .premium, period: .monthly)
+                    ?? subscriptionManager.products(for: .premium).first
+            }
+
+            guard let product = selectedProduct ?? productsForSelectedTier.first else {
+                errorMessage = "Unable to load subscription products. Please check your connection and try again."
+                purchaseState = .idle
+                return
+            }
+
             do {
                 let transaction = try await subscriptionManager.purchase(product)
 

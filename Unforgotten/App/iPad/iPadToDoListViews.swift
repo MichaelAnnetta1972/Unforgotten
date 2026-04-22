@@ -304,6 +304,8 @@ struct iPadToDoListDetailView: View {
     @State private var showDeleteTypeConfirmation = false
     @State private var showingDueDatePicker = false
     @State private var focusedItemId: UUID?
+    @State private var showFamilySharingSheet = false
+    @State private var showReShareSheet = false
     @FocusState private var newItemFocused: Bool
     @FocusState private var titleFieldFocused: Bool
     @Environment(\.appAccentColor) private var appAccentColor
@@ -466,6 +468,47 @@ struct iPadToDoListDetailView: View {
                         .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
                     }
 
+                    // Sharing Info Header (shown when shared by someone or shared with others)
+                    if viewModel.isSharedWithMe || viewModel.shareToFamily {
+                        Section {
+                            sharingInfoBanner
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
+                    }
+
+                    // Family Sharing (only for list owner, not for shared-with-me lists)
+                    if !viewModel.isSharedWithMe && appState.hasFamilyAccess {
+                        Section {
+                            familySharingSection
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
+
+                        if let sharingError = viewModel.sharingError {
+                            Section {
+                                Text(sharingError)
+                                    .font(.appCaption)
+                                    .foregroundColor(.medicalRed)
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 0, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                            }
+                        }
+                    }
+
+                    // Re-share section (for lists shared with me, if eligible)
+                    if viewModel.isSharedWithMe && viewModel.canReShare && appState.hasFamilyAccess {
+                        Section {
+                            reShareSection
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: AppDimensions.cardSpacing / 2, trailing: AppDimensions.screenPadding))
+                        }
+                    }
+
                     // To Do Items
                     Section {
                         Text("Items")
@@ -589,6 +632,29 @@ struct iPadToDoListDetailView: View {
                 Text("Are you sure you want to delete the type '\(type.name)'? This will not delete any lists.")
             }
         }
+        .sheet(isPresented: $showFamilySharingSheet) {
+            FamilySharingSheet(
+                isEnabled: $viewModel.shareToFamily,
+                selectedMemberIds: $viewModel.selectedMemberIds,
+                onDismiss: {
+                    showFamilySharingSheet = false
+                    Task { await viewModel.saveSharing(appState: appState) }
+                }
+            )
+            .environmentObject(appState)
+        }
+        .sheet(isPresented: $showReShareSheet) {
+            FamilySharingSheet(
+                isEnabled: $viewModel.reShareEnabled,
+                selectedMemberIds: $viewModel.reShareMemberIds,
+                onDismiss: {
+                    showReShareSheet = false
+                    Task { await viewModel.saveReSharing(appState: appState) }
+                }
+            )
+            .environmentObject(appState)
+            .presentationDetents([.medium, .large])
+        }
         .task {
             await viewModel.loadData(appState: appState)
         }
@@ -603,6 +669,145 @@ struct iPadToDoListDetailView: View {
         .onChange(of: viewModel.selectedType) { _, _ in
             viewModel.saveType()
         }
+    }
+
+    // MARK: - Sharing Info Banner
+    @ViewBuilder
+    private var sharingInfoBanner: some View {
+        if viewModel.isSharedWithMe {
+            HStack(spacing: 10) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(appAccentColor)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shared with you")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+
+                    if let name = viewModel.sharedByDisplayName {
+                        Text("by \(name)")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(AppDimensions.cardPadding)
+            .background(appAccentColor.opacity(0.15))
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        } else if viewModel.shareToFamily && !viewModel.sharedWithDisplayNames.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(appAccentColor)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shared with family")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+
+                    Text(viewModel.sharedWithDisplayNames.joined(separator: ", "))
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
+            .padding(AppDimensions.cardPadding)
+            .background(appAccentColor.opacity(0.15))
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    // MARK: - Family Sharing Section
+    @ViewBuilder
+    private var familySharingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("FAMILY SHARING")
+                .font(.appCaption)
+                .foregroundColor(appAccentColor)
+
+            Button {
+                showFamilySharingSheet = true
+            } label: {
+                HStack {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 18))
+                        .foregroundColor(viewModel.shareToFamily ? appAccentColor : .textSecondary)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.shareToFamily ? "Shared" : "Share with Family")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        if viewModel.shareToFamily && !viewModel.sharedWithDisplayNames.isEmpty {
+                            Text(viewModel.sharedWithDisplayNames.joined(separator: ", "))
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                                .lineLimit(1)
+                        } else if !viewModel.shareToFamily {
+                            Text("Let family members view and edit this list")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.textSecondary)
+                }
+                .padding(AppDimensions.cardPadding)
+                .background(Color.appBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    // MARK: - Re-Share Section
+    @ViewBuilder
+    private var reShareSection: some View {
+        Button {
+            showReShareSheet = true
+        } label: {
+            HStack {
+                Image(systemName: "person.2")
+                    .font(.system(size: 18))
+                    .foregroundColor(viewModel.hasReShared ? appAccentColor : .textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.hasReShared ? "Shared with My Family" : "Share with My Family")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    if viewModel.hasReShared && !viewModel.reShareMemberNames.isEmpty {
+                        Text(viewModel.reShareMemberNames.joined(separator: ", "))
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                    } else if !viewModel.hasReShared {
+                        Text("Share this list with your own family members")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.textSecondary)
+            }
+            .padding(AppDimensions.cardPadding)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Type Menu Content

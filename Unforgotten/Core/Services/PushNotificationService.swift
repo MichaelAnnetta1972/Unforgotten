@@ -47,15 +47,19 @@ final class PushNotificationService {
                 options: FunctionInvokeOptions(body: payload)
             )
 
-            #if DEBUG
-            print("📲 Share notification response: sent=\(response.sent ?? -1), total=\(response.total ?? -1), message=\(response.message ?? "nil"), error=\(response.error ?? "nil")")
-            #endif
+            if let errorMsg = response.error {
+                print("📲 Share notification ERROR from edge function: \(errorMsg)")
+            } else {
+                print("📲 Share notification sent: \(response.sent ?? 0)/\(response.total ?? 0) delivered, message=\(response.message ?? "nil")")
+            }
+        } catch let FunctionsError.httpError(code, data) {
+            // Edge function returned a non-2xx status — decode the body for details
+            let body = String(data: data, encoding: .utf8) ?? "(\(data.count) bytes)"
+            print("📲 Edge function HTTP \(code): \(body)")
         } catch {
             // Don't throw — push notification failure shouldn't block the sharing flow
-            #if DEBUG
             print("📲 Failed to send share notification: \(error)")
             print("📲 Error details: \(String(describing: error))")
-            #endif
         }
     }
     /// Send a push notification when a user's role is changed

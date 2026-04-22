@@ -15,13 +15,30 @@ enum CalendarTab: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Calendar Display Mode
+enum CalendarDisplayMode: String {
+    case month
+    case week
+}
+
+
 // MARK: - Calendar View Model
 @MainActor
 class CalendarViewModel: ObservableObject {
+    // MARK: - UserDefaults Keys for Filter Persistence
+    private enum FilterDefaultsKey {
+        static let selectedFilters = "CalendarSelectedFilters"
+        static let selectedCountdownTypes = "CalendarSelectedCountdownTypes"
+        static let selectedCustomTypeNames = "CalendarSelectedCustomTypeNames"
+        static let hasPersistedFilters = "CalendarHasPersistedFilters"
+    }
+
     // MARK: - Published Properties
+    @Published var displayMode: CalendarDisplayMode = .month
     @Published var selectedTab: CalendarTab = .personal
     @Published var selectedDate: Date? = nil
     @Published var currentMonth: Date = Date()
+    @Published var currentWeekStart: Date = Calendar.current.startOfWeek(for: Date())
     @Published var selectedFilters: Set<CalendarEventFilter> = Set(CalendarEventFilter.allCases)
     @Published var selectedCountdownTypes: Set<CountdownType> = Set(CountdownType.allCases) // Sub-filter for standard countdown types
     @Published var selectedCustomTypeNames: Set<String> = [] // Sub-filter for custom countdown type names (populated on data load)
@@ -40,6 +57,12 @@ class CalendarViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isLoadingEvents = false
     @Published var error: String?
+
+    // MARK: - Initialization
+
+    init() {
+        restoreFilterSettings()
+    }
 
     // MARK: - Month-Based Loading Cache
     /// Tracks which months have already been loaded to avoid re-fetching
@@ -523,9 +546,14 @@ class CalendarViewModel: ObservableObject {
             loadedMonthKeys.insert(monthKey(for: monthDate))
         }
 
-        // Initialize custom type name selections on first load
-        if selectedCustomTypeNames.isEmpty {
-            selectedCustomTypeNames = Set(availableCustomTypeNames)
+        // Auto-select any custom type names that aren't yet known to the filter.
+        // On first load (no persisted filters) this selects all; on subsequent loads
+        // it adds newly-appeared names (e.g. from a shared countdown) so they aren't
+        // silently hidden by a stale persisted filter set.
+        let newCustomNames = Set(availableCustomTypeNames).subtracting(selectedCustomTypeNames)
+        if !newCustomNames.isEmpty {
+            selectedCustomTypeNames.formUnion(newCustomNames)
+            saveFilterSettings()
         }
 
         isLoadingEvents = false
@@ -824,14 +852,17 @@ class CalendarViewModel: ObservableObject {
         } else {
             selectedFilters.insert(filter)
         }
+        saveFilterSettings()
     }
 
     func selectAllFilters() {
         selectedFilters = Set(CalendarEventFilter.allCases)
+        saveFilterSettings()
     }
 
     func clearAllFilters() {
         selectedFilters = []
+        saveFilterSettings()
     }
 
     func toggleCountdownType(_ type: CountdownType) {
@@ -840,6 +871,7 @@ class CalendarViewModel: ObservableObject {
         } else {
             selectedCountdownTypes.insert(type)
         }
+        saveFilterSettings()
     }
 
     func toggleCustomTypeName(_ name: String) {
@@ -848,16 +880,19 @@ class CalendarViewModel: ObservableObject {
         } else {
             selectedCustomTypeNames.insert(name)
         }
+        saveFilterSettings()
     }
 
     func selectAllCountdownSubTypes() {
         selectedCountdownTypes = Set(CountdownType.allCases)
         selectedCustomTypeNames = Set(availableCustomTypeNames)
+        saveFilterSettings()
     }
 
     func clearAllCountdownSubTypes() {
         selectedCountdownTypes = []
         selectedCustomTypeNames = []
+        saveFilterSettings()
     }
 
     func toggleMemberFilter(_ userId: UUID) {
@@ -892,8 +927,28 @@ class CalendarViewModel: ObservableObject {
         }
     }
 
+    func goToPreviousWeek() {
+        let calendar = Calendar.current
+        if let newWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: currentWeekStart) {
+            currentWeekStart = newWeekStart
+            // Keep currentMonth in sync so events load correctly
+            currentMonth = newWeekStart
+            Task { await loadEventsForMonth(newWeekStart) }
+        }
+    }
+
+    func goToNextWeek() {
+        let calendar = Calendar.current
+        if let newWeekStart = calendar.date(byAdding: .weekOfYear, value: 1, to: currentWeekStart) {
+            currentWeekStart = newWeekStart
+            currentMonth = newWeekStart
+            Task { await loadEventsForMonth(newWeekStart) }
+        }
+    }
+
     func goToToday() {
         currentMonth = Date()
+        currentWeekStart = Calendar.current.startOfWeek(for: Date())
         Task { await loadEventsForMonth(currentMonth) }
         selectedDate = nil
     }
@@ -901,5 +956,34 @@ class CalendarViewModel: ObservableObject {
     /// Clear the selected date
     func clearSelection() {
         selectedDate = nil
+    }
+
+    // MARK: - Filter Persistence
+
+    func saveFilterSettings() {
+        let defaults = UserDefaults.standard
+        let filterRawValues = selectedFilters.map { $0.rawValue }
+        let countdownRawValues = selectedCountdownTypes.map { $0.rawValue }
+        let customNames = Array(selectedCustomTypeNames)
+
+        defaults.set(filterRawValues, forKey: FilterDefaultsKey.selectedFilters)
+        defaults.set(countdownRawValues, forKey: FilterDefaultsKey.selectedCountdownTypes)
+        defaults.set(customNames, forKey: FilterDefaultsKey.selectedCustomTypeNames)
+        defaults.set(true, forKey: FilterDefaultsKey.hasPersistedFilters)
+    }
+
+    private func restoreFilterSettings() {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: FilterDefaultsKey.hasPersistedFilters) else { return }
+
+        if let filterRawValues = defaults.stringArray(forKey: FilterDefaultsKey.selectedFilters) {
+            selectedFilters = Set(filterRawValues.compactMap { CalendarEventFilter(rawValue: $0) })
+        }
+        if let countdownRawValues = defaults.stringArray(forKey: FilterDefaultsKey.selectedCountdownTypes) {
+            selectedCountdownTypes = Set(countdownRawValues.compactMap { CountdownType(rawValue: $0) })
+        }
+        if let customNames = defaults.stringArray(forKey: FilterDefaultsKey.selectedCustomTypeNames) {
+            selectedCustomTypeNames = Set(customNames)
+        }
     }
 }

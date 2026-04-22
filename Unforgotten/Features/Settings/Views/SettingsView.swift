@@ -27,6 +27,10 @@ struct SettingsView: View {
     @State private var showManageMembers = false
     @State private var showMoodHistory = false
     @State private var showSignOutConfirm = false
+    @State private var showDeleteAccountConfirm = false
+    @State private var showDeleteAccountFinalConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     @State private var showAppearanceSettings = false
     @State private var showFeatureVisibility = false
     @State private var showSwitchAccount = false
@@ -35,12 +39,15 @@ struct SettingsView: View {
     @State private var showJoinAccount = false
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfService = false
+    @State private var feedbackKindToSend: FeedbackKind?
+    @State private var showMailUnavailableAlert = false
     @State private var showHelpTutorials = false
     @State private var showRecentlyDeleted = false
     @State private var userEmail: String = ""
     @State private var isCheckmarkPressed = false
     @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
     @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
+    @State private var morningBriefingEnabled: Bool = NotificationService.shared.dailySummaryEnabled
 
 
     /// Computed effective accent color (respects hasCustomAccentColor flag)
@@ -190,6 +197,19 @@ struct SettingsView: View {
                                 NotificationService.shared.hideNotificationPreviews = newValue
                             }
 
+                            SettingsToggleRow(
+                                icon: "sunrise.fill",
+                                title: "Morning Briefing",
+                                isOn: $morningBriefingEnabled
+                            )
+                            .onChange(of: morningBriefingEnabled) { _, newValue in
+                                NotificationService.shared.dailySummaryEnabled = newValue
+                                if newValue {
+                                    Task {
+                                        await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -233,6 +253,12 @@ struct SettingsView: View {
                                     value: userEmail
                                 )
                             }
+
+                            SettingsRow(
+                                icon: appState.subscriptionTier == .free ? "star" : "star.fill",
+                                title: "Current Plan",
+                                value: appState.subscriptionTier.displayName
+                            )
                         }
 
                         // Only show manage members if user can manage members
@@ -250,8 +276,8 @@ struct SettingsView: View {
                             )
                         }
 
-                        // Switch Account (only show if multiple accounts)
-                        if appState.switchableAccounts.count > 1 {
+                        // Switch Account (only show for Family Plus with multiple accounts)
+                        if appState.subscriptionTier.hasFamilyFeatures && appState.switchableAccounts.count > 1 {
                             SettingsButtonRow(
                                 icon: "arrow.left.arrow.right",
                                 title: "Switch Account",
@@ -322,12 +348,33 @@ struct SettingsView: View {
                     }
 
 
+                    // Support section
+                    SettingsSection(title: "SUPPORT") {
+                        SettingsButtonRow(
+                            icon: "ladybug",
+                            title: "Report a Bug",
+                            action: { handleFeedbackTap(.bugReport) }
+                        )
+
+                        SettingsButtonRow(
+                            icon: "bubble.left.and.bubble.right",
+                            title: "Send Feedback",
+                            action: { handleFeedbackTap(.generalFeedback) }
+                        )
+                    }
+
                     // About section
                     SettingsSection(title: "ABOUT") {
                         SettingsRow(
                             icon: "info.circle",
                             title: "Version",
                             value: "1.0.0"
+                        )
+
+                        SettingsButtonRow(
+                            icon: "star",
+                            title: "Rate Unforgotten",
+                            action: { ReviewRequestService.shared.openAppStoreReviewPage() }
                         )
 
                         SettingsButtonRow(
@@ -359,7 +406,38 @@ struct SettingsView: View {
                         .cornerRadius(AppDimensions.cardCornerRadius)
                     }
                     .padding(.horizontal, AppDimensions.screenPadding)
-                    
+
+                    // Delete account
+                    Button {
+                        showDeleteAccountConfirm = true
+                    } label: {
+                        HStack {
+                            if isDeletingAccount {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .medicalRed))
+                            } else {
+                                Image(systemName: "trash")
+                            }
+                            Text(isDeletingAccount ? "Deleting…" : "Delete Account")
+                        }
+                        .font(.appBodyMedium)
+                        .foregroundColor(.medicalRed)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                    }
+                    .disabled(isDeletingAccount)
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                    .padding(.top, 8)
+
+                    Text("Permanently deletes your account and all your data. This cannot be undone.")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, AppDimensions.screenPadding)
+                        .padding(.top, 6)
+
                     Spacer()
                         .frame(height: 40)
                 }
@@ -418,10 +496,60 @@ struct SettingsView: View {
         } message: {
             Text("Are you sure you want to sign out?")
         }
+        .alert("Delete Account?", isPresented: $showDeleteAccountConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Continue", role: .destructive) {
+                showDeleteAccountFinalConfirm = true
+            }
+        } message: {
+            Text("This will permanently delete your account, profiles, medications, appointments, and all other data associated with your account. This action cannot be undone.")
+        }
+        .alert("Are you absolutely sure?", isPresented: $showDeleteAccountFinalConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete My Account", role: .destructive) {
+                Task {
+                    isDeletingAccount = true
+                    do {
+                        try await appState.deleteAccount()
+                    } catch {
+                        deleteAccountError = error.localizedDescription
+                    }
+                    isDeletingAccount = false
+                }
+            }
+        } message: {
+            Text("Your account and all associated data will be permanently deleted. This cannot be undone.")
+        }
+        .alert("Couldn't Delete Account", isPresented: Binding(
+            get: { deleteAccountError != nil },
+            set: { if !$0 { deleteAccountError = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteAccountError = nil }
+        } message: {
+            Text(deleteAccountError ?? "")
+        }
+        .sheet(item: $feedbackKindToSend) { kind in
+            FeedbackMailView(kind: kind) {
+                feedbackKindToSend = nil
+            }
+        }
+        .alert("Mail Not Available", isPresented: $showMailUnavailableAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("We couldn't open a mail composer. The feedback address has been copied to your clipboard:\n\n\(AppConfiguration.feedbackEmail)")
+        }
         .task {
             if let user = await SupabaseManager.shared.currentUser {
                 userEmail = user.email ?? ""
             }
+        }
+    }
+
+    private func handleFeedbackTap(_ kind: FeedbackKind) {
+        if FeedbackPresenter.canSendInAppMail() {
+            feedbackKindToSend = kind
+        } else if !FeedbackPresenter.openMailtoFallback(for: kind) {
+            showMailUnavailableAlert = true
         }
     }
 }
@@ -1832,7 +1960,7 @@ struct UpgradeView: View {
                     Text("Premium")
                         .font(.appBodyMedium)
                         .foregroundColor(selectedTier == .premium ? .textPrimary : .textSecondary)
-                    Text("$5.99/mo")
+                    Text(premiumMonthlyDisplayPrice + "/mo")
                         .font(.appCaption)
                         .foregroundColor(selectedTier == .premium ? appAccentColor : .textMuted)
                 }
@@ -1853,7 +1981,7 @@ struct UpgradeView: View {
                     Text("Family Plus")
                         .font(.appBodyMedium)
                         .foregroundColor(selectedTier == .familyPlus ? .textPrimary : .textSecondary)
-                    Text("$9.99/mo")
+                    Text(familyMonthlyDisplayPrice + "/mo")
                         .font(.appCaption)
                         .foregroundColor(selectedTier == .familyPlus ? .medicalRed : .textMuted)
                 }
@@ -1873,14 +2001,14 @@ struct UpgradeView: View {
         VStack(spacing: 12) {
             let tierProducts = productsForSelectedTier
             if tierProducts.isEmpty {
-                // Fallback pricing (no StoreKit products loaded)
+                // Fallback when StoreKit products haven't loaded yet
                 if selectedTier == .premium {
                     Button {
                         fallbackSelection = .premiumMonthly
                     } label: {
                         upgradePricingCard(
                             title: "Monthly",
-                            price: "$5.99/month",
+                            price: premiumMonthlyDisplayPrice + "/month",
                             isSelected: fallbackSelection == .premiumMonthly,
                             isBestValue: false
                         )
@@ -1892,7 +2020,7 @@ struct UpgradeView: View {
                     } label: {
                         upgradePricingCard(
                             title: "Annual",
-                            price: "$39.99/year",
+                            price: premiumAnnualDisplayPrice + "/year",
                             subtitle: "Save 44%",
                             isSelected: fallbackSelection == .premiumAnnual,
                             isBestValue: true
@@ -1905,7 +2033,7 @@ struct UpgradeView: View {
                     } label: {
                         upgradePricingCard(
                             title: "Monthly",
-                            price: "$9.99/month",
+                            price: familyMonthlyDisplayPrice + "/month",
                             isSelected: fallbackSelection == .familyMonthly,
                             isBestValue: false
                         )
@@ -1917,7 +2045,7 @@ struct UpgradeView: View {
                     } label: {
                         upgradePricingCard(
                             title: "Annual",
-                            price: "$69.99/year",
+                            price: familyAnnualDisplayPrice + "/year",
                             subtitle: "Save 42%",
                             isSelected: fallbackSelection == .familyAnnual,
                             isBestValue: true
@@ -1950,6 +2078,22 @@ struct UpgradeView: View {
     private var productsForSelectedTier: [Product] {
         let tier: SubscriptionTier = selectedTier == .premium ? .premium : .familyPlus
         return subscriptionManager.products(for: tier)
+    }
+
+    private var premiumMonthlyDisplayPrice: String {
+        subscriptionManager.product(for: .premium, period: .monthly)?.displayPrice ?? "---"
+    }
+
+    private var premiumAnnualDisplayPrice: String {
+        subscriptionManager.product(for: .premium, period: .annual)?.displayPrice ?? "---"
+    }
+
+    private var familyMonthlyDisplayPrice: String {
+        subscriptionManager.product(for: .familyPlus, period: .monthly)?.displayPrice ?? "---"
+    }
+
+    private var familyAnnualDisplayPrice: String {
+        subscriptionManager.product(for: .familyPlus, period: .annual)?.displayPrice ?? "---"
     }
 
     private func updateSelectedProduct() {
@@ -2025,15 +2169,22 @@ struct UpgradeView: View {
     }
 
     private func purchase() {
-        guard let product = selectedProduct ?? productsForSelectedTier.first else {
-            dismissView()
-            return
-        }
-
         purchaseState = .purchasing
         errorMessage = nil
 
         Task {
+            // If no product selected, try loading products first
+            if selectedProduct == nil && productsForSelectedTier.isEmpty {
+                await subscriptionManager.loadProducts()
+                updateSelectedProduct()
+            }
+
+            guard let product = selectedProduct ?? productsForSelectedTier.first else {
+                errorMessage = "Unable to load subscription products. Please check your connection and try again."
+                purchaseState = .idle
+                return
+            }
+
             do {
                 let transaction = try await subscriptionManager.purchase(product)
 

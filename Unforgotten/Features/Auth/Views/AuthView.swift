@@ -25,8 +25,9 @@ struct AuthView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(height: isRegularWidth ? 100 : 80)
                             .padding(.top, isRegularWidth ? 60 : 40)
+                            .padding(.bottom, isRegularWidth ? 60 : 40)
 
-                        Spacer(minLength: isRegularWidth ? 60 : 40)
+                        // Spacer()
 
                         // Auth Form content
                         VStack(spacing: isRegularWidth ? 32 : 24) {
@@ -280,10 +281,19 @@ struct SignInForm: View {
                 do {
                     _ = try await appState.authRepository.signInWithApple(credential: credential)
 
-                    // Extract the user's full name from the Apple credential (only provided on first sign-in)
+                    // Extract the user's full name from the Apple credential (only provided on first sign-in).
+                    // Apple requires that we do NOT ask the user to re-enter this information.
                     var appleDisplayName: String?
                     if let fullName = credential.fullName {
-                        let nameParts = [fullName.givenName, fullName.familyName].compactMap { $0 }
+                        let given = fullName.givenName?.trimmingCharacters(in: .whitespaces)
+                        let family = fullName.familyName?.trimmingCharacters(in: .whitespaces)
+                        if let given, !given.isEmpty {
+                            appState.pendingAppleFirstName = given
+                        }
+                        if let family, !family.isEmpty {
+                            appState.pendingAppleLastName = family
+                        }
+                        let nameParts = [given, family].compactMap { $0 }.filter { !$0.isEmpty }
                         if !nameParts.isEmpty {
                             appleDisplayName = nameParts.joined(separator: " ")
                         }
@@ -526,7 +536,26 @@ struct SignUpForm: View {
                 isLoading = true
                 do {
                     _ = try await appState.authRepository.signInWithApple(credential: credential)
-                    await appState.checkAuthState()
+
+                    // Capture name from the Apple credential (only provided on first sign-in).
+                    // Apple requires that we do NOT ask the user to re-enter this information.
+                    var appleDisplayName: String?
+                    if let fullName = credential.fullName {
+                        let given = fullName.givenName?.trimmingCharacters(in: .whitespaces)
+                        let family = fullName.familyName?.trimmingCharacters(in: .whitespaces)
+                        if let given, !given.isEmpty {
+                            appState.pendingAppleFirstName = given
+                        }
+                        if let family, !family.isEmpty {
+                            appState.pendingAppleLastName = family
+                        }
+                        let nameParts = [given, family].compactMap { $0 }.filter { !$0.isEmpty }
+                        if !nameParts.isEmpty {
+                            appleDisplayName = nameParts.joined(separator: " ")
+                        }
+                    }
+
+                    await appState.checkAuthState(appleDisplayName: appleDisplayName)
                 } catch {
                     errorMessage = "Apple Sign Up failed"
                 }
