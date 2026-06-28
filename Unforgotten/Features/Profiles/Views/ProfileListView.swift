@@ -11,6 +11,10 @@ struct ProfileListView: View {
 
     @StateObject private var viewModel = ProfileListViewModel()
     @State private var showAddProfile = false
+    @State private var showContactsPicker = false
+    @State private var importedContacts: [ImportedContact] = []
+    @State private var showImportReview = false
+    @State private var importedCountToast: Int?
     @State private var showUpgradePrompt = false
     @State private var profileToDelete: Profile?
     @State private var showDeleteConfirmation = false
@@ -71,6 +75,14 @@ struct ProfileListView: View {
                                 }
                             }
                         },
+                        showImportButton: true,
+                        importAction: {
+                            if canAddProfile {
+                                showContactsPicker = true
+                            } else {
+                                showUpgradePrompt = true
+                            }
+                        },
                         tutorialVideoURL: "https://unforgottenapp.com/tutorials/Profiles.mp4"
                     )
 
@@ -82,7 +94,7 @@ struct ProfileListView: View {
                                 Image(systemName: "magnifyingglass")
                                     .foregroundColor(.textSecondary)
 
-                                TextField("Search family and friends...", text: $searchText)
+                                TextField("Search contacts...", text: $searchText)
                                     .font(.appBody)
                                     .foregroundColor(.textPrimary)
 
@@ -151,7 +163,7 @@ struct ProfileListView: View {
                                             profile: profile,
                                             isPinned: viewModel.isPinned(profile.id),
                                             hasGroup: groupedProfileIds.contains(profile.id),
-                                            onTogglePin: { viewModel.togglePin(profile.id) },
+                                            onTogglePin: { viewModel.togglePin(profile.id, appState: appState) },
                                             onGroupTap: { profileForGroupAssignment = profile }
                                         )
                                     }
@@ -257,6 +269,39 @@ struct ProfileListView: View {
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
         }
+        .sheet(isPresented: $showContactsPicker) {
+            ContactsPicker { contacts in
+                showContactsPicker = false
+                guard !contacts.isEmpty else { return }
+                let mapped = contacts.map { ImportedContact(from: $0) }
+                importedContacts = mapped
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    showImportReview = true
+                }
+            }
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showImportReview) {
+            ImportProfilesView(
+                imported: importedContacts,
+                existingNames: Set(viewModel.profiles.map { $0.fullName.lowercased() })
+            ) { savedCount in
+                importedCountToast = savedCount
+                NotificationCenter.default.post(name: .profilesDidChange, object: nil)
+            }
+            .environmentObject(appState)
+        }
+        .alert("Profiles imported", isPresented: .init(
+            get: { importedCountToast != nil },
+            set: { if !$0 { importedCountToast = nil } }
+        )) {
+            Button("OK", role: .cancel) { importedCountToast = nil }
+        } message: {
+            if let n = importedCountToast {
+                Text(n == 0 ? "No profiles were imported." : (n == 1 ? "1 profile was imported." : "\(n) profiles were imported."))
+            }
+        }
         .alert("Send Invitation", isPresented: $showInviteEmailPrompt) {
             TextField("Email address", text: $inviteEmail)
                 .textContentType(.emailAddress)
@@ -273,6 +318,7 @@ struct ProfileListView: View {
         } message: {
             Text("Enter the email address of the person you'd like to invite.")
         }
+        .tint(appAccentColor)
         .sidePanel(isPresented: $showInviteMember) {
             InviteShareView(profileEmail: inviteEmail, onDismiss: { showInviteMember = false })
         }
@@ -415,7 +461,7 @@ struct ProfileListRow: View {
 
                     if profile.isDeceased {
                         Text("In Memory")
-                            .font(.appCaption)
+                            .font(.appCaptionSmall)
                             .foregroundColor(.textMuted)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -526,11 +572,10 @@ class ProfileListViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
-    private let pinnedProfilesKey = "pinned_profile_ids"
-
-    init() {
-        loadPinnedIds()
-    }
+    /// Legacy UserDefaults key. Pins are now stored in Supabase (`profile_pins`);
+    /// this key is read once at first load to migrate any locally-stored pins,
+    /// then cleared.
+    private let legacyPinnedProfilesKey = "pinned_profile_ids"
 
     // MARK: - Pinned Profiles
 
@@ -538,25 +583,60 @@ class ProfileListViewModel: ObservableObject {
         pinnedProfileIds.contains(profileId)
     }
 
-    func togglePin(_ profileId: UUID) {
-        if pinnedProfileIds.contains(profileId) {
+    /// Toggles a pin with an optimistic UI update and persists the change to Supabase.
+    /// On failure, the local state is reverted and an error is surfaced.
+    func togglePin(_ profileId: UUID, appState: AppState) {
+        let wasPinned = pinnedProfileIds.contains(profileId)
+        if wasPinned {
             pinnedProfileIds.remove(profileId)
         } else {
             pinnedProfileIds.insert(profileId)
         }
-        savePinnedIds()
         sortProfiles()
-    }
 
-    private func loadPinnedIds() {
-        if let strings = UserDefaults.standard.stringArray(forKey: pinnedProfilesKey) {
-            pinnedProfileIds = Set(strings.compactMap { UUID(uuidString: $0) })
+        Task {
+            do {
+                if wasPinned {
+                    try await appState.profilePinRepository.unpin(profileId: profileId)
+                } else {
+                    try await appState.profilePinRepository.pin(profileId: profileId)
+                }
+            } catch {
+                // Revert optimistic update
+                if wasPinned {
+                    pinnedProfileIds.insert(profileId)
+                } else {
+                    pinnedProfileIds.remove(profileId)
+                }
+                sortProfiles()
+                self.error = "Failed to update pin: \(error.localizedDescription)"
+            }
         }
     }
 
-    private func savePinnedIds() {
-        let strings = pinnedProfileIds.map { $0.uuidString }
-        UserDefaults.standard.set(strings, forKey: pinnedProfilesKey)
+    /// Migrate any pins stored in UserDefaults (from before pins were server-backed)
+    /// into Supabase, then clear the local key. Safe to call repeatedly — the key
+    /// is removed after a successful migration.
+    private func migrateLegacyPinsIfNeeded(appState: AppState) async {
+        guard let strings = UserDefaults.standard.stringArray(forKey: legacyPinnedProfilesKey),
+              !strings.isEmpty else {
+            return
+        }
+        let ids = strings.compactMap { UUID(uuidString: $0) }
+        var migratedAll = true
+        for id in ids {
+            do {
+                try await appState.profilePinRepository.pin(profileId: id)
+            } catch {
+                migratedAll = false
+                #if DEBUG
+                print("📌 Failed to migrate legacy pin \(id): \(error)")
+                #endif
+            }
+        }
+        if migratedAll {
+            UserDefaults.standard.removeObject(forKey: legacyPinnedProfilesKey)
+        }
     }
 
     private func sortProfiles() {
@@ -581,15 +661,34 @@ class ProfileListViewModel: ObservableObject {
         let task = Task {
             isLoading = true
 
+            // Migrate any locally-stored pins to Supabase before loading the server-side set.
+            // This is a one-time operation; the helper clears the key on success.
+            await migrateLegacyPinsIfNeeded(appState: appState)
+
             do {
                 try Task.checkCancellation()
 
-                // Use refreshProfiles when force refresh is requested (e.g., from realtime notification)
-                var loaded: [Profile]
-                if forceRefresh {
-                    loaded = try await appState.profileRepository.refreshProfiles(accountId: account.id)
-                } else {
-                    loaded = try await appState.profileRepository.getProfiles(accountId: account.id)
+                // Load profiles and pinned IDs in parallel
+                async let loadedProfilesTask: [Profile] = {
+                    if forceRefresh {
+                        return try await appState.profileRepository.refreshProfiles(accountId: account.id)
+                    } else {
+                        return try await appState.profileRepository.getProfiles(accountId: account.id)
+                    }
+                }()
+                async let pinnedIdsTask: Set<UUID> = appState.profilePinRepository.getPinnedProfileIds()
+
+                var loaded = try await loadedProfilesTask
+                // Pin load failures shouldn't block the profile list — fall back to whatever
+                // is already in memory rather than throwing.
+                let pinnedIds: Set<UUID>
+                do {
+                    pinnedIds = try await pinnedIdsTask
+                } catch {
+                    #if DEBUG
+                    print("📌 Failed to load pinned profile IDs: \(error)")
+                    #endif
+                    pinnedIds = self.pinnedProfileIds
                 }
 
                 try Task.checkCancellation()
@@ -615,6 +714,7 @@ class ProfileListViewModel: ObservableObject {
                 }
 
                 profiles = loaded
+                pinnedProfileIds = pinnedIds
                 // Sort with pinned profiles first, then alphabetically
                 sortProfiles()
             } catch {
@@ -837,6 +937,7 @@ struct ProfileDetailView: View {
                     showInviteMember = true
                 }
             }
+            
         } message: {
             Text("Enter the email address of the person you'd like to invite.")
         }

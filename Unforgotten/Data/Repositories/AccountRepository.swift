@@ -294,12 +294,22 @@ final class AccountRepository: AccountRepositoryProtocol {
     }
     
     // MARK: - Remove Member
+    /// Removes a member and fully severs any profile syncs between the two users.
+    /// Direct table delete would leave orphaned syncs and the reciprocal membership intact.
     func removeMember(memberId: UUID) async throws {
-        try await supabase
-            .from(TableName.accountMembers)
-            .delete()
-            .eq("id", value: memberId)
-            .execute()
+        struct RemoveMemberResult: Decodable {
+            let success: Bool
+            let error: String?
+        }
+
+        let result: RemoveMemberResult = try await supabase.rpc(
+            "remove_member_with_cleanup",
+            params: ["p_member_id": memberId.uuidString]
+        ).execute().value
+
+        if !result.success {
+            throw SupabaseError.customError(result.error ?? "Failed to remove member")
+        }
     }
     
     // MARK: - Get Current User's Role

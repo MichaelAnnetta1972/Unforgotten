@@ -11,6 +11,10 @@ struct UsefulContactsListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = UsefulContactsViewModel()
     @State private var showAddContact = false
+    @State private var showContactsPicker = false
+    @State private var importedContacts: [ImportedContact] = []
+    @State private var showImportReview = false
+    @State private var importedCountToast: Int?
 
     /// Check if we're in iPad mode (regular size class)
     private var isiPad: Bool {
@@ -97,6 +101,14 @@ struct UsefulContactsListView: View {
                             } else {
                                 showAddContact = true
                             }
+                        } else {
+                            showUpgradePrompt = true
+                        }
+                    },
+                    showImportButton: true,
+                    importAction: {
+                        if canAddContact {
+                            showContactsPicker = true
                         } else {
                             showUpgradePrompt = true
                         }
@@ -311,6 +323,42 @@ struct UsefulContactsListView: View {
                 }
             }
             .presentationBackground(Color.appBackgroundLight)
+        }
+        .sheet(isPresented: $showContactsPicker) {
+            ContactsPicker { contacts in
+                showContactsPicker = false
+                guard !contacts.isEmpty else { return }
+                let mapped = contacts.map { ImportedContact(from: $0) }
+                importedContacts = mapped
+                // Slight delay so the picker can fully dismiss before the review sheet presents
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    showImportReview = true
+                }
+            }
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showImportReview) {
+            ImportUsefulContactsView(
+                imported: importedContacts,
+                existingNames: Set(viewModel.contacts.map { $0.name.lowercased() })
+            ) { savedCount in
+                importedCountToast = savedCount
+                Task {
+                    await viewModel.loadContacts(appState: appState, forceRefresh: true)
+                }
+            }
+            .environmentObject(appState)
+        }
+        .alert("Contacts imported", isPresented: .init(
+            get: { importedCountToast != nil },
+            set: { if !$0 { importedCountToast = nil } }
+        )) {
+            Button("OK", role: .cancel) { importedCountToast = nil }
+        } message: {
+            if let n = importedCountToast {
+                Text(n == 0 ? "No contacts were imported." : (n == 1 ? "1 contact was imported." : "\(n) contacts were imported."))
+            }
         }
         .task {
             await viewModel.loadContacts(appState: appState)

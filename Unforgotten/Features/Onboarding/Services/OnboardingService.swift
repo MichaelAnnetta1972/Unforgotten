@@ -10,39 +10,6 @@ final class OnboardingService {
 
     private init() {}
 
-    // MARK: - Photo Upload
-
-    /// Uploads a profile photo and returns the public URL
-    /// - Parameter image: The UIImage to upload
-    /// - Returns: The public URL of the uploaded image, or nil if upload fails
-    func uploadProfilePhoto(_ image: UIImage) async throws -> String? {
-        // Compress and resize the image
-        guard let processedImage = processImage(image),
-              let imageData = processedImage.jpegData(compressionQuality: 0.8) else {
-            return nil
-        }
-
-        // Generate a unique filename
-        let filename = "\(UUID().uuidString).jpg"
-        let path = "profile-photos/\(filename)"
-
-        // Upload to Supabase Storage
-        try await supabase.client.storage
-            .from("profile-photos")
-            .upload(
-                path: filename,
-                file: imageData,
-                options: .init(contentType: "image/jpeg")
-            )
-
-        // Get the public URL
-        let publicURL = try supabase.client.storage
-            .from("profile-photos")
-            .getPublicURL(path: filename)
-
-        return publicURL.absoluteString
-    }
-
     /// Process image for upload (resize and compress)
     private func processImage(_ image: UIImage) -> UIImage? {
         let maxDimension: CGFloat = 800
@@ -116,19 +83,54 @@ final class OnboardingService {
         headerStyleManager: HeaderStyleManager,
         userPreferences: UserPreferences
     ) async throws {
-        // 1. Upload profile photo if present
-        var photoURL: String? = nil
-        if let photo = data.profilePhoto {
-            photoURL = try await uploadProfilePhoto(photo)
-        }
-
-        // 2. ALWAYS create the user's own account and profile first
-        // This ensures they have their own account for profile sync to work
+        // 1. ALWAYS create the user's own account and profile first
+        // This ensures they have their own account for profile sync to work,
+        // and gives us a profile ID to scope the photo upload path to.
         try await appState.completeOnboarding(
             accountName: data.accountName,
             primaryProfileName: data.fullName,
             birthday: nil
         )
+
+        // 2. Upload profile photo (if any) AFTER the profile exists, so storage
+        // RLS can verify the user has write access to the parent profile.
+        var photoPath: String? = nil
+        if let photo = data.profilePhoto {
+            let account = await MainActor.run { appState.currentAccount }
+            if let account {
+                let profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
+                if let primaryProfile = profiles.first(where: { $0.type == .primary }) {
+                    photoPath = try await ImageUploadService.shared.uploadProfilePhoto(
+                        image: photo,
+                        profileId: primaryProfile.id
+                    )
+                }
+            }
+        }
+
+        // 2b. Create the optional first relative/friend profile if the user filled it in
+        if data.hasFirstProfile {
+            let account = await MainActor.run { appState.currentAccount }
+            if let accountId = account?.id {
+                let insert = ProfileInsert(
+                    accountId: accountId,
+                    type: .relative,
+                    fullName: data.firstProfileName.trimmingCharacters(in: .whitespaces),
+                    relationship: data.firstProfileRelationship.isBlank ? nil : data.firstProfileRelationship,
+                    birthday: data.firstProfileBirthday,
+                    email: data.firstProfileEmail.isBlank ? nil : data.firstProfileEmail
+                )
+                do {
+                    _ = try await appState.profileRepository.createProfile(insert)
+                } catch {
+                    // Don't fail the whole onboarding if this optional profile couldn't be created —
+                    // log and move on. The user can add it later from the Profiles screen.
+                    #if DEBUG
+                    print("⚠️ Onboarding: failed to create first profile: \(error)")
+                    #endif
+                }
+            }
+        }
 
         // 3. Apply theme settings AFTER account is created so sync IDs are available
         let account = await MainActor.run { appState.currentAccount }
@@ -144,16 +146,14 @@ final class OnboardingService {
             userPreferences.resetToStyleDefault()
         }
 
-        // Update profile with photo URL if we uploaded one
-        if let url = photoURL {
-            // Access main actor-isolated property
+        // Update profile with photo path if we uploaded one
+        if let path = photoPath {
             let account = await MainActor.run { appState.currentAccount }
             if let account = account {
-                // Get the primary profile and update it
                 let profiles = try await appState.profileRepository.getProfiles(accountId: account.id)
                 if let primaryProfile = profiles.first(where: { $0.type == .primary }) {
                     var updatedProfile = primaryProfile
-                    updatedProfile.photoUrl = url
+                    updatedProfile.photoUrl = path
                     try await appState.profileRepository.updateProfile(updatedProfile)
                 }
             }

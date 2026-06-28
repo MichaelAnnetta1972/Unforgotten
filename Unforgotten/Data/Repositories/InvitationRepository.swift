@@ -39,16 +39,17 @@ final class InvitationRepository: InvitationRepositoryProtocol {
     }
 
     // MARK: - Get Invitation by Code
+    /// Looks up an invitation by code via SECURITY DEFINER RPC.
+    /// Used pre-authentication during onboarding, so cannot rely on direct
+    /// table access (anon role has no SELECT on account_invitations).
+    /// Returns nil if not found, expired, or not pending.
     func getInvitationByCode(_ code: String) async throws -> AccountInvitation? {
-        let invitations: [AccountInvitation] = try await supabase
-            .from(TableName.accountInvitations)
-            .select()
-            .eq("invite_code", value: code.uppercased())
-            .limit(1)
-            .execute()
-            .value
+        let invitation: AccountInvitation? = try await supabase.rpc(
+            "get_invitation_by_code",
+            params: ["p_invite_code": code.uppercased()]
+        ).execute().value
 
-        return invitations.first
+        return invitation
     }
 
     // MARK: - Get Invitations for Email

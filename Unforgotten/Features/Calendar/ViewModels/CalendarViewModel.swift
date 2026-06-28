@@ -31,6 +31,7 @@ class CalendarViewModel: ObservableObject {
         static let selectedCountdownTypes = "CalendarSelectedCountdownTypes"
         static let selectedCustomTypeNames = "CalendarSelectedCustomTypeNames"
         static let hasPersistedFilters = "CalendarHasPersistedFilters"
+        static let displayMode = "CalendarDisplayMode"
     }
 
     // MARK: - Published Properties
@@ -62,6 +63,7 @@ class CalendarViewModel: ObservableObject {
 
     init() {
         restoreFilterSettings()
+        restoreDisplayMode()
     }
 
     // MARK: - Month-Based Loading Cache
@@ -984,6 +986,21 @@ class CalendarViewModel: ObservableObject {
         }
         if let customNames = defaults.stringArray(forKey: FilterDefaultsKey.selectedCustomTypeNames) {
             selectedCustomTypeNames = Set(customNames)
+        }
+    }
+
+    // MARK: - Display Mode Persistence
+
+    func saveDisplayMode() {
+        UserDefaults.standard.set(displayMode.rawValue, forKey: FilterDefaultsKey.displayMode)
+    }
+
+    private func restoreDisplayMode() {
+        guard let raw = UserDefaults.standard.string(forKey: FilterDefaultsKey.displayMode),
+              let mode = CalendarDisplayMode(rawValue: raw) else { return }
+        displayMode = mode
+        if mode == .week {
+            currentWeekStart = Calendar.current.startOfWeek(for: Date())
         }
     }
 }

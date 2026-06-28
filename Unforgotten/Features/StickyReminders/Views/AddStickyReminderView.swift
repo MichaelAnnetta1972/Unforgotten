@@ -14,10 +14,19 @@ struct AddStickyReminderView: View {
     // Form state
     @State private var title: String = ""
     @State private var message: String = ""
-    @State private var triggerTime: Date = Date()
     @State private var intervalValue: Int = 1
     @State private var intervalUnit: StickyReminderTimeUnit = .hours
-    @State private var startImmediately: Bool = true
+
+    // Date & Time state
+    @State private var startImmediately: Bool = false
+    @State private var dateEnabled: Bool = false
+    @State private var timeEnabled: Bool = false
+    @State private var selectedDate: Date = Date()
+    @State private var selectedTime: Date = Date()
+
+    // Picker expansion state
+    @State private var showDatePicker: Bool = false
+    @State private var showTimePicker: Bool = false
 
     // UI state
     @State private var isSaving = false
@@ -41,6 +50,27 @@ struct AddStickyReminderView: View {
         StickyReminderInterval(value: intervalValue, unit: intervalUnit)
     }
 
+    /// Combines the selected date and (optional) time into a single trigger Date.
+    private var resolvedTriggerTime: Date {
+        if startImmediately {
+            return Date()
+        }
+
+        let calendar = Calendar.current
+        var components = calendar.dateComponents([.year, .month, .day], from: selectedDate)
+
+        if timeEnabled {
+            let timeComponents = calendar.dateComponents([.hour, .minute], from: selectedTime)
+            components.hour = timeComponents.hour
+            components.minute = timeComponents.minute
+        } else {
+            components.hour = 0
+            components.minute = 0
+        }
+
+        return calendar.date(from: components) ?? selectedDate
+    }
+
     /// Dismisses the view, calling onDismiss callback if provided
     private func dismissView() {
         if let onDismiss = onDismiss {
@@ -54,12 +84,10 @@ struct AddStickyReminderView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    VStack(spacing: 24) {
-                        titleField
-                        messageField
-                        startTimeSection
+                    VStack(spacing: 28) {
+                        titleNotesCard
+                        dateTimeSection
                         repeatIntervalSection
-                        infoCard
 
                         if let error = errorMessage {
                             Text(error)
@@ -75,7 +103,7 @@ struct AddStickyReminderView: View {
                     .padding(.top, 24)
                 }
             }
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
             .navigationTitle(isEditing ? "Edit Reminder" : "New Sticky Reminder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -103,10 +131,24 @@ struct AddStickyReminderView: View {
                 if let reminder = editingReminder {
                     title = reminder.title
                     message = reminder.message ?? ""
-                    triggerTime = reminder.triggerTime
                     intervalValue = reminder.repeatInterval.value
                     intervalUnit = reminder.repeatInterval.unit
-                    startImmediately = reminder.triggerTime <= Date()
+
+                    // Seed the Date & Time fields from the reminder's next
+                    // notification time rather than its (possibly historical)
+                    // original trigger time — there's no need to edit a date in
+                    // the past. Falls back to triggerTime if no next time exists.
+                    let seedTime = reminder.nextNotificationTime ?? reminder.triggerTime
+                    startImmediately = false
+                    dateEnabled = true
+                    selectedDate = seedTime
+                    selectedTime = seedTime
+                    showDatePicker = false
+
+                    // Treat a non-midnight time as an explicitly chosen time
+                    let timeComponents = Calendar.current.dateComponents([.hour, .minute], from: seedTime)
+                    timeEnabled = (timeComponents.hour ?? 0) != 0 || (timeComponents.minute ?? 0) != 0
+                    showTimePicker = false
                 } else {
                     focusedField = .title
                 }
@@ -114,135 +156,252 @@ struct AddStickyReminderView: View {
         }
         .padding(.top, 8)
         .background(Color.appBackground)
+        .clipShape(RoundedCorner(radius: 36, corners: [.topLeft, .topRight]))
     }
 
-    // MARK: - Title Field
-    private var titleField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TITLE")
-                .font(.appCaption)
-                .foregroundColor(appAccentColor)
-
-            TextField("What do you need to remember?", text: $title)
+    // MARK: - Title & Notes Card
+    private var titleNotesCard: some View {
+        VStack(spacing: 0) {
+            TextField("Title", text: $title)
                 .font(.appBody)
                 .foregroundColor(.textPrimary)
-                .padding()
+                .padding(.horizontal, AppDimensions.cardPadding)
                 .frame(height: AppDimensions.textFieldHeight)
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(focusedField == .title ? appAccentColor : Color.textSecondary.opacity(0.6), lineWidth: 1)
-                )
                 .focused($focusedField, equals: .title)
-        }
-    }
 
-    // MARK: - Message Field
-    private var messageField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("MESSAGE")
-                    .font(.appCaption)
-                    .foregroundColor(appAccentColor)
+            Divider()
+                .overlay(Color.textSecondary.opacity(0.3))
+                .padding(.horizontal, AppDimensions.cardPadding)
 
-                Text("(optional)")
-                    .font(.appCaption)
-                    .foregroundColor(.textMuted)
-            }
-
-            TextField("Add more details...", text: $message, axis: .vertical)
+            TextField("Notes", text: $message, axis: .vertical)
                 .font(.appBody)
                 .foregroundColor(.textPrimary)
                 .lineLimit(3...6)
-                .padding()
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(focusedField == .message ? appAccentColor : Color.textSecondary.opacity(0.3), lineWidth: 1)
-                )
+                .padding(AppDimensions.cardPadding)
                 .focused($focusedField, equals: .message)
         }
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
     }
 
-    // MARK: - Start Time Section
-    private var startTimeSection: some View {
+    // MARK: - Date & Time Section
+    private var dateTimeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("WHEN TO START")
-                .font(.appCaption)
-                .foregroundColor(appAccentColor)
+            Text("Date & Time")
+                .font(.appBody)
+                .foregroundColor(.textSecondary)
 
-            Toggle(isOn: $startImmediately) {
-                HStack(spacing: 12) {
-                    Image(systemName: "bolt.fill")
-                        .foregroundColor(appAccentColor)
-                        .frame(width: 24)
+            VStack(spacing: 0) {
+                // Start Now
+                Toggle(isOn: $startImmediately.animation()) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "alarm")
+                            .font(.system(size: 20))
+                            .foregroundColor(.textSecondary)
+                            .frame(width: 26)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Start Immediately")
+                        Text("Start Now")
                             .font(.appBodyMedium)
                             .foregroundColor(.textPrimary)
+                    }
+                }
+                .tint(appAccentColor)
+                .padding(.horizontal, AppDimensions.cardPadding)
+                .padding(.vertical, 14)
 
-                        Text("Begin reminding right away")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                if !startImmediately {
+                    rowDivider
+
+                    // Date
+                    dateRow
+
+                    if dateEnabled && showDatePicker {
+                        datePickerView
+                    }
+
+                    rowDivider
+
+                    // Add Time
+                    timeRow
+
+                    if timeEnabled && showTimePicker {
+                        timePickerView
                     }
                 }
             }
-            .tint(appAccentColor)
-            .padding()
             .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
 
-            if !startImmediately {
-                VStack {
-                    Text("Start Time")
-                        .font(.appBody)
-                        .foregroundColor(.textPrimary)
+    private var rowDivider: some View {
+        Divider()
+            .overlay(Color.textSecondary.opacity(0.3))
+            .padding(.horizontal, AppDimensions.cardPadding)
+    }
+
+    // MARK: - Date Row
+    private var dateRow: some View {
+        Toggle(isOn: dateToggleBinding) {
+            Button {
+                guard dateEnabled else { return }
+                withAnimation { showDatePicker.toggle() }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 20))
+                        .foregroundColor(.textSecondary)
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Date")
+                            .font(.appBodyMedium)
+                            .foregroundColor(.textPrimary)
+
+                        if dateEnabled {
+                            Text(selectedDate.formatted(.dateTime.day().month(.wide).year()))
+                                .font(.appCaption)
+                                .foregroundColor(appAccentColor)
+                        }
+                    }
 
                     Spacer()
-
-                    DatePicker(
-                        "",
-                        selection: $triggerTime,
-                        in: Date()...,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .datePickerStyle(.wheel)
-                    .tint(appAccentColor)
                 }
-                .padding()
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
         }
+        .tint(appAccentColor)
+        .padding(.horizontal, AppDimensions.cardPadding)
+        .padding(.vertical, 12)
+    }
+
+    private var dateToggleBinding: Binding<Bool> {
+        Binding(
+            get: { dateEnabled },
+            set: { newValue in
+                withAnimation {
+                    dateEnabled = newValue
+                    showDatePicker = newValue
+                    if !newValue {
+                        // Time depends on a date, so disable it alongside
+                        timeEnabled = false
+                        showTimePicker = false
+                    }
+                }
+            }
+        )
+    }
+
+    /// Lower bound for the date picker. Defaults to today, but allows an
+    /// existing reminder's original (possibly past) date when editing.
+    private var datePickerLowerBound: Date {
+        let today = Calendar.current.startOfDay(for: Date())
+        return min(today, Calendar.current.startOfDay(for: selectedDate))
+    }
+
+    private var datePickerView: some View {
+        DatePicker(
+            "",
+            selection: $selectedDate,
+            in: datePickerLowerBound...,
+            displayedComponents: [.date]
+        )
+        .datePickerStyle(.graphical)
+        .tint(appAccentColor)
+        .padding(.horizontal, AppDimensions.cardPadding)
+        .padding(.bottom, AppDimensions.cardPadding)
+    }
+
+    // MARK: - Time Row
+    private var timeRow: some View {
+        Toggle(isOn: timeToggleBinding) {
+            Button {
+                guard timeEnabled else { return }
+                withAnimation { showTimePicker.toggle() }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 20))
+                        .foregroundColor(.textSecondary)
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Add Time")
+                            .font(.appBodyMedium)
+                            .foregroundColor(.textPrimary)
+
+                        if timeEnabled {
+                            Text(selectedTime.formatted(date: .omitted, time: .shortened))
+                                .font(.appCaption)
+                                .foregroundColor(appAccentColor)
+                        }
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .tint(appAccentColor)
+        .disabled(!dateEnabled)
+        .padding(.horizontal, AppDimensions.cardPadding)
+        .padding(.vertical, 12)
+    }
+
+    private var timeToggleBinding: Binding<Bool> {
+        Binding(
+            get: { timeEnabled },
+            set: { newValue in
+                withAnimation {
+                    timeEnabled = newValue
+                    showTimePicker = newValue
+                }
+            }
+        )
+    }
+
+    private var timePickerView: some View {
+        DatePicker(
+            "",
+            selection: $selectedTime,
+            displayedComponents: [.hourAndMinute]
+        )
+        .datePickerStyle(.wheel)
+        .labelsHidden()
+        .tint(appAccentColor)
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, AppDimensions.cardPadding)
     }
 
     // MARK: - Repeat Interval Section
     private var repeatIntervalSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("HOW OFTEN TO REMIND")
-                .font(.appCaption)
-                .foregroundColor(.textSecondary)
+            // Text("Repeat Frequency")
+            //     .font(.appBody)
+            //     .foregroundColor(.textSecondary)
 
             VStack(spacing: 16) {
                 HStack(spacing: 12) {
-                    Text("Every")
+                    Text("Repeat Every")
                         .font(.appBody)
                         .foregroundColor(.textPrimary)
+
+                    Spacer()
 
                     numberPickerMenu
                     unitPickerMenu
 
-                    Spacer()
+                    //Spacer()
 
-                    quickPresetsMenu
+                    //quickPresetsMenu
                 }
             }
-            .padding()
-            .background(Color.cardBackgroundSoft)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
         }
     }
 
@@ -333,43 +492,6 @@ struct AddStickyReminderView: View {
         }
     }
 
-    // MARK: - Info Card
-    private var infoCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "info.circle.fill")
-                    .foregroundColor(appAccentColor)
-
-                Text("How Sticky Reminders Work")
-                    .font(.appBodyMedium)
-                    .foregroundColor(.textPrimary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                infoRow(icon: "bell.badge", text: "You'll receive notifications at your chosen frequency")
-                infoRow(icon: "repeat", text: "Reminders repeat until you dismiss them in the app")
-                infoRow(icon: "hand.tap", text: "Open the app and tap 'Dismiss' to stop notifications")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.white.opacity(0.15))
-        .cornerRadius(AppDimensions.buttonCornerRadius)
-    }
-
-    private func infoRow(icon: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundColor(.textSecondary)
-                .frame(width: 18)
-
-            Text(text)
-                .font(.appCaption)
-                .foregroundColor(.textSecondary)
-        }
-    }
-
     // MARK: - Save Reminder
     private func saveReminder() {
         guard isValid else { return }
@@ -381,7 +503,7 @@ struct AddStickyReminderView: View {
         isSaving = true
         errorMessage = nil
 
-        let finalTriggerTime = startImmediately ? Date() : triggerTime
+        let finalTriggerTime = resolvedTriggerTime
 
         Task {
             do {

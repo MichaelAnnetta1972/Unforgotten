@@ -63,8 +63,8 @@ extension Color {
 extension Color {
     // Background colors
     static let appBackground = Color(hex: "000000")
-    static let cardBackground = Color(hex: "222222")
-    static let appBackgroundLight = Color(hex: "131313")
+    static let cardBackground = Color(hex: "2C2C2D")
+    static let appBackgroundLight = Color(hex: "1C1C1E")
     static let appBackgroundSoft = Color(hex: "0D0D0D")
     static let cardBackgroundLight = Color(hex: "383838")
     static let cardBackgroundSoft = Color(hex: "2A2424")
@@ -89,7 +89,7 @@ extension Color {
     // Text colors
     static let textPrimary = Color.white
     static let textSecondary = Color(hex: "c1bfbf")
-    static let textMuted = Color(hex: "808080")
+    static let textMuted = Color(hex: "777777")
 
     // Status colors
     static let badgeGreen = Color(hex: "35C16C")

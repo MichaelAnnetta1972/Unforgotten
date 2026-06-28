@@ -102,7 +102,7 @@ struct MealPlannerView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
                                         .background(
-                                            selectedTab == tag ? appAccentColor : Color.clear
+                                            selectedTab == tag ? appAccentColor : Color.cardBackground
                                         )
                                 }
                             }
@@ -146,8 +146,8 @@ struct MealPlannerView: View {
                                             .font(.appCaption)
                                     }
                                     .foregroundColor(isSelected ? .black : .textSecondary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
                                     .background(isSelected ? appAccentColor : Color.cardBackground)
                                     .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
@@ -588,21 +588,24 @@ struct AddRecipeSheet: View {
         guard let accountId = appState.currentAccount?.id else { return }
         isLoading = true
         do {
-            let recipeId = UUID()
-            var imageUrl: String?
-
-            if let image = selectedImage {
-                imageUrl = try await ImageUploadService.shared.uploadRecipePhoto(image: image, recipeId: recipeId)
-            }
-
+            // Create the recipe first so storage RLS can verify ownership during upload.
             let recipe = try await appState.mealPlannerRepository.createRecipe(
                 accountId: accountId,
                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                 websiteUrl: websiteUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : websiteUrl.trimmingCharacters(in: .whitespacesAndNewlines),
-                imageUrl: imageUrl,
+                imageUrl: nil,
                 mealType: selectedMealType
             )
-            onSave(recipe)
+
+            var finalRecipe = recipe
+            if let image = selectedImage {
+                let imagePath = try await ImageUploadService.shared.uploadRecipePhoto(image: image, recipeId: recipe.id)
+                var withPhoto = recipe
+                withPhoto.imageUrl = imagePath
+                finalRecipe = try await appState.mealPlannerRepository.updateRecipe(withPhoto)
+            }
+
+            onSave(finalRecipe)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -769,8 +772,8 @@ struct EditRecipeSheet: View {
                                             .frame(width: geo.size.width, height: geo.size.width)
                                             .clipped()
                                             .cornerRadius(AppDimensions.cardCornerRadius)
-                                    } else if !removePhoto, let imageUrl = recipe.imageUrl, let url = URL(string: imageUrl) {
-                                        AsyncImage(url: url) { phase in
+                                    } else if !removePhoto, let imageUrl = recipe.imageUrl {
+                                        SignedAsyncImage(reference: imageUrl) { phase in
                                             switch phase {
                                             case .success(let image):
                                                 image

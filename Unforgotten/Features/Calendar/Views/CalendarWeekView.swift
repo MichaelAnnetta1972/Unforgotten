@@ -43,6 +43,21 @@ struct CalendarWeekView: View {
         .padding(AppDimensions.cardPaddingLarge)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    // Only treat as a horizontal swipe when horizontal movement
+                    // clearly dominates, so vertical scrolling isn't hijacked.
+                    guard abs(value.translation.width) > abs(value.translation.height) * 1.5,
+                          abs(value.translation.width) > 50 else { return }
+                    if value.translation.width < 0 {
+                        viewModel.goToNextWeek()
+                    } else {
+                        viewModel.goToPreviousWeek()
+                    }
+                }
+        )
     }
 
     // MARK: - Week Navigation Header

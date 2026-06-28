@@ -331,7 +331,7 @@ struct RemoteFullscreenImageView: View {
     }
 
     private func downloadImage() async {
-        guard let url = URL(string: imageUrl) else {
+        guard let url = await SignedImageURLService.shared.resolveURL(reference: imageUrl) else {
             isLoading = false
             return
         }
@@ -379,8 +379,8 @@ struct ImageSourcePicker: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 100, height: 100)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                } else if let urlString = currentImageUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
+                } else if let urlString = currentImageUrl {
+                    SignedAsyncImage(reference: urlString) { phase in
                         switch phase {
                         case .success(let image):
                             image
@@ -460,7 +460,12 @@ struct ImageSourcePicker: View {
                 .foregroundColor(.textSecondary)
         }
         .frame(width: 100, height: 100)
-        .background(Color.cardBackgroundSoft)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
     }
 }

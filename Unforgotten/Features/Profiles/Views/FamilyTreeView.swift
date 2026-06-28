@@ -949,13 +949,15 @@ struct FamilyTreeNodeView: View {
                     .shadow(color: isSelected ? accentColor.opacity(0.6) : .black.opacity(0.2),
                             radius: isSelected ? 15 : 5)
 
-                if let photoUrl = node.profile.photoUrl, let url = URL(string: photoUrl) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        initialsView
+                if let photoUrl = node.profile.photoUrl {
+                    SignedAsyncImage(reference: photoUrl) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } else {
+                            initialsView
+                        }
                     }
                     .frame(width: nodeSize - 4, height: nodeSize - 4)
                     .clipShape(Circle())
@@ -1050,15 +1052,17 @@ struct MiniNodeView: View {
                 .shadow(color: .black.opacity(0.2), radius: 3)
 
             // Photo or initials
-            if let photoUrl = node.profile.photoUrl, let url = URL(string: photoUrl) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Text(node.profile.displayName.initials)
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.textPrimary)
+            if let photoUrl = node.profile.photoUrl {
+                SignedAsyncImage(reference: photoUrl) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        Text(node.profile.displayName.initials)
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.textPrimary)
+                    }
                 }
                 .frame(width: nodeSize - 2, height: nodeSize - 2)
                 .clipShape(Circle())

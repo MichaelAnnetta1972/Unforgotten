@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 // MARK: - Settings Panel View
 /// iPad-optimized Settings view for side panel presentation with split-view sub-menus
@@ -28,6 +29,7 @@ struct SettingsPanelView: View {
         case helpTutorials
         case privacyPolicy
         case termsOfService
+        case changePassword
 
         var id: String {
             switch self {
@@ -44,6 +46,7 @@ struct SettingsPanelView: View {
             case .helpTutorials: return "helpTutorials"
             case .privacyPolicy: return "privacyPolicy"
             case .termsOfService: return "termsOfService"
+            case .changePassword: return "changePassword"
             }
         }
 
@@ -62,6 +65,7 @@ struct SettingsPanelView: View {
             case .helpTutorials: return "Help & Tutorials"
             case .privacyPolicy: return "Privacy Policy"
             case .termsOfService: return "Terms of Service"
+            case .changePassword: return "Change Password"
             }
         }
     }
@@ -73,10 +77,12 @@ struct SettingsPanelView: View {
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
     @State private var showUpgradePrompt = false
+    @State private var showManageSubscriptions: Bool = false
     @State private var feedbackKindToSend: FeedbackKind?
     @State private var showMailUnavailableAlert = false
     @State private var showHelpTutorials = false
     @State private var userEmail: String = ""
+    @State private var canChangePassword: Bool = false
     @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
     @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
     @State private var morningBriefingEnabled: Bool = NotificationService.shared.dailySummaryEnabled
@@ -186,6 +192,8 @@ struct SettingsPanelView: View {
         .task {
             if let user = await SupabaseManager.shared.currentUser {
                 userEmail = user.email ?? ""
+                let providers = user.identities?.map { $0.provider } ?? []
+                canChangePassword = providers.contains("email")
             }
         }
     }
@@ -365,6 +373,16 @@ struct SettingsPanelView: View {
                                 title: "Current Plan",
                                 value: appState.subscriptionTier.displayName
                             )
+
+                            if !SubscriptionManager.shared.purchasedProductIDs.isEmpty {
+                                SettingsPanelButtonRow(
+                                    icon: "creditcard",
+                                    title: "Manage Subscription",
+                                    isSelected: false
+                                ) {
+                                    showManageSubscriptions = true
+                                }
+                            }
                         }
 
                         // Only show manage members if user can manage members
@@ -508,6 +526,19 @@ struct SettingsPanelView: View {
                         }
                     }
 
+                    // Security section
+                    if canChangePassword {
+                        SettingsPanelSection(title: "SECURITY") {
+                            SettingsPanelButtonRow(
+                                icon: "key",
+                                title: "Change Password",
+                                isSelected: selectedSubMenu == .changePassword
+                            ) {
+                                selectSubMenu(.changePassword)
+                            }
+                        }
+                    }
+
                     // Sign out
                     Button {
                         showSignOutConfirm = true
@@ -565,6 +596,7 @@ struct SettingsPanelView: View {
         .sheet(isPresented: $showUpgradePrompt) {
             UpgradeView()
         }
+        .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
     }
 
     // MARK: - Detail View
@@ -638,6 +670,12 @@ struct SettingsPanelView: View {
                 PrivacyPolicyPanelContent()
             case .termsOfService:
                 TermsOfServicePanelContent()
+            case .changePassword:
+                ChangePasswordPanelContent(onSuccess: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedSubMenu = nil
+                    }
+                })
             }
         }
         .background(Color.appBackground)
@@ -716,6 +754,12 @@ struct SettingsPanelView: View {
                 PrivacyPolicyPanelContent()
             case .termsOfService:
                 TermsOfServicePanelContent()
+            case .changePassword:
+                ChangePasswordPanelContent(onSuccess: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedSubMenu = nil
+                    }
+                })
             }
         }
         .background(Color.appBackground)
@@ -1513,6 +1557,133 @@ struct EditAccountNamePanelContent: View {
         } catch {
             isLoading = false
             errorMessage = "Failed to update account name: \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - Change Password Panel Content
+struct ChangePasswordPanelContent: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var didSucceed = false
+
+    var onSuccess: (() -> Void)?
+
+    private var canSubmit: Bool {
+        !currentPassword.isEmpty &&
+        newPassword.count >= 6 &&
+        newPassword == confirmPassword &&
+        newPassword != currentPassword &&
+        !isLoading
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                VStack(spacing: 12) {
+                    Image(systemName: didSucceed ? "checkmark.circle.fill" : "lock.rotation")
+                        .font(.system(size: 40))
+                        .foregroundColor(appAccentColor)
+
+                    Text(didSucceed
+                         ? "Your password has been updated. Use the new one next time you sign in."
+                         : "Enter your current password, then choose a new one.")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 16)
+                .padding(.horizontal, AppDimensions.screenPadding)
+
+                if !didSucceed {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Current Password")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                        AppTextField(placeholder: "Current password", text: $currentPassword, isSecure: true)
+                    }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("New Password")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                        AppTextField(placeholder: "New password", text: $newPassword, isSecure: true)
+                    }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Confirm New Password")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                        AppTextField(placeholder: "Confirm new password", text: $confirmPassword, isSecure: true)
+                    }
+                    .padding(.horizontal, AppDimensions.screenPadding)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, AppDimensions.screenPadding)
+                    }
+
+                    PrimaryButton(title: "Update Password", isLoading: isLoading) {
+                        Task { await changePassword() }
+                    }
+                    .disabled(!canSubmit)
+                    .padding(.horizontal, AppDimensions.screenPadding)
+                }
+
+                Spacer()
+                    .frame(height: 40)
+            }
+        }
+        .background(Color.appBackground)
+    }
+
+    private func changePassword() async {
+        errorMessage = nil
+
+        guard newPassword.count >= 6 else {
+            errorMessage = "New password must be at least 6 characters."
+            return
+        }
+        guard newPassword == confirmPassword else {
+            errorMessage = "New passwords don't match."
+            return
+        }
+        guard newPassword != currentPassword else {
+            errorMessage = "New password must be different from your current one."
+            return
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            try await appState.authRepository.changePassword(
+                currentPassword: currentPassword,
+                newPassword: newPassword
+            )
+            didSucceed = true
+            // Brief pause so the user sees the success state, then collapse the pane.
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            onSuccess?()
+        } catch {
+            let message = error.localizedDescription
+            if message.localizedCaseInsensitiveContains("invalid login credentials") ||
+                message.localizedCaseInsensitiveContains("invalid_credentials") {
+                errorMessage = "Current password is incorrect."
+            } else {
+                errorMessage = message
+            }
         }
     }
 }

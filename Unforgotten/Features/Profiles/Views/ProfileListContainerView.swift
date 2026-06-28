@@ -316,19 +316,8 @@ struct iPadProfileRowView: View {
     private var profileImage: some View {
         ZStack(alignment: .bottomTrailing) {
             if let photoUrl = profile.photoUrl, !photoUrl.isEmpty {
-                AsyncImage(url: URL(string: photoUrl)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 50, height: 50)
-                            .clipShape(Circle())
-                            .opacity(profile.isDeceased ? 0.7 : 1.0)
-                    default:
-                        defaultProfileImage
-                    }
-                }
+                AsyncProfileImage(url: photoUrl, size: 50)
+                    .opacity(profile.isDeceased ? 0.7 : 1.0)
             } else {
                 defaultProfileImage
             }
@@ -489,19 +478,8 @@ struct iPadProfileDetailPane: View {
         VStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
                 if let photoUrl = profile.photoUrl, !photoUrl.isEmpty {
-                    AsyncImage(url: URL(string: photoUrl)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 100, height: 100)
-                                .clipShape(Circle())
-                                .opacity(profile.isDeceased ? 0.7 : 1.0)
-                        default:
-                            defaultLargeProfileImage
-                        }
-                    }
+                    AsyncProfileImage(url: photoUrl, size: 100)
+                        .opacity(profile.isDeceased ? 0.7 : 1.0)
                 } else {
                     defaultLargeProfileImage
                 }

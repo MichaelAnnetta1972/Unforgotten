@@ -9,6 +9,8 @@ struct FeatureCardView: View {
     let parallaxOffset: CGFloat
     let isVisible: Bool
     let centeredness: CGFloat // 0.0 = edge, 1.0 = perfectly centered
+    /// When true, render the image centered to the card size without the wider parallax frame.
+    var useParallax: Bool = true
 
     @State private var textAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -34,15 +36,24 @@ struct FeatureCardView: View {
 
     var body: some View {
         ZStack {
-            // Background image with parallax effect - centered horizontally when card is centered
-            // The image is wider than the card, so we offset it to center, then apply parallax
-            Image(item.cardImageName)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: parallaxImageWidth)
-                .frame(width: cardWidth, height: cardHeight, alignment: .top)
-                .offset(x: -baseImageOffset - parallaxOffset)
-                .clipped()
+            if useParallax {
+                // Background image with parallax effect - centered horizontally when card is centered
+                // The image is wider than the card, so we offset it to center, then apply parallax
+                Image(item.cardImageName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: parallaxImageWidth)
+                    .frame(width: cardWidth, height: cardHeight, alignment: .top)
+                    .offset(x: -baseImageOffset - parallaxOffset)
+                    .clipped()
+            } else {
+                // Centered image - no parallax scaffolding
+                Image(item.cardImageName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: cardWidth, height: cardHeight)
+                    .clipped()
+            }
 
             // Gradient overlay for text readability (top and bottom)
             VStack(spacing: 0) {
@@ -73,18 +84,6 @@ struct FeatureCardView: View {
 
             // Text content at top
             VStack(spacing: 8) {
-                // Title
-                Text(item.title)
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .opacity(textAppeared ? 1 : 0)
-                    .offset(y: textAppeared ? 0 : 15)
-                    .animation(
-                        reduceMotion ? .none : .spring(response: 0.5, dampingFraction: 0.8).delay(0.1),
-                        value: textAppeared
-                    )
-
                 // Subtitle
                 Text(item.subtitle)
                     .font(.system(size: 20, weight: .regular))

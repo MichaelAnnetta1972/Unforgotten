@@ -9,13 +9,17 @@ struct OnboardingProgressDots: View {
     /// Total number of dots to display
     private let totalDots = OnboardingScreen.progressStepCount
 
+    // Dot sizing
+    private let dotSize: CGFloat = 12
+    private let currentDotWidth: CGFloat = 28
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(0..<totalDots, id: \.self) { index in
-                Circle()
+                Capsule()
                     .fill(dotColor(for: index))
-                    .frame(width: 8, height: 8)
-                    .animation(.easeInOut(duration: 0.2), value: currentScreen)
+                    .frame(width: width(for: index), height: dotSize)
+                    .animation(.easeInOut(duration: 0.25), value: currentScreen)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -23,6 +27,10 @@ struct OnboardingProgressDots: View {
     }
 
     // MARK: - Private Helpers
+
+    private func width(for index: Int) -> CGFloat {
+        index == currentScreen.progressIndex ? currentDotWidth : dotSize
+    }
 
     private func dotColor(for index: Int) -> Color {
         guard let currentIndex = currentScreen.progressIndex else {

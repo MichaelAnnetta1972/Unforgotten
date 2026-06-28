@@ -111,6 +111,10 @@ final class SupabaseManager {
                 db: SupabaseClientOptions.DatabaseOptions(
                     encoder: encoder,
                     decoder: decoder
+                ),
+                auth: SupabaseClientOptions.AuthOptions(
+                    storage: AuthClient.Configuration.defaultLocalStorage,
+                    flowType: .implicit
                 )
             )
         )
@@ -191,6 +195,7 @@ enum TableName {
     static let morningBriefingCache = "morning_briefing_cache"
     static let profileGroups = "profile_groups"
     static let profileGroupMembers = "profile_group_members"
+    static let profilePins = "profile_pins"
 }
 
 // MARK: - Supabase Error

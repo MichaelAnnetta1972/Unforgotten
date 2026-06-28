@@ -24,7 +24,8 @@ final class AuthRepository: AuthRepositoryProtocol {
 func signUp(email: String, password: String) async throws -> User {
     let response = try await supabase.auth.signUp(
         email: email,
-        password: password
+        password: password,
+        redirectTo: URL(string: "https://unforgottenapp.com/auth/confirm")
     )
     return response.user
 }
@@ -43,7 +44,7 @@ func signUp(email: String, password: String) async throws -> User {
     func signInWithMagicLink(email: String) async throws {
         try await supabase.auth.signInWithOTP(
             email: email,
-            redirectTo: URL(string: "forgotten://auth/callback")
+            redirectTo: URL(string: "https://unforgottenapp.com/auth/callback")
         )
     }
     
@@ -84,11 +85,27 @@ func signUp(email: String, password: String) async throws -> User {
     
     // MARK: - Reset Password
     func resetPassword(email: String) async throws {
-        try await supabase.auth.resetPasswordForEmail(email)
+        try await supabase.auth.resetPasswordForEmail(
+            email,
+            redirectTo: URL(string: "https://unforgottenapp.com/auth/reset")
+        )
     }
     
     // MARK: - Update Password
     func updatePassword(newPassword: String) async throws {
+        try await supabase.auth.update(user: .init(password: newPassword))
+    }
+
+    /// Re-authenticates with the current password, then updates to the new password.
+    /// Used by in-app "Change Password" so a stolen unlocked device can't be used to
+    /// silently take over the account.
+    func changePassword(currentPassword: String, newPassword: String) async throws {
+        let session = try await supabase.auth.session
+        guard let email = session.user.email, !email.isEmpty else {
+            throw SupabaseError.invalidData
+        }
+        // Verify current password by signing in with it. This throws on mismatch.
+        _ = try await supabase.auth.signIn(email: email, password: currentPassword)
         try await supabase.auth.update(user: .init(password: newPassword))
     }
     

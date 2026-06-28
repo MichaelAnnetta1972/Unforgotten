@@ -49,7 +49,17 @@ struct ToDoListDetailView: View {
                     // Close button row
                     Section {
                         HStack {
+                            Button(action: { dismiss() }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.textSecondary)
+                                    .frame(width: 40, height: 40)
+                                    .background(Color.cardBackground)
+                                    .clipShape(Circle())
+                            }
+
                             Spacer()
+
                             Button(action: { dismiss() }) {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 20, weight: .semibold))
@@ -68,11 +78,11 @@ struct ToDoListDetailView: View {
                     Section {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
-                                Text("LIST TITLE")
-                                    .font(.appCaption)
-                                    .foregroundColor(appAccentColor)
+                                // Text("LIST TITLE")
+                                //     .font(.appCaption)
+                                //     .foregroundColor(appAccentColor)
 
-                                Spacer()
+                                // Spacer()
 
                                 if let type = viewModel.selectedType {
                                     Menu {
@@ -113,7 +123,7 @@ struct ToDoListDetailView: View {
                                 }
                             }
                             .padding(AppDimensions.cardPadding)
-                            .background(Color.appBackground)
+                            .background(Color.cardBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
                         }
                         .listRowBackground(Color.clear)
@@ -124,9 +134,9 @@ struct ToDoListDetailView: View {
                     // Due Date
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("DUE DATE")
-                                .font(.appCaption)
-                                .foregroundColor(appAccentColor)
+                            // Text("DUE DATE")
+                            //     .font(.appCaption)
+                            //     .foregroundColor(appAccentColor)
 
                             HStack {
                                 if let date = viewModel.dueDate {
@@ -147,7 +157,7 @@ struct ToDoListDetailView: View {
                                 } else {
                                     Text("No due date")
                                         .font(.appBody)
-                                        .foregroundColor(.textSecondary)
+                                        .foregroundColor(.textMuted)
 
                                     Spacer()
                                 }
@@ -161,7 +171,7 @@ struct ToDoListDetailView: View {
                                 }
                             }
                             .padding(AppDimensions.cardPadding)
-                            .background(Color.appBackground)
+                            .background(Color.cardBackground)
                             .cornerRadius(AppDimensions.cardCornerRadius)
 
                             if showingDueDatePicker {
@@ -183,7 +193,7 @@ struct ToDoListDetailView: View {
                                     .tint(appAccentColor)
                                 }
                                 .padding(AppDimensions.cardPadding)
-                                .background(Color.appBackground)
+                                .background(Color.cardBackground)
                                 .cornerRadius(AppDimensions.cardCornerRadius)
                             }
                         }
@@ -235,9 +245,9 @@ struct ToDoListDetailView: View {
 
                     // To Do Items
                     Section {
-                        Text("ITEMS")
-                            .font(.appCaption)
-                            .foregroundColor(appAccentColor)
+                        Text("Items")
+                            .font(.appBodyMedium)
+                            .foregroundColor(.textPrimary)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: AppDimensions.screenPadding, bottom: 0, trailing: AppDimensions.screenPadding))
@@ -487,9 +497,9 @@ struct ToDoListDetailView: View {
     @ViewBuilder
     private var familySharingSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("FAMILY SHARING")
-                .font(.appCaption)
-                .foregroundColor(appAccentColor)
+            // Text("FAMILY SHARING")
+            //     .font(.appCaption)
+            //     .foregroundColor(appAccentColor)
 
             Button {
                 showFamilySharingSheet = true
@@ -510,9 +520,9 @@ struct ToDoListDetailView: View {
                                 .foregroundColor(.textSecondary)
                                 .lineLimit(1)
                         } else if !viewModel.shareToFamily {
-                            Text("Let family members view and edit this list")
+                            Text("Let family members view and edit this.")
                                 .font(.appCaption)
-                                .foregroundColor(.textSecondary)
+                                .foregroundColor(.textMuted)
                         }
                     }
 
@@ -523,7 +533,7 @@ struct ToDoListDetailView: View {
                         .foregroundColor(.textSecondary)
                 }
                 .padding(AppDimensions.cardPadding)
-                .background(Color.appBackground)
+                .background(Color.cardBackground)
                 .cornerRadius(AppDimensions.cardCornerRadius)
             }
             .buttonStyle(PlainButtonStyle())
@@ -565,7 +575,7 @@ struct ToDoListDetailView: View {
                     .foregroundColor(.textSecondary)
             }
             .padding(AppDimensions.cardPadding)
-            .background(Color.appBackground)
+            .background(Color.cardBackground)
             .cornerRadius(AppDimensions.cardCornerRadius)
         }
         .buttonStyle(PlainButtonStyle())

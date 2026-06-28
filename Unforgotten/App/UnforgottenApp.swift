@@ -291,6 +291,15 @@ struct UnforgottenApp: App {
             .onOpenURL { url in
                 handleDeepLink(url)
             }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                if let url = activity.webpageURL {
+                    handleDeepLink(url)
+                }
+            }
+            .sheet(isPresented: $appState.showPasswordRecoverySheet) {
+                PasswordRecoveryView()
+                    .environmentObject(appState)
+            }
             .overlay {
                 // Privacy screen: blur content when app is in the app switcher
                 if showPrivacyOverlay {
@@ -388,6 +397,29 @@ struct UnforgottenApp: App {
 
     /// Handle deep links (e.g., unforgotten://invite/XXXXXX)
     private func handleDeepLink(_ url: URL) {
+        // Universal Links from unforgottenapp.com (password reset, magic link)
+        if url.scheme == "https", url.host == "unforgottenapp.com" {
+            #if DEBUG
+            print("🔗 Universal Link received: \(url.absoluteString)")
+            print("🔗 Path: \(url.path)")
+            print("🔗 Query: \(url.query ?? "(none)")")
+            print("🔗 Fragment: \(url.fragment ?? "(none)")")
+            #endif
+            Task {
+                do {
+                    _ = try await SupabaseManager.shared.client.auth.session(from: url)
+                    #if DEBUG
+                    print("🔐 session(from:) succeeded")
+                    #endif
+                } catch {
+                    #if DEBUG
+                    print("🔐 session(from:) failed: \(error)")
+                    #endif
+                }
+            }
+            return
+        }
+
         guard url.scheme == "unforgotten" else { return }
 
         if url.host == "home" {
@@ -474,6 +506,7 @@ final class AppState: ObservableObject {
     @Published var currentUserRole: MemberRole?
     @Published var showMoodPrompt = false
     @Published var hasCompletedOnboarding = false
+    @Published var showPasswordRecoverySheet = false
 
     // MARK: - Multi-Account Support
     @Published var allAccounts: [AccountWithRole] = []
@@ -539,6 +572,7 @@ final class AppState: ObservableObject {
     let profileSyncRepository = ProfileSyncRepository()
     let profileSharingPreferencesRepository = ProfileSharingPreferencesRepository()
     let profileGroupRepository = ProfileGroupRepository()
+    let profilePinRepository = ProfilePinRepository()
 
     // MARK: - Cached Repositories (offline-first)
     let cachedProfileRepository: CachedProfileRepository
@@ -744,6 +778,11 @@ final class AppState: ObservableObject {
                     #endif
                     await checkAuthState()
                 }
+            case .passwordRecovery:
+                #if DEBUG
+                print("🔐 Auth state changed: password recovery — prompting for new password")
+                #endif
+                showPasswordRecoverySheet = true
             default:
                 break
             }
@@ -1299,6 +1338,7 @@ final class AppState: ObservableObject {
             hasCompletedOnboarding = false
             isAppAdmin = false
             currentAppUser = nil
+            SignedImageURLService.shared.clearCache()
             // Clear saved account selection
             UserDefaults.standard.removeObject(forKey: selectedAccountIdKey)
         } catch {

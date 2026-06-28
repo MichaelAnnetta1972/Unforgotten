@@ -44,9 +44,9 @@ struct DailySummaryLockScreenView: View {
 
                 Spacer()
 
-                Text("Today's Overview")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(LiveActivityTheme.textPrimary)
+                // Text("Today's Overview")
+                //     .font(.system(size: 18, weight: .regular))
+                //     .foregroundColor(LiveActivityTheme.textPrimary)
             }
 
             Divider()

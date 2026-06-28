@@ -44,6 +44,9 @@ struct SettingsView: View {
     @State private var showHelpTutorials = false
     @State private var showRecentlyDeleted = false
     @State private var userEmail: String = ""
+    @State private var canChangePassword: Bool = false
+    @State private var showChangePassword: Bool = false
+    @State private var showManageSubscriptions: Bool = false
     @State private var isCheckmarkPressed = false
     @State private var allowNotifications: Bool = NotificationService.shared.allowNotifications
     @State private var hideNotificationPreviews: Bool = NotificationService.shared.hideNotificationPreviews
@@ -259,6 +262,14 @@ struct SettingsView: View {
                                 title: "Current Plan",
                                 value: appState.subscriptionTier.displayName
                             )
+
+                            if !SubscriptionManager.shared.purchasedProductIDs.isEmpty {
+                                SettingsButtonRow(
+                                    icon: "creditcard",
+                                    title: "Manage Subscription",
+                                    action: { showManageSubscriptions = true }
+                                )
+                            }
                         }
 
                         // Only show manage members if user can manage members
@@ -389,7 +400,18 @@ struct SettingsView: View {
                             action: { showTermsOfService = true }
                         )
                     }
-                    
+
+                    // Security
+                    if canChangePassword {
+                        SettingsSection(title: "SECURITY") {
+                            SettingsButtonRow(
+                                icon: "key",
+                                title: "Change Password",
+                                action: { showChangePassword = true }
+                            )
+                        }
+                    }
+
                     // Sign out
                     Button {
                         showSignOutConfirm = true
@@ -533,6 +555,11 @@ struct SettingsView: View {
                 feedbackKindToSend = nil
             }
         }
+        .sheet(isPresented: $showChangePassword) {
+            ChangePasswordView()
+                .environmentObject(appState)
+        }
+        .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
         .alert("Mail Not Available", isPresented: $showMailUnavailableAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -541,6 +568,10 @@ struct SettingsView: View {
         .task {
             if let user = await SupabaseManager.shared.currentUser {
                 userEmail = user.email ?? ""
+                // Show "Change Password" only when the account has an email/password identity.
+                // Sign in with Apple users have no password to change.
+                let providers = user.identities?.map { $0.provider } ?? []
+                canChangePassword = providers.contains("email")
             }
         }
     }
@@ -1368,7 +1399,19 @@ class ManageMembersViewModel: ObservableObject {
     func removeMember(_ memberWithEmail: MemberWithEmail, appState: AppState) async {
         do {
             try await appState.accountRepository.removeMember(memberId: memberWithEmail.member.id)
-            membersWithEmail.removeAll { $0.id == memberWithEmail.id }
+
+            // Manage Members is a side panel — the profile list isn't observing
+            // notifications when it's not visible. Refresh the profile cache
+            // directly so the next time the user navigates back, the data is fresh.
+            if let accountId = await MainActor.run(body: { appState.currentAccount?.id }) {
+                _ = try? await appState.profileRepository.refreshProfiles(accountId: accountId)
+            }
+
+            await MainActor.run {
+                membersWithEmail.removeAll { $0.id == memberWithEmail.id }
+                NotificationCenter.default.post(name: .profileSyncDidChange, object: nil)
+                NotificationCenter.default.post(name: .profilesDidChange, object: nil)
+            }
         } catch {
             #if DEBUG
             print("Error removing member: \(error)")

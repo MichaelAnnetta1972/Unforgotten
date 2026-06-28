@@ -61,303 +61,56 @@ struct AddCountdownView: View {
         }
     }
 
+    // MARK: - Step
+
+    enum Step: Int, CaseIterable {
+        case details
+        case date
+    }
+
+    @State private var step: Step = .details
+
+    private var isFirstStep: Bool { step == Step.allCases.first }
+    private var isLastStep: Bool { step == Step.allCases.last }
+
+    private func goNext() {
+        guard let index = Step.allCases.firstIndex(of: step),
+              index + 1 < Step.allCases.count else { return }
+        withAnimation { step = Step.allCases[index + 1] }
+    }
+
+    private func goBack() {
+        guard let index = Step.allCases.firstIndex(of: step) else { return }
+        if index > 0 {
+            withAnimation { step = Step.allCases[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with icons
-            HStack {
-                Button {
-                    dismissView()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.5))
-                        )
-                }
-
-                Spacer()
-
-                Text("Add an Event")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Button {
-                    Task { await saveCountdown() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                        )
-                }
-                .disabled(title.isBlank || isLoading)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
+            header
 
             ScrollView {
-                VStack(spacing: 20) {
-                    AppTextField(placeholder: "Title *", text: $title)
-
-                    AppTextField(placeholder: "Subtitle (optional)", text: $subtitle)
-
-                    // Family sharing section
-                    familySharingSection
-
+                VStack(alignment: .leading, spacing: 20) {
                     if let error = errorMessage {
                         Text(error)
                             .font(.appCaption)
                             .foregroundColor(.medicalRed)
                     }
 
-                    // Type picker row
-                    HStack {
-                        Text("Type")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
-
-                        Picker("Type", selection: $selectedType) {
-                            ForEach(CountdownType.allCases) { type in
-                                Label(type.displayName, systemImage: type.icon)
-                                    .tag(type)
-                                    .font(.appBody)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(appAccentColor)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    .padding()
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Custom type name (shown only when "Custom" is selected)
-                    if selectedType == .custom {
-                        AppTextField(placeholder: "Custom type name", text: $customTypeName)
-                    }
-
-                    // Date & Time section
-                    VStack(spacing: 0) {
-                        // From date row
-                        Button {
-                            showDatePicker = true
-                        } label: {
-                            HStack {
-                                Text(isMultiDay ? "Date From" : "Date")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Spacer()
-
-                                Text(hasTime ? date.formatted(date: .abbreviated, time: .shortened) : date.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.appBody)
-                                    .foregroundColor(.textSecondary)
-
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.textSecondary)
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .padding()
-
-                        // End date row (shown when multi-day is on)
-                        if isMultiDay {
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            Button {
-                                showEndDatePicker = true
-                            } label: {
-                                HStack {
-                                    Text("Date To")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-
-                                    Spacer()
-
-                                    Text(hasTime ? endDate.formatted(date: .abbreviated, time: .shortened) : endDate.formatted(date: .abbreviated, time: .omitted))
-                                        .font(.appBody)
-                                        .foregroundColor(.textSecondary)
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.textSecondary)
-                                }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .padding()
-                        }
-
-                        // Multi-day toggle
-                        Divider()
-                            .padding(.horizontal, 16)
-
-                        HStack {
-                            Toggle("Multi-day event", isOn: $isMultiDay.animation())
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .tint(appAccentColor)
-                        }
-                        .padding()
-
-                        // Time toggle
-                        Divider()
-                            .padding(.horizontal, 16)
-
-                        HStack {
-                            Toggle("Add time", isOn: $hasTime.animation())
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .tint(appAccentColor)
-                        }
-                        .padding()
-                    }
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Recurring section
-                    VStack(spacing: 0) {
-                        HStack {
-                            Toggle("Repeats", isOn: $isRecurring.animation())
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .tint(appAccentColor)
-                        }
-                        .padding()
-
-                        if isRecurring {
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            HStack {
-                                Text("Every")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Spacer()
-
-                                Picker("Interval", selection: $recurrenceInterval) {
-                                    ForEach(1...30, id: \.self) { num in
-                                        Text("\(num)").tag(num)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-
-                                Picker("Unit", selection: $recurrenceUnit) {
-                                    ForEach(RecurrenceUnit.allCases) { unit in
-                                        Text(recurrenceInterval == 1 ? unit.displayName : unit.pluralName).tag(unit)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-                            }
-                            .padding()
-
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            HStack {
-                                Toggle("End Date", isOn: $hasRecurrenceEndDate.animation())
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-                                    .tint(appAccentColor)
-                            }
-                            .padding()
-
-                            if hasRecurrenceEndDate {
-                                Divider()
-                                    .padding(.horizontal, 16)
-
-                                HStack {
-                                    Text("Ends On")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-
-                                    Spacer()
-
-                                    Button {
-                                        showRecurrenceEndDatePicker = true
-                                    } label: {
-                                        Text(recurrenceEndDate.formatted(date: .abbreviated, time: .omitted))
-                                            .font(.appBody)
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                                .padding()
-                            }
-                        }
-                    }
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Reminder picker row
-                    HStack {
-                        Text("Reminder")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
-
-                        Picker("Reminder", selection: $reminderMinutes) {
-                            ForEach(reminderOptions, id: \.0) { option in
-                                Text(option.1).tag(option.0)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(appAccentColor)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    .padding()
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    AppTextField(placeholder: "Notes (optional)", text: $notes)
-
-
-                    // Photo picker
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Photo")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        ImageSourcePicker(
-                            selectedImage: $selectedImage,
-                            onImageSelected: { _ in }
-                        )
-                    }
+                    stepContent
 
                     Spacer(minLength: 0)
                 }
-                .padding(AppDimensions.screenPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppDimensions.screenPadding + 12)
+                .padding(.top, 32)
+                .padding(.bottom, AppDimensions.screenPadding)
             }
+
+            footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.appBackgroundLight)
@@ -410,14 +163,380 @@ struct AddCountdownView: View {
         }
     }
 
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button {
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
+            }
+
+            Spacer()
+
+            Text("Add an Event")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
+            }
+        }
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Footer (Next / Done button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if isLastStep {
+            Button {
+                Task { await saveCountdown() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        } else {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .details:
+            detailsStep
+        case .date:
+            dateStep
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appCardTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Event Details
+
+    private var detailsStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Event Details")
+
+            AppTextField(placeholder: "Title *", text: $title)
+            AppTextField(placeholder: "Subtitle (optional)", text: $subtitle)
+
+            // Type picker row
+            HStack {
+                Text("Type")
+                    .font(.appBody)
+                    .foregroundColor(.textSecondary)
+
+                Spacer()
+
+                Picker("Type", selection: $selectedType) {
+                    ForEach(CountdownType.allCases) { type in
+                        Label(type.displayName, systemImage: type.icon)
+                            .tag(type)
+                            .font(.appBody)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(appAccentColor)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Custom type name (shown only when "Custom" is selected)
+            if selectedType == .custom {
+                AppTextField(placeholder: "Custom type name", text: $customTypeName)
+            }
+
+            AppTextField(placeholder: "Notes (optional)", text: $notes)
+
+            // Share this event
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Share this event?")
+                familySharingSection
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: Step 2 — Event Date
+
+    private var dateStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Event Date")
+
+            // Date & Time section
+            VStack(spacing: 0) {
+                // From date row
+                Button {
+                    showDatePicker = true
+                } label: {
+                    HStack {
+                        Text(isMultiDay ? "Date From" : "Date")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Text(hasTime ? date.formatted(date: .abbreviated, time: .shortened) : date.formatted(date: .abbreviated, time: .omitted))
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14))
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding()
+
+                // End date row (shown when multi-day is on)
+                if isMultiDay {
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    Button {
+                        showEndDatePicker = true
+                    } label: {
+                        HStack {
+                            Text("Date To")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Text(hasTime ? endDate.formatted(date: .abbreviated, time: .shortened) : endDate.formatted(date: .abbreviated, time: .omitted))
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14))
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding()
+                }
+
+                // Multi-day toggle
+                Divider()
+                    .padding(.horizontal, 16)
+
+                HStack {
+                    Toggle("Multi-day event", isOn: $isMultiDay.animation())
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                        .tint(appAccentColor)
+                }
+                .padding()
+
+                // Time toggle
+                Divider()
+                    .padding(.horizontal, 16)
+
+                HStack {
+                    Toggle("Add Time", isOn: $hasTime.animation())
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                        .tint(appAccentColor)
+                }
+                .padding()
+            }
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Recurring section
+            VStack(spacing: 0) {
+                HStack {
+                    Toggle("Repeat", isOn: $isRecurring.animation())
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                        .tint(appAccentColor)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                if isRecurring {
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    HStack {
+                        Text("Every")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Picker("Interval", selection: $recurrenceInterval) {
+                            ForEach(1...30, id: \.self) { num in
+                                Text("\(num)").tag(num)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+
+                        Picker("Unit", selection: $recurrenceUnit) {
+                            ForEach(RecurrenceUnit.allCases) { unit in
+                                Text(recurrenceInterval == 1 ? unit.displayName : unit.pluralName).tag(unit)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+                    }
+                    .padding()
+
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    HStack {
+                        Toggle("End Date", isOn: $hasRecurrenceEndDate.animation())
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                            .tint(appAccentColor)
+                    }
+                    .padding()
+
+                    if hasRecurrenceEndDate {
+                        Divider()
+                            .padding(.horizontal, 16)
+
+                        HStack {
+                            Text("Ends On")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Button {
+                                showRecurrenceEndDatePicker = true
+                            } label: {
+                                Text(recurrenceEndDate.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.appBody)
+                                    .foregroundColor(appAccentColor)
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Reminder picker row
+            HStack {
+                Text("Reminder")
+                    .font(.appBody)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                Picker("Reminder", selection: $reminderMinutes) {
+                    ForEach(reminderOptions, id: \.0) { option in
+                        Text(option.1).tag(option.0)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(appAccentColor)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+            )
+
+            // Photo picker
+            HStack {
+                Spacer()
+                ImageSourcePicker(
+                    selectedImage: $selectedImage,
+                    onImageSelected: { _ in }
+                )
+                Spacer()
+            }
+            .padding(.top, 8)
+        }
+    }
+
     // MARK: - Family Sharing Section
     @ViewBuilder
     private var familySharingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("FAMILY CALENDAR")
-                .font(.appCaption)
-                .foregroundColor(appAccentColor)
-                .padding(.horizontal, 4)
+            // Text("FAMILY CALENDAR")
+            //     .font(.appCaption)
+            //     .foregroundColor(appAccentColor)
+            //     .padding(.horizontal, 4)
 
             if hasFamilyAccess {
                 // Full family sharing controls for Family Plus subscribers
@@ -426,7 +545,7 @@ struct AddCountdownView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Add to Family Calendar")
                                 .font(.appBody)
-                                .foregroundColor(.textPrimary)
+                                .foregroundColor(.textSecondary)
 
                             if shareToFamily && !selectedMemberIds.isEmpty {
                                 Text("\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected")
@@ -463,12 +582,13 @@ struct AddCountdownView: View {
                         }
                     }
                 }
-                .padding()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
             } else {
                 // Upgrade prompt for non-Family Plus users
@@ -490,10 +610,10 @@ struct AddCountdownView: View {
                 }
                 .padding()
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
             }
         }
@@ -746,372 +866,40 @@ struct EditCountdownView: View {
         }
     }
 
+    // MARK: - Step
+
+    enum Step: Int, CaseIterable {
+        case details
+        case date
+    }
+
+    @State private var step: Step = .details
+
+    private var isFirstStep: Bool { step == Step.allCases.first }
+    private var isLastStep: Bool { step == Step.allCases.last }
+
+    private func goNext() {
+        guard let index = Step.allCases.firstIndex(of: step),
+              index + 1 < Step.allCases.count else { return }
+        withAnimation { step = Step.allCases[index + 1] }
+    }
+
+    private func goBack() {
+        guard let index = Step.allCases.firstIndex(of: step) else { return }
+        if index > 0 {
+            withAnimation { step = Step.allCases[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with icons
-            HStack {
-                Button {
-                    dismissView()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.5))
-                        )
-                }
-
-                Spacer()
-
-                Text("Edit Countdown")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Button {
-                    Task { await updateCountdown() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                        )
-                }
-                .disabled(title.isBlank || isLoading)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
+            header
 
             ScrollView {
-                VStack(spacing: 20) {
-                    // Group info banner for grouped events
-                    if countdown.groupId != nil {
-                        HStack(spacing: 8) {
-                            Image(systemName: "calendar.badge.clock")
-                                .font(.system(size: 14))
-                                .foregroundColor(appAccentColor)
-                            Text("Part of a multi-day event")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                            Spacer()
-                        }
-                        .padding()
-                        .background(appAccentColor.opacity(0.1))
-                        .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-                    }
-
-                    AppTextField(placeholder: "Title *", text: $title)
-
-                    AppTextField(placeholder: "Subtitle (optional)", text: $subtitle)
-
-
-                    // Family sharing section
-                    editFamilySharingSection
-
-                    // Type picker row
-                    HStack {
-                        Text("Type")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
-
-                        Picker("Type", selection: $selectedType) {
-                            ForEach(CountdownType.allCases) { type in
-                                Label(type.displayName, systemImage: type.icon)
-                                    .tag(type)
-                                    .font(.appBody)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(appAccentColor)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    .padding()
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Custom type name (shown only when "Custom" is selected)
-                    if selectedType == .custom {
-                        AppTextField(placeholder: "Custom type name", text: $customTypeName)
-                    }
-
-                    // Date & Time section
-                    VStack(spacing: 0) {
-                        // From date row
-                        Button {
-                            showDatePicker = true
-                        } label: {
-                            HStack {
-                                Text(isMultiDay ? "From" : "Date")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Spacer()
-
-                                Text(hasTime ? date.formatted(date: .abbreviated, time: .shortened) : date.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.appBody)
-                                    .foregroundColor(.textSecondary)
-
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.textSecondary)
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .padding()
-
-                        // End date row (shown when multi-day is on)
-                        if isMultiDay {
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            Button {
-                                showEndDatePicker = true
-                            } label: {
-                                HStack {
-                                    Text("To")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-
-                                    Spacer()
-
-                                    Text(hasTime ? endDate.formatted(date: .abbreviated, time: .shortened) : endDate.formatted(date: .abbreviated, time: .omitted))
-                                        .font(.appBody)
-                                        .foregroundColor(.textSecondary)
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.textSecondary)
-                                }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .padding()
-                        }
-
-                        // Multi-day toggle (hidden for grouped events — each day is already individual)
-                        if countdown.groupId == nil {
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            HStack {
-                                Toggle("Multi-day event", isOn: $isMultiDay.animation())
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-                                    .tint(appAccentColor)
-                            }
-                            .padding()
-                        }
-
-                        // Time toggle
-                        Divider()
-                            .padding(.horizontal, 16)
-
-                        HStack {
-                            Toggle("Add time", isOn: $hasTime.animation())
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .tint(appAccentColor)
-                        }
-                        .padding()
-                    }
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Recurring section
-                    VStack(spacing: 0) {
-                        HStack {
-                            Toggle("Repeats", isOn: $isRecurring.animation())
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .tint(appAccentColor)
-                        }
-                        .padding()
-
-                        if isRecurring {
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            HStack {
-                                Text("Every")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Spacer()
-
-                                Picker("Interval", selection: $recurrenceInterval) {
-                                    ForEach(1...30, id: \.self) { num in
-                                        Text("\(num)").tag(num)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-
-                                Picker("Unit", selection: $recurrenceUnit) {
-                                    ForEach(RecurrenceUnit.allCases) { unit in
-                                        Text(recurrenceInterval == 1 ? unit.displayName : unit.pluralName).tag(unit)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-                            }
-                            .padding()
-
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            HStack {
-                                Toggle("End Date", isOn: $hasRecurrenceEndDate.animation())
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-                                    .tint(appAccentColor)
-                            }
-                            .padding()
-
-                            if hasRecurrenceEndDate {
-                                Divider()
-                                    .padding(.horizontal, 16)
-
-                                HStack {
-                                    Text("Ends On")
-                                        .font(.appBody)
-                                        .foregroundColor(.textPrimary)
-
-                                    Spacer()
-
-                                    Button {
-                                        showRecurrenceEndDatePicker = true
-                                    } label: {
-                                        Text(recurrenceEndDate.formatted(date: .abbreviated, time: .omitted))
-                                            .font(.appBody)
-                                            .foregroundColor(appAccentColor)
-                                    }
-                                }
-                                .padding()
-                            }
-                        }
-                    }
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Reminder picker row
-                    HStack {
-                        Text("Reminder")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-
-                        Spacer()
-
-                        Picker("Reminder", selection: $reminderMinutes) {
-                            ForEach(reminderOptions, id: \.0) { option in
-                                Text(option.1).tag(option.0)
-                                .font(.appBody)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(appAccentColor)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    .padding()
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    AppTextField(placeholder: "Notes", text: $notes)
-
-                    // Photo picker
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Photo")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
-
-                        ImageSourcePicker(
-                            selectedImage: $selectedImage,
-                            currentImageUrl: countdown.imageUrl,
-                            onImageSelected: { _ in
-                                removePhoto = false
-                            },
-                            onRemove: {
-                                removePhoto = true
-                            }
-                        )
-                    }
-
-
-                    // Group actions for multi-day events
-                    if countdown.groupId != nil {
-                        VStack(spacing: 12) {
-                            Button {
-                                showEditGroupSheet = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "pencil.circle.fill")
-                                        .font(.system(size: 16))
-                                    Text("Edit All Days")
-                                        .font(.appBody)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.textSecondary)
-                                }
-                                .foregroundColor(appAccentColor)
-                                .padding()
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            Button {
-                                showDeleteGroupConfirmation = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "trash.fill")
-                                        .font(.system(size: 16))
-                                    Text("Delete All Days")
-                                        .font(.appBody)
-                                    Spacer()
-                                }
-                                .foregroundColor(.medicalRed)
-                                .padding()
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 20) {
+                    stepContent
 
                     if let error = errorMessage {
                         Text(error)
@@ -1121,8 +909,13 @@ struct EditCountdownView: View {
 
                     Spacer(minLength: 0)
                 }
-                .padding(AppDimensions.screenPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppDimensions.screenPadding + 12)
+                .padding(.top, 32)
+                .padding(.bottom, AppDimensions.screenPadding)
             }
+
+            footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.appBackgroundLight)
@@ -1205,6 +998,452 @@ struct EditCountdownView: View {
         }
     }
 
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button {
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
+            }
+
+            Spacer()
+
+            Text("Edit Countdown")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
+            }
+        }
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Footer (Next / Done button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if isLastStep {
+            Button {
+                Task { await updateCountdown() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        } else {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .details:
+            detailsStep
+        case .date:
+            dateStep
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appCardTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Event Details
+
+    private var detailsStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Group info banner for grouped events
+            if countdown.groupId != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 14))
+                        .foregroundColor(appAccentColor)
+                    Text("Part of a multi-day event")
+                        .font(.appCaption)
+                        .foregroundColor(.textSecondary)
+                    Spacer()
+                }
+                .padding()
+                .background(appAccentColor.opacity(0.1))
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+            }
+
+            sectionTitle("Event Details")
+
+            AppTextField(placeholder: "Title *", text: $title)
+            AppTextField(placeholder: "Subtitle (optional)", text: $subtitle)
+
+            // Type picker row
+            HStack {
+                Text("Type")
+                    .font(.appBody)
+                    .foregroundColor(.textMuted)
+
+                Spacer()
+
+                Picker("Type", selection: $selectedType) {
+                    ForEach(CountdownType.allCases) { type in
+                        Label(type.displayName, systemImage: type.icon)
+                            .tag(type)
+                            .font(.appBody)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(appAccentColor)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Custom type name (shown only when "Custom" is selected)
+            if selectedType == .custom {
+                AppTextField(placeholder: "Custom type name", text: $customTypeName)
+            }
+
+            AppTextField(placeholder: "Notes", text: $notes)
+
+            // Share this event
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Share this event?")
+                editFamilySharingSection
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: Step 2 — Event Date
+
+    private var dateStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Event Date")
+
+            // Date & Time section
+            VStack(spacing: 0) {
+                // From date row
+                Button {
+                    showDatePicker = true
+                } label: {
+                    HStack {
+                        Text(isMultiDay ? "From" : "Date")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Text(hasTime ? date.formatted(date: .abbreviated, time: .shortened) : date.formatted(date: .abbreviated, time: .omitted))
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14))
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding()
+
+                // End date row (shown when multi-day is on)
+                if isMultiDay {
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    Button {
+                        showEndDatePicker = true
+                    } label: {
+                        HStack {
+                            Text("To")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Text(hasTime ? endDate.formatted(date: .abbreviated, time: .shortened) : endDate.formatted(date: .abbreviated, time: .omitted))
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14))
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding()
+                }
+
+                // Multi-day toggle (hidden for grouped events — each day is already individual)
+                if countdown.groupId == nil {
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    HStack {
+                        Toggle("Multi-day event", isOn: $isMultiDay.animation())
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                            .tint(appAccentColor)
+                    }
+                    .padding()
+                }
+
+                // Time toggle
+                Divider()
+                    .padding(.horizontal, 16)
+
+                HStack {
+                    Toggle("Add Time", isOn: $hasTime.animation())
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                        .tint(appAccentColor)
+                }
+                .padding()
+            }
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Recurring section
+            VStack(spacing: 0) {
+                HStack {
+                    Toggle("Repeat", isOn: $isRecurring.animation())
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                        .tint(appAccentColor)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                if isRecurring {
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    HStack {
+                        Text("Every")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Picker("Interval", selection: $recurrenceInterval) {
+                            ForEach(1...30, id: \.self) { num in
+                                Text("\(num)").tag(num)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+
+                        Picker("Unit", selection: $recurrenceUnit) {
+                            ForEach(RecurrenceUnit.allCases) { unit in
+                                Text(recurrenceInterval == 1 ? unit.displayName : unit.pluralName).tag(unit)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+                    }
+                    .padding()
+
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    HStack {
+                        Toggle("End Date", isOn: $hasRecurrenceEndDate.animation())
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                            .tint(appAccentColor)
+                    }
+                    .padding()
+
+                    if hasRecurrenceEndDate {
+                        Divider()
+                            .padding(.horizontal, 16)
+
+                        HStack {
+                            Text("Ends On")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Button {
+                                showRecurrenceEndDatePicker = true
+                            } label: {
+                                Text(recurrenceEndDate.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.appBody)
+                                    .foregroundColor(appAccentColor)
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Reminder picker row
+            HStack {
+                Text("Reminder")
+                    .font(.appBody)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                Picker("Reminder", selection: $reminderMinutes) {
+                    ForEach(reminderOptions, id: \.0) { option in
+                        Text(option.1).tag(option.0)
+                            .font(.appBody)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(appAccentColor)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Photo picker
+            HStack {
+                Spacer()
+                ImageSourcePicker(
+                    selectedImage: $selectedImage,
+                    currentImageUrl: countdown.imageUrl,
+                    onImageSelected: { _ in
+                        removePhoto = false
+                    },
+                    onRemove: {
+                        removePhoto = true
+                    }
+                )
+                Spacer()
+            }
+            .padding(.top, 8)
+
+            // Group actions for multi-day events
+            if countdown.groupId != nil {
+                VStack(spacing: 12) {
+                    Button {
+                        showEditGroupSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.system(size: 16))
+                            Text("Edit All Days")
+                                .font(.appBody)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14))
+                                .foregroundColor(.textSecondary)
+                        }
+                        .foregroundColor(appAccentColor)
+                        .padding()
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button {
+                        showDeleteGroupConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 16))
+                            Text("Delete All Days")
+                                .font(.appBody)
+                            Spacer()
+                        }
+                        .foregroundColor(.medicalRed)
+                        .padding()
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+
     /// Refresh recurrence and reminder fields from the latest data,
     /// in case the local cache had stale/nil values when the view was initialized
     private func refreshRecurrenceFields() async {
@@ -1275,9 +1514,9 @@ struct EditCountdownView: View {
                         .foregroundColor(shareToFamily ? appAccentColor : .textSecondary)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("FAMILY CALENDAR")
-                            .font(.appBody)
-                            .foregroundColor(appAccentColor)
+                        // Text("FAMILY CALENDAR")
+                        //     .font(.appBody)
+                        //     .foregroundColor(appAccentColor)
 
                         Text(shareToFamily ? "\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected" : "Not shared")
                             .font(.appCaption)
@@ -1292,10 +1531,10 @@ struct EditCountdownView: View {
                 }
                 .padding()
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
             }
             .buttonStyle(PlainButtonStyle())
@@ -1306,9 +1545,9 @@ struct EditCountdownView: View {
                     .foregroundColor(.textSecondary)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Family Calendar")
-                        .font(.appBody)
-                        .foregroundColor(.textPrimary)
+                    // Text("Family Calendar")
+                    //     .font(.appBody)
+                    //     .foregroundColor(.textPrimary)
 
                     Text("Upgrade to Family Plus to share events")
                         .font(.appCaption)
@@ -1329,10 +1568,10 @@ struct EditCountdownView: View {
             }
             .padding()
             .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
             .opacity(0.7)
         }
@@ -1587,10 +1826,10 @@ struct EditGroupCountdownView: View {
                     }
                     .padding()
                     .background(appAccentColor.opacity(0.1))
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
 
                     AppTextField(placeholder: "Title *", text: $title)
@@ -1635,10 +1874,10 @@ struct EditGroupCountdownView: View {
                         .padding()
                     }
                     .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
 
                     // Family sharing section
@@ -1648,7 +1887,7 @@ struct EditGroupCountdownView: View {
                     HStack {
                         Text("Type")
                             .font(.appBody)
-                            .foregroundColor(.textPrimary)
+                            .foregroundColor(.textSecondary)
 
                         Spacer()
 
@@ -1662,12 +1901,13 @@ struct EditGroupCountdownView: View {
                         .tint(appAccentColor)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .padding()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                     .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
 
                     if selectedType == .custom {
@@ -1685,10 +1925,10 @@ struct EditGroupCountdownView: View {
                         .padding()
                     }
                     .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
 
                     // Recurring section
@@ -1765,10 +2005,10 @@ struct EditGroupCountdownView: View {
                         }
                     }
                     .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
 
                     // Reminder picker
@@ -1788,12 +2028,13 @@ struct EditGroupCountdownView: View {
                         .tint(appAccentColor)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .padding()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                     .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
 
                     AppTextField(placeholder: "Notes (optional)", text: $notes)
@@ -1895,9 +2136,9 @@ struct EditGroupCountdownView: View {
                         .foregroundColor(shareToFamily ? appAccentColor : .textSecondary)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Family Calendar")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
+                        // Text("Family Calendar")
+                        //     .font(.appBody)
+                        //     .foregroundColor(.textPrimary)
 
                         Text(shareToFamily ? "\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected" : "Not shared")
                             .font(.appCaption)
@@ -1912,10 +2153,10 @@ struct EditGroupCountdownView: View {
                 }
                 .padding()
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
             }
             .buttonStyle(PlainButtonStyle())
@@ -1926,9 +2167,9 @@ struct EditGroupCountdownView: View {
                     .foregroundColor(.textSecondary)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Family Calendar")
-                        .font(.appBody)
-                        .foregroundColor(.textPrimary)
+                    // Text("Family Calendar")
+                    //     .font(.appBody)
+                    //     .foregroundColor(.textPrimary)
 
                     Text("Upgrade to Family Plus to share events")
                         .font(.appCaption)
@@ -1949,10 +2190,10 @@ struct EditGroupCountdownView: View {
             }
             .padding()
             .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                     )
             .opacity(0.7)
         }

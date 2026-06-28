@@ -382,6 +382,7 @@ struct iPadMainView: View {
             NotificationCenter.default.post(name: .profilesDidChange, object: nil)
         }) {
             AddProfileView { _ in }
+                .background(Color.appBackgroundLight)
         }
         .sheet(isPresented: $showAddMedication, onDismiss: {
             NotificationCenter.default.post(name: .medicationsDidChange, object: nil)
@@ -818,6 +819,7 @@ struct IPhoneMainView: View {
             NotificationCenter.default.post(name: .profilesDidChange, object: nil)
         }) {
             AddProfileView { _ in }
+                .background(Color.appBackgroundLight)
         }
         .sheet(isPresented: $showAddMedication, onDismiss: {
             // Post notification to refresh medications list

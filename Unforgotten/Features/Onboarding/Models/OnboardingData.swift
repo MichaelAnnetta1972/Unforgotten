@@ -19,6 +19,19 @@ class OnboardingData {
     var connectedInvitation: AccountInvitation? = nil
     var connectedAccountName: String? = nil
 
+    // MARK: - First Profile (Screen 5)
+    /// Optional first relative/friend profile the user adds during onboarding.
+    /// Created after the primary profile is set up in OnboardingService.
+    var firstProfileName: String = ""
+    var firstProfileRelationship: String = ""
+    var firstProfileBirthday: Date? = nil
+    var firstProfileEmail: String = ""
+
+    /// Whether the user entered enough data for us to create a profile.
+    var hasFirstProfile: Bool {
+        !firstProfileName.isBlank
+    }
+
     // MARK: - Subscription (Screen 6)
     var isPremium: Bool = false
     var subscriptionProductId: String? = nil
@@ -73,6 +86,10 @@ class OnboardingData {
         friendCode = nil
         connectedInvitation = nil
         connectedAccountName = nil
+        firstProfileName = ""
+        firstProfileRelationship = ""
+        firstProfileBirthday = nil
+        firstProfileEmail = ""
         isPremium = false
         subscriptionProductId = nil
         subscriptionTier = .free
@@ -87,16 +104,18 @@ enum OnboardingScreen: Int, CaseIterable {
     case welcome = 0
     case profileSetup = 1
     case themeSelection = 2
-    case featureSelection = 3
-    case friendCode = 4
-    case premium = 5
-    case freeTier = 6
-    case notifications = 7
-    case activation = 8
+    case motivation = 3
+    case featureSelection = 4
+    case friendCode = 5
+    case firstProfile = 6
+    case premium = 7
+    case freeTier = 8
+    case notifications = 9
+    case activation = 10
 
     /// The total number of progress steps (excluding welcome and activation)
-    /// Includes: 6 main screens (profile, theme, features, friendCode, premium/freeTier, notifications)
-    static let progressStepCount = 6
+    /// Includes: profile, theme, motivation, features, friendCode, firstProfile, premium/freeTier, notifications
+    static let progressStepCount = 8
 
     /// Whether this screen shows progress dots
     var showsProgressDots: Bool {
@@ -118,14 +137,18 @@ enum OnboardingScreen: Int, CaseIterable {
             return 0
         case .themeSelection:
             return 1
-        case .featureSelection:
+        case .motivation:
             return 2
-        case .friendCode:
+        case .featureSelection:
             return 3
-        case .premium, .freeTier:
+        case .friendCode:
             return 4
-        case .notifications:
+        case .firstProfile:
             return 5
+        case .premium, .freeTier:
+            return 6
+        case .notifications:
+            return 7
         }
     }
 
@@ -148,12 +171,16 @@ enum OnboardingScreen: Int, CaseIterable {
             return .welcome
         case .themeSelection:
             return .profileSetup
-        case .featureSelection:
+        case .motivation:
             return .themeSelection
+        case .featureSelection:
+            return .motivation
         case .friendCode:
             return .featureSelection
-        case .premium:
+        case .firstProfile:
             return .friendCode
+        case .premium:
+            return .firstProfile
         case .freeTier:
             return .premium
         case .notifications:

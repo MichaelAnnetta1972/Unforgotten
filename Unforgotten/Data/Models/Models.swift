@@ -813,6 +813,8 @@ enum IntakeInstruction: String, Codable, CaseIterable {
     case emptyStomach = "empty_stomach"
     case beforeMeals = "before_meals"
     case afterMeals = "after_meals"
+    case beforeBed = "before_bed"
+    case uponAwakening = "upon_awakening"
 
 
     var displayName: String {
@@ -821,6 +823,8 @@ enum IntakeInstruction: String, Codable, CaseIterable {
         case .withMeals: return "With Meals"
         case .beforeMeals: return "Before Meals"
         case .afterMeals: return "After Meals"
+        case .beforeBed: return "Before Bed"
+        case .uponAwakening: return "Upon Awakening"
         }
     }
 }
@@ -1103,33 +1107,37 @@ enum MedicationLogStatus: String, Codable, CaseIterable {
 // MARK: - Appointment Type
 enum AppointmentType: String, Codable, CaseIterable {
     case general
-    case doctor
-    case dentist
-    case hospital
-    case gym
+    case medical
+    //case dentist
+    //case hospital
+    //case gym
     case work
     case school
     case friends
     case family
     case personal
-    case travel
-    case shopping
+    //case travel
+    //case shopping
+    case dining
+    case grooming
     case other
 
     var displayName: String {
         switch self {
         case .general: return "General"
-        case .doctor: return "Doctor"
-        case .dentist: return "Dentist"
-        case .hospital: return "Hospital"
-        case .gym: return "Gym"
+        case .medical: return "Medical"
+        //case .dentist: return "Dentist"
+        //case .hospital: return "Hospital"
+        //case .gym: return "Gym"
         case .work: return "Work"
         case .school: return "School"
         case .friends: return "Friends"
         case .family: return "Family"
         case .personal: return "Personal"
-        case .travel: return "Travel"
-        case .shopping: return "Shopping"
+        //case .travel: return "Travel"
+        //case .shopping: return "Shopping"
+        case .dining: return "Dining"
+        case .grooming: return "Grooming"
         case .other: return "Other"
         }
     }
@@ -1137,17 +1145,19 @@ enum AppointmentType: String, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .general: return "calendar"
-        case .doctor: return "stethoscope"
-        case .dentist: return "mouth.fill"
-        case .hospital: return "cross.case.fill"
-        case .gym: return "dumbbell.fill"
+        case .medical: return "stethoscope"
+        //case .dentist: return "mouth.fill"
+        //case .hospital: return "cross.case.fill"
+        //case .gym: return "dumbbell.fill"
         case .work: return "briefcase.fill"
         case .school: return "graduationcap.fill"
         case .friends: return "person.2.fill"
         case .family: return "house.fill"
         case .personal: return "person.fill"
-        case .travel: return "airplane"
-        case .shopping: return "cart.fill"
+        //case .travel: return "airplane"
+        //case .shopping: return "cart.fill"
+        case .dining: return "fork.knife"
+        case .grooming: return "scissors"
         case .other: return "ellipsis.circle.fill"
         }
     }
@@ -1155,17 +1165,19 @@ enum AppointmentType: String, Codable, CaseIterable {
     var color: Color {
         switch self {
         case .general: return .calendarBlue
-        case .doctor: return .medicalRed
-        case .dentist: return .cyan
-        case .hospital: return .medicalRed
-        case .gym: return .orange
+        case .medical: return .medicalRed
+        //case .dentist: return .cyan
+        //case .hospital: return .medicalRed
+        //case .gym: return .orange
         case .work: return .blue
         case .school: return .yellow
         case .friends: return .green
         case .family: return .pink
         case .personal: return .mint
-        case .travel: return .indigo
-        case .shopping: return .purple
+        //case .travel: return .indigo
+        //case .shopping: return .purple
+        case .dining: return .brown
+        case .grooming: return .teal
         case .other: return .gray
         }
     }
@@ -2493,6 +2505,23 @@ struct ProfileGroupMember: Codable, Identifiable, Equatable {
         case groupId = "group_id"
         case profileId = "profile_id"
         case createdAt = "created_at"
+    }
+}
+
+// MARK: - Profile Pin
+/// Per-user pinned profile. Stored server-side so pinning persists across
+/// devices, reinstalls, and app updates.
+struct ProfilePin: Codable, Identifiable, Equatable {
+    let id: UUID
+    let userId: UUID
+    let profileId: UUID
+    let pinnedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case profileId = "profile_id"
+        case pinnedAt = "pinned_at"
     }
 }
 

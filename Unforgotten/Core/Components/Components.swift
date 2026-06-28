@@ -583,13 +583,13 @@ struct BottomNavBar: View {
         self.isLimitedAccess = isLimitedAccess
         self.onNavigate = onNavigate
         self.onAddProfile = onAddProfile
+        self.onAddStickyReminder = onAddStickyReminder
+        self.onAddCountdown = onAddCountdown
         self.onAddMedication = onAddMedication
         self.onAddAppointment = onAddAppointment
         self.onAddContact = onAddContact
         self.onAddToDoList = onAddToDoList
         self.onAddNote = onAddNote
-        self.onAddStickyReminder = onAddStickyReminder
-        self.onAddCountdown = onAddCountdown
     }
 
     var body: some View {
@@ -616,7 +616,7 @@ struct BottomNavBar: View {
                 ZStack(alignment: .bottomTrailing) {
                     // Add menu popup
                     if showAddMenu {
-                        VStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 1) {
                             // Header
                             Text("Add a new")
                                 .font(.appCardTitle)
@@ -626,7 +626,7 @@ struct BottomNavBar: View {
                                 .padding(.bottom, 14)
 
                             Divider()
-                                .background(Color.cardBackgroundSoft)
+                                .background(Color.textSecondary.opacity(0.5))
 
                             // Menu items - limited for Helper/Viewer roles
                             if !isLimitedAccess {
@@ -638,6 +638,9 @@ struct BottomNavBar: View {
                                 }
                             }
 
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.5))
+
                             AddMenuRow(icon: "pill", title: "Medication") {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     showAddMenu = false
@@ -645,6 +648,9 @@ struct BottomNavBar: View {
                                 onAddMedication?()
                             }
 
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.5))
+                                
                             AddMenuRow(icon: "calendar", title: "Appointment") {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     showAddMenu = false
@@ -652,6 +658,9 @@ struct BottomNavBar: View {
                                 onAddAppointment?()
                             }
 
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.5))
+                                
                             AddMenuRow(icon: "phone", title: "Contact") {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     showAddMenu = false
@@ -659,6 +668,9 @@ struct BottomNavBar: View {
                                 onAddContact?()
                             }
 
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.5))
+                                
                             if !isLimitedAccess {
                                 AddMenuRow(icon: "checklist", title: "To Do List") {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -667,6 +679,9 @@ struct BottomNavBar: View {
                                     onAddToDoList?()
                                 }
 
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.5))
+                                
                                 AddMenuRow(icon: "note.text", title: "Note") {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                         showAddMenu = false
@@ -674,6 +689,9 @@ struct BottomNavBar: View {
                                     onAddNote?()
                                 }
 
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.5))
+                                
                                 AddMenuRow(icon: "pin.fill", title: "Sticky Reminder") {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                         showAddMenu = false
@@ -681,6 +699,9 @@ struct BottomNavBar: View {
                                     onAddStickyReminder?()
                                 }
 
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.5))
+                                
                                 AddMenuRow(icon: "clock.badge.checkmark", title: "Event") {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                         showAddMenu = false
@@ -689,10 +710,10 @@ struct BottomNavBar: View {
                                 }
                             }
                         }
-                        .background(Color.cardBackgroundLight)
+                        .background(Color.cardBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                                .stroke(Color.cardBackgroundLight, lineWidth: 1)
+                                .stroke(Color.cardBackground, lineWidth: 0)
                         )
                         .cornerRadius(AppDimensions.cardCornerRadius)
                         .shadow(color: .black.opacity(0.3), radius: 20, y: -5)
@@ -761,7 +782,7 @@ struct BottomNavBar: View {
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
-                                    lineWidth: 1
+                                    lineWidth: 0
                                 )
                         )
                         .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
@@ -1173,6 +1194,7 @@ struct HeaderBottomActionButton: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .semibold))
+                    .frame(width: label == nil ? 18 : nil, height: label == nil ? 18 : nil)
                 if let label = label {
                     Text(label)
                         .font(.system(size: 16, weight: .semibold))
@@ -1290,8 +1312,8 @@ struct HeaderImageView: View {
             ZStack(alignment: .bottomLeading) {
                 // Background image: remote URL, local image, or gradient fallback
                 Group {
-                    if let urlString = photoUrl, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
+                    if let urlString = photoUrl {
+                        SignedAsyncImage(reference: urlString) { phase in
                             switch phase {
                             case .success(let image):
                                 image
@@ -1486,7 +1508,7 @@ struct PrimaryButton: View {
             .frame(height: AppDimensions.buttonHeight)
             .background(effectiveBackgroundColor)
             .foregroundColor(.black)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .cornerRadius(AppDimensions.cardCornerRadius)
         }
         .disabled(isLoading)
     }
@@ -1507,7 +1529,7 @@ struct SecondaryButton: View {
                 .foregroundColor(.white)
                 .overlay(
                     RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.white, lineWidth: 1)
+                        .stroke(Color.white, lineWidth: 0)
                 )
         }
     }
@@ -1535,10 +1557,10 @@ struct AppTextField: View {
         .padding()
         .frame(height: AppDimensions.textFieldHeight)
         .background(Color.cardBackground)
-        .cornerRadius(AppDimensions.buttonCornerRadius)
+        .cornerRadius(AppDimensions.cardCornerRadius)
         .overlay(
-            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
         )
         .onChange(of: text) { _, newValue in
             if newValue.count > maxLength {
@@ -1790,8 +1812,8 @@ struct ZoomableImageViewer: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                     }
-                } else if let urlString = imageUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
+                } else if let urlString = imageUrl {
+                    SignedAsyncImage(reference: urlString) { phase in
                         switch phase {
                         case .success(let image):
                             zoomableContent(geo: geo) {

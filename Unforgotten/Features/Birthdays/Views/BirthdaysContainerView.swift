@@ -282,31 +282,8 @@ struct iPadBirthdayRowView: View {
         .padding(.vertical, 4)
     }
 
-    @ViewBuilder
     private var profileImage: some View {
-        if let photoUrl = birthday.profile.photoUrl, !photoUrl.isEmpty {
-            AsyncImage(url: URL(string: photoUrl)) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 50, height: 50)
-                        .clipShape(Circle())
-                default:
-                    defaultProfileImage
-                }
-            }
-        } else {
-            defaultProfileImage
-        }
-    }
-
-    private var defaultProfileImage: some View {
-        Image(systemName: "person.circle.fill")
-            .font(.system(size: 40))
-            .foregroundColor(.textSecondary)
-            .frame(width: 50, height: 50)
+        AsyncProfileImage(url: birthday.profile.photoUrl, size: 50)
     }
 }
 
@@ -345,22 +322,7 @@ struct iPadBirthdayDetailPane: View {
 
     private var birthdayHeader: some View {
         VStack(spacing: 12) {
-            if let photoUrl = birthday.profile.photoUrl, !photoUrl.isEmpty {
-                AsyncImage(url: URL(string: photoUrl)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 100, height: 100)
-                            .clipShape(Circle())
-                    default:
-                        defaultLargeProfileImage
-                    }
-                }
-            } else {
-                defaultLargeProfileImage
-            }
+            AsyncProfileImage(url: birthday.profile.photoUrl, size: 100)
 
             VStack(spacing: 4) {
                 Text(birthday.profile.displayName)
@@ -381,13 +343,6 @@ struct iPadBirthdayDetailPane: View {
             }
         }
         .padding(.top, 16)
-    }
-
-    private var defaultLargeProfileImage: some View {
-        Image(systemName: "person.circle.fill")
-            .font(.system(size: 80))
-            .foregroundColor(.textSecondary)
-            .frame(width: 100, height: 100)
     }
 
     private var countdownCard: some View {

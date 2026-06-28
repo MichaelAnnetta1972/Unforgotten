@@ -89,7 +89,7 @@ struct FamilySharingSheet: View {
 
                                 Text("Share this event with family members")
                                     .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                                    .foregroundColor(.textMuted)
                             }
 
                             Spacer()
@@ -99,7 +99,7 @@ struct FamilySharingSheet: View {
                                 .tint(appAccentColor)
                         }
                         .padding()
-                        .background(Color.cardBackgroundSoft)
+                        .background(Color.cardBackground)
                         .cornerRadius(AppDimensions.cardCornerRadius)
 
                         // Member selection (shown when enabled)
@@ -213,7 +213,7 @@ struct FamilySharingSheet: View {
                     .padding(AppDimensions.screenPadding)
                 }
             }
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
             .navigationBarHidden(true)
         }
         .scrollContentBackground(.hidden)

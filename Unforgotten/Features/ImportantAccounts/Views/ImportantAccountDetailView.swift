@@ -35,7 +35,7 @@ struct ImportantAccountDetailView: View {
                         Button {
                             showFullscreenPhoto = true
                         } label: {
-                            AsyncImage(url: URL(string: imageUrl)) { phase in
+                            SignedAsyncImage(reference: imageUrl) { phase in
                                 switch phase {
                                 case .success(let image):
                                     image

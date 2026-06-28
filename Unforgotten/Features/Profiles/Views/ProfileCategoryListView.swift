@@ -373,7 +373,7 @@ struct ProfileCategoryListView: View {
 
         }
         .ignoresSafeArea(edges: .top)
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
         .navigationBarHidden(true)
         .sidePanel(isPresented: $showSettings) {
             SettingsPanelView(onDismiss: { showSettings = false })
@@ -774,7 +774,7 @@ struct AddProfileDetailView: View {
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
 
             ZStack {
                 Color.appBackground.ignoresSafeArea()
@@ -804,7 +804,7 @@ struct AddProfileDetailView: View {
                 }
             }
         }
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
         .onAppear {
             if category == .medical && value.isEmpty {
                 value = "condition"
@@ -893,7 +893,7 @@ struct AddProfileDetailView: View {
             .cornerRadius(AppDimensions.buttonCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
             )
 
             // Repeatable Brand/Website entries
@@ -1171,10 +1171,10 @@ struct EditClothingDetailView: View {
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
 
             ZStack {
-                Color.appBackground.ignoresSafeArea()
+                Color.appBackgroundLight.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -1229,7 +1229,7 @@ struct EditClothingDetailView: View {
                 }
             }
         }
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
         .fitContentSidePanel(isPresented: $showSizePicker) {
             SizePickerSheet(selectedSize: $value, isPresented: $showSizePicker)
         }
@@ -1302,7 +1302,7 @@ struct EditClothingPanelOverlay: View {
                     onSave: onSave
                 )
                 .frame(width: panelWidth, height: min(panelHeight, geometry.size.height - 80))
-                .background(Color.appBackground)
+                .background(Color.appBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
                 .offset(x: offsetX)
@@ -1400,7 +1400,7 @@ struct EditMedicalConditionView: View {
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
 
             ZStack {
                 Color.appBackground.ignoresSafeArea()
@@ -1459,7 +1459,7 @@ struct EditMedicalConditionView: View {
                 }
             }
         }
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
     }
 
     private func saveChanges() async {
@@ -1518,7 +1518,7 @@ struct EditMedicalConditionPanelOverlay: View {
                     onSave: onSave
                 )
                 .frame(width: panelWidth, height: min(panelHeight, geometry.size.height - 80))
-                .background(Color.appBackground)
+                .background(Color.appBackgroundLight)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
                 .offset(x: offsetX)
@@ -1646,10 +1646,10 @@ struct EditGiftDetailView: View {
             }
             .padding(.horizontal, AppDimensions.screenPadding)
             .padding(.vertical, 16)
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
 
             ZStack {
-                Color.appBackground.ignoresSafeArea()
+                Color.appBackgroundLight.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -1681,7 +1681,7 @@ struct EditGiftDetailView: View {
                         .cornerRadius(AppDimensions.buttonCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                         )
 
                         // Repeatable Brand/Website entries
@@ -1724,7 +1724,7 @@ struct EditGiftDetailView: View {
                 }
             }
         }
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
     }
 
     private func openWebsite(urlString: String) {
@@ -1831,7 +1831,7 @@ struct EditGiftPanelOverlay: View {
                         onSave: onSave
                     )
                     .frame(width: panelWidth, height: geometry.size.height - 80)
-                    .background(Color.appBackground)
+                    .background(Color.appBackgroundLight)
                     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .shadow(color: .black.opacity(0.3), radius: 20, x: -5, y: 0)
                     .padding(.top, 40)
@@ -1880,7 +1880,7 @@ struct StatusButtonCompact: View {
                 .foregroundColor(isSelected ? .black : .textPrimary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(isSelected ? appAccentColor : Color.appBackground)
+                .background(isSelected ? appAccentColor : Color.appBackgroundLight)
                 .cornerRadius(AppDimensions.pillCornerRadius)
         }
     }
@@ -1936,7 +1936,7 @@ struct BrandWebsiteEntryView: View {
         .cornerRadius(AppDimensions.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                .stroke(Color.textSecondary.opacity(0.2), lineWidth: 1)
+                .stroke(Color.textSecondary.opacity(0.2), lineWidth: 0)
         )
     }
 }
@@ -2032,11 +2032,20 @@ struct AddProfileView: View {
         }
     }
 
+    // MARK: - Step
+
+    enum Step: Int, CaseIterable {
+        case personal
+        case relationship
+    }
+
+    @State private var step: Step = .personal
+
     @State private var fullName = ""
     @State private var preferredName = ""
     @State private var relationship = ""
     @State private var connectedToProfileId: UUID? = nil
-    @State private var includeInFamilyTree = true
+    @State private var includeInFamilyTree = false
     @State private var phone = ""
     @State private var email = ""
     @State private var address = ""
@@ -2052,194 +2061,32 @@ struct AddProfileView: View {
     @State private var errorMessage: String?
     @State private var allProfiles: [Profile] = []
 
+    private var isFirstStep: Bool { step == Step.allCases.first }
+    private var isLastStep: Bool { step == Step.allCases.last }
+
+    private func goNext() {
+        guard let index = Step.allCases.firstIndex(of: step),
+              index + 1 < Step.allCases.count else { return }
+        withAnimation { step = Step.allCases[index + 1] }
+    }
+
+    private func goBack() {
+        guard let index = Step.allCases.firstIndex(of: step) else { return }
+        if index > 0 {
+            withAnimation { step = Step.allCases[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Custom header with icons
-                HStack {
-                    Button {
-                        dismissView()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                            )
-                    }
-
-                    Spacer()
-
-                    Text("Add Person")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        Task { await saveProfile() }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.black)
-                            .frame(width: 48, height: 48)
-                            .background(
-                                Circle()
-                                    .fill(fullName.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
-                            )
-                    }
-                    .disabled(fullName.isBlank || isLoading)
-                }
-                .padding(.horizontal, AppDimensions.screenPadding)
-                .padding(.vertical, 16)
+                header
 
                 ScrollView {
-                    VStack(spacing: 20) {
-
-                        // Profile Photo
-                        VStack(spacing: 8) {
-                            PhotoPickerButton(
-                                selectedImage: $selectedImage,
-                                currentPhotoURL: nil,
-                                size: 120
-                            )
-                            .onChange(of: selectedImage) { _, newImage in
-                                if newImage != nil {
-                                    removePhoto = false
-                                }
-                            }
-
-                            if selectedImage != nil {
-                                Button(role: .destructive) {
-                                    selectedImage = nil
-                                    removePhoto = true
-                                } label: {
-                                    Text("Remove Photo")
-                                        .font(.appCaption)
-                                }
-                            }
-                        }
-                        .padding(.bottom, 8)
-
-                        AppTextField(placeholder: "Full Name *", text: $fullName)
-                        AppTextField(placeholder: "Preferred Name (optional)", text: $preferredName)
-
-                        // Relationship field with quick-add button
-                        RelationshipFieldWithPicker(
-                            relationship: $relationship,
-                            showPicker: $showRelationshipPicker
-                        )
-                        // Birthday picker
-                        Button {
-                            showDatePicker = true
-                        } label: {
-                            HStack {
-                                Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday (optional)")
-                                    .font(.appBody)
-                                    .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
-
-                                Spacer()
-
-                                Image(systemName: "calendar")
-                                    .foregroundColor(.textSecondary)
-                            }
-                            .padding()
-                            .frame(height: AppDimensions.textFieldHeight)
-                            .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                        }
-
-                        // Connected To picker for family tree
-                        if !allProfiles.isEmpty {
-                            ConnectedToPickerField(
-                                selectedProfileId: $connectedToProfileId,
-                                profiles: allProfiles,
-                                currentProfileId: nil  // New profile has no ID yet
-                            )
-                        }
-
-                        // Include in Family Tree toggle
-                        HStack {
-                            Text("Include in Family Tree")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-
-                            Spacer()
-
-                            Toggle("", isOn: $includeInFamilyTree)
-                                .tint(appAccentColor)
-                                .labelsHidden()
-                        }
-                        .padding()
-                        .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.buttonCornerRadius)
-
-                        AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
-                        AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
-                        AppTextField(placeholder: "Address", text: $address)
-
-
-
-                        // MARK: - Memorial Status Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Memorial Status")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-                                .padding(.horizontal, 4)
-
-                            // Deceased toggle
-                            HStack {
-                                Image(systemName: "heart.fill")
-                                    .foregroundColor(.textSecondary)
-                                    .frame(width: 24)
-
-                                Text("Person has passed away")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Spacer()
-
-                                Toggle("", isOn: $isDeceased)
-                                    .tint(appAccentColor)
-                                    .labelsHidden()
-                            }
-                            .padding()
-                            .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-
-                            // Date of death picker (only shown when deceased is true)
-                            if isDeceased {
-                                Button {
-                                    showDeathDatePicker = true
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "calendar")
-                                            .foregroundColor(.textSecondary)
-                                            .frame(width: 24)
-
-                                        Text(dateOfDeath != nil ? dateOfDeath!.formatted(date: .long, time: .omitted) : "Date of Death (optional)")
-                                            .foregroundColor(dateOfDeath != nil ? .textPrimary : .textSecondary)
-
-                                        Spacer()
-
-                                        if dateOfDeath != nil {
-                                            Button {
-                                                dateOfDeath = nil
-                                            } label: {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .foregroundColor(.textSecondary)
-                                            }
-                                        }
-                                    }
-                                    .padding()
-                                    .frame(height: AppDimensions.textFieldHeight)
-                                    .background(Color.cardBackground)
-                                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                                }
-                            }
-                        }
+                    VStack(alignment: .leading, spacing: 20) {
+                        stepContent
 
                         if let error = errorMessage {
                             Text(error)
@@ -2247,10 +2094,15 @@ struct AddProfileView: View {
                                 .foregroundColor(.medicalRed)
                         }
                     }
-                    .padding(AppDimensions.screenPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, AppDimensions.screenPadding + 12)
+                    .padding(.top, 32)
+                    .padding(.bottom, AppDimensions.screenPadding)
                 }
+
+                footer
             }
-            .background(Color.clear)
+            .background(Color.appBackgroundLight)
             .navigationBarHidden(true)
             .sheet(isPresented: $showDatePicker) {
                 DatePickerSheet(selectedDate: $birthday, isPresented: $showDatePicker)
@@ -2266,9 +2118,300 @@ struct AddProfileView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Color.clear)
+        .background(Color.appBackgroundLight)
         .toolbarBackground(.clear, for: .navigationBar)
         .containerBackground(.clear, for: .navigation)
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button {
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
+            }
+
+            Spacer()
+
+            Text("Add Person")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
+            }
+        }
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+        .background(Color.appBackgroundLight)
+    }
+
+    // MARK: - Footer (Next button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if isLastStep {
+            Button {
+                Task { await saveProfile() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(fullName.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(fullName.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        } else {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(fullName.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(fullName.isBlank)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .personal:
+            personalStep
+        case .relationship:
+            relationshipStep
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appCardTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Personal Details
+
+    private var personalStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Profile Photo
+            VStack(spacing: 8) {
+                PhotoPickerButton(
+                    selectedImage: $selectedImage,
+                    currentPhotoURL: nil,
+                    size: 120
+                )
+                .onChange(of: selectedImage) { _, newImage in
+                    if newImage != nil {
+                        removePhoto = false
+                    }
+                }
+
+                if selectedImage != nil {
+                    Button(role: .destructive) {
+                        selectedImage = nil
+                        removePhoto = true
+                    } label: {
+                        Text("Remove Photo")
+                            .font(.appCaption)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 8)
+
+            sectionTitle("Personal Details")
+
+            AppTextField(placeholder: "Full Name *", text: $fullName)
+            AppTextField(placeholder: "Preferred Name (optional)", text: $preferredName)
+
+            // Birthday picker
+            Button {
+                showDatePicker = true
+            } label: {
+                HStack {
+                    Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday (optional)")
+                        .font(.appBody)
+                        .foregroundColor(birthday != nil ? .textMuted : .textMuted)
+
+                    Spacer()
+
+                    Image(systemName: "calendar")
+                        .foregroundColor(.textSecondary)
+                }
+                .padding()
+                .frame(height: AppDimensions.textFieldHeight)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+        )
+            }
+
+            AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
+            AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+            AppTextField(placeholder: "Address", text: $address)
+        }
+    }
+
+    // MARK: Step 2 — Relationship / Family Tree / Memorial
+
+    private var relationshipStep: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Relationship Details
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Relationship Details")
+
+                RelationshipFieldWithPicker(
+                    relationship: $relationship,
+                    showPicker: $showRelationshipPicker
+                )
+            }
+
+            // Family Tree Connection
+            VStack(alignment: .leading, spacing: 12) {
+                // sectionTitle("Family Tree Connection")
+
+                // Include in Family Tree toggle
+                HStack {
+                    Text("Include in Family Tree")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+
+                    Spacer()
+
+                    Toggle("", isOn: $includeInFamilyTree)
+                        .tint(appAccentColor)
+                        .labelsHidden()
+                        .onChange(of: includeInFamilyTree) { _, isOn in
+                            // Clear any chosen connection when removed from the family tree.
+                            if !isOn { connectedToProfileId = nil }
+                        }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+
+                // Connected To picker for family tree — only when included in the tree
+                if includeInFamilyTree && !allProfiles.isEmpty {
+                    ConnectedToPickerField(
+                        selectedProfileId: $connectedToProfileId,
+                        profiles: allProfiles,
+                        currentProfileId: nil  // New profile has no ID yet
+                    )
+                }
+            }
+
+            // Memorial Status
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Memorial Status")
+
+                // Deceased toggle
+                HStack {
+                    Image(systemName: "heart.fill")
+                        .foregroundColor(.textSecondary)
+                        .frame(width: 24)
+
+                    Text("Person has passed away")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+
+                    Spacer()
+
+                    Toggle("", isOn: $isDeceased)
+                        .tint(appAccentColor)
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+
+                // Date of death picker (only shown when deceased is true)
+                if isDeceased {
+                    Button {
+                        showDeathDatePicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "calendar")
+                                .foregroundColor(.textSecondary)
+                                .frame(width: 24)
+
+                            Text(dateOfDeath != nil ? dateOfDeath!.formatted(date: .long, time: .omitted) : "Date of Death (optional)")
+                                .foregroundColor(dateOfDeath != nil ? .textPrimary : .textSecondary)
+                                .font(.appBody)
+
+                            Spacer()
+
+                            if dateOfDeath != nil {
+                                Button {
+                                    dateOfDeath = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.textSecondary)
+                                }
+                            }
+                        }
+                        .padding()
+                        .frame(height: AppDimensions.textFieldHeight)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                        )
+                        
+                    }
+                }
+            }
+        }
     }
 
     private func loadProfiles() async {
@@ -2417,297 +2560,62 @@ struct EditProfileView: View {
         }
     }
 
+    // MARK: - Step
+
+    enum Step: Int, CaseIterable {
+        case personal
+        case relationship
+        case additional
+    }
+
+    @State private var step: Step = .personal
+
+    private var isFirstStep: Bool { step == Step.allCases.first }
+    private var isLastStep: Bool { step == Step.allCases.last }
+
+    private func goNext() {
+        guard let index = Step.allCases.firstIndex(of: step),
+              index + 1 < Step.allCases.count else { return }
+        withAnimation { step = Step.allCases[index + 1] }
+    }
+
+    private func goBack() {
+        guard let index = Step.allCases.firstIndex(of: step) else { return }
+        if index > 0 {
+            withAnimation { step = Step.allCases[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with icons
-            HStack {
-                Button {
-                    dismissView()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.5))
-                        )
-                }
-
-                Spacer()
-
-                Text("Edit Profile")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Button {
-                    Task { await updateProfile() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(fullName.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
-                        )
-                }
-                .disabled(fullName.isBlank || isLoading)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
-            .background(Color.appBackground)
+            header
 
             ScrollView {
-                VStack(spacing: 20) {
-                            // Profile Photo
-                            VStack(spacing: 8) {
-                                PhotoPickerButton(
-                                    selectedImage: $selectedImage,
-                                    currentPhotoURL: removePhoto ? nil : profile.photoUrl,
-                                    size: 120
-                                )
-                                .disabled(isFieldLocked("photo_url"))
-                                .opacity(isFieldLocked("photo_url") ? 0.7 : 1.0)
-                                .onChange(of: selectedImage) { _, newImage in
-                                    if newImage != nil {
-                                        removePhoto = false
-                                    }
-                                }
+                VStack(alignment: .leading, spacing: 20) {
+                    stepContent
 
-                                // Remove photo button - show when there's a photo to remove
-                                if !isFieldLocked("photo_url") && (selectedImage != nil || (profile.photoUrl != nil && !removePhoto)) {
-                                    Button(role: .destructive) {
-                                        selectedImage = nil
-                                        removePhoto = true
-                                    } label: {
-                                        Text("Remove Photo")
-                                            .font(.appCaption)
-                                    }
-                                }
-                            }
-                            .padding(.bottom, 8)
-
-                            AppTextField(placeholder: "Full Name *", text: $fullName)
-                            AppTextField(placeholder: "Preferred Name", text: $preferredName)
-
-                            // Relationship field with quick-add button (hidden for own profile)
-                            if profile.type != .primary {
-                                RelationshipFieldWithPicker(
-                                    relationship: $relationship,
-                                    showPicker: $showRelationshipPicker
-                                )
-                            }
-                            Button {
-                                showDatePicker = true
-                            } label: {
-                                HStack {
-                                    Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday")
-                                        .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
-                                        .font(.appBody)
-
-                                    Spacer()
-
-                                    if isFieldLocked("birthday") {
-                                        Image(systemName: "lock.fill")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.textSecondary)
-                                    } else {
-                                        Image(systemName: "calendar")
-                                            .foregroundColor(.textSecondary)
-                                    }
-                                }
-                                .padding()
-                                .frame(height: AppDimensions.textFieldHeight)
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                                )
-                            }
-                            .disabled(isFieldLocked("birthday"))
-                            // Connected To picker for family tree
-                            if !allProfiles.isEmpty {
-                                ConnectedToPickerField(
-                                    selectedProfileId: $connectedToProfileId,
-                                    profiles: allProfiles,
-                                    currentProfileId: profile.id
-                                )
-                            }
-
-                            // Include in Family Tree toggle
-                            HStack {
-                                Text("Include in Family Tree")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Spacer()
-
-                                Toggle("", isOn: $includeInFamilyTree)
-                                    .tint(appAccentColor)
-                                    .labelsHidden()
-                            }
-                            .padding()
-                            .background(Color.cardBackground)
-                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                            )
-
-                            LockedFieldWrapper(isLocked: isFieldLocked("phone")) {
-                                AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
-                            }
-
-                            LockedFieldWrapper(isLocked: isFieldLocked("email")) {
-                                AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
-                            }
-
-                            LockedFieldWrapper(isLocked: isFieldLocked("address")) {
-                                AppTextField(placeholder: "Address", text: $address)
-                            }
-
-
-
-                            // Deceased Section (only show for non-primary profiles)
-                            if profile.type != .primary {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("MEMORIAL STATUS")
-                                        .font(.appCaption)
-                                        .foregroundColor(.textSecondary)
-
-                                    // Deceased toggle
-                                    HStack {
-                                        Text("Deceased")
-                                            .font(.appBody)
-                                            .foregroundColor(.textPrimary)
-
-                                        Spacer()
-
-                                        Toggle("", isOn: $isDeceased)
-                                            .tint(appAccentColor)
-                                            .labelsHidden()
-                                            .onChange(of: isDeceased) { _, newValue in
-                                                if !newValue {
-                                                    // Clear date of death when unchecking
-                                                    dateOfDeath = nil
-                                                }
-                                            }
-                                    }
-                                    .padding()
-                                    .background(Color.cardBackground)
-                                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                                    )
-
-                                    // Date of Death picker (only shown if deceased)
-                                    if isDeceased {
-                                        Button {
-                                            showDeathDatePicker = true
-                                        } label: {
-                                            HStack {
-                                                Text(dateOfDeath != nil ? dateOfDeath!.formattedBirthday() : "Date of Passing")
-                                                    .foregroundColor(dateOfDeath != nil ? .textPrimary : .textSecondary)
-
-                                                Spacer()
-
-                                                Image(systemName: "calendar")
-                                                    .foregroundColor(.textSecondary)
-                                            }
-                                            .padding()
-                                            .frame(height: AppDimensions.textFieldHeight)
-                                            .background(Color.cardBackground)
-                                            .cornerRadius(AppDimensions.buttonCornerRadius)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                                            )
-                                        }
-
-                                        Text("Deceased profiles show a simplified memorial view with essential information only.")
-                                            .font(.appCaption)
-                                            .foregroundColor(.textSecondary)
-                                    }
-                                }
-                                .padding(.top, 8)
-                            }
-
-                            // Custom Fields Section
-                            if !customFields.isEmpty {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("ADDITIONAL INFORMATION")
-                                        .font(.appCaption)
-                                        .foregroundColor(.textSecondary)
-
-                                    List {
-                                        ForEach(customFields) { field in
-                                            CustomFieldRowView(
-                                                detail: field,
-                                                onEdit: {
-                                                    editingCustomField = field
-                                                    showEditCustomField = true
-                                                }
-                                            )
-                                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                                Button(role: .destructive) {
-                                                    customFieldToDelete = field
-                                                    showDeleteCustomFieldConfirmation = true
-                                                } label: {
-                                                    Label("Delete", systemImage: "trash")
-                                                }
-                                                .tint(.medicalRed)
-                                            }
-                                            .listRowBackground(Color.clear)
-                                            .listRowSeparator(.hidden)
-                                            .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
-                                        }
-                                    }
-                                    .listStyle(.plain)
-                                    .scrollDisabled(true)
-                                    .scrollContentBackground(.hidden)
-                                    .frame(height: CGFloat(customFields.count) * 70)
-                                }
-                                .padding(.top, 8)
-                            }
-
-                            // Add new information button
-                            Button {
-                                showAddCustomField = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 20))
-                                    Text("Add new information")
-                                        .font(.appButtonText)
-                                }
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(appAccentColor)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
-                            }
-                            .padding(.top, 8)
-
-                            if let error = errorMessage {
-                                Text(error)
-                                    .font(.appCaption)
-                                    .foregroundColor(.medicalRed)
-                            }
-
-                            // Bottom spacing
-                            Spacer()
-                                .frame(height: 40)
-                        }
-                        .padding(AppDimensions.screenPadding)
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
                     }
+
+                    // Bottom spacing
+                    Spacer()
+                        .frame(height: 40)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppDimensions.screenPadding + 12)
+                .padding(.top, 32)
+                .padding(.bottom, AppDimensions.screenPadding)
             }
+
+            footer
+        }
         .scrollContentBackground(.hidden)
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
         .sheet(isPresented: $showDatePicker) {
             DatePickerSheet(selectedDate: $birthday, isPresented: $showDatePicker)
         }
@@ -2751,6 +2659,355 @@ struct EditProfileView: View {
         .task {
             await loadCustomFields()
             await loadProfiles()
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            Button {
+                goBack()
+            } label: {
+                Image(systemName: isFirstStep ? "xmark" : "chevron.left")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
+            }
+
+            Spacer()
+
+            Text("Edit Profile")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            // Trailing slot: checkmark on the last step, otherwise a balancing spacer.
+            if isLastStep {
+                Button {
+                    Task { await updateProfile() }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(fullName.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
+                        )
+                }
+                .disabled(fullName.isBlank || isLoading)
+            } else {
+                Color.clear.frame(width: 48, height: 48)
+            }
+        }
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+        .background(Color.appBackgroundLight)
+    }
+
+    // MARK: - Footer (Next button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if !isLastStep {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(fullName.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(fullName.isBlank)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+            .background(Color.appBackgroundLight)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .personal:
+            personalStep
+        case .relationship:
+            relationshipStep
+        case .additional:
+            additionalStep
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appCardTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Personal Details
+
+    private var personalStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Profile Photo
+            VStack(spacing: 8) {
+                PhotoPickerButton(
+                    selectedImage: $selectedImage,
+                    currentPhotoURL: removePhoto ? nil : profile.photoUrl,
+                    size: 120
+                )
+                .disabled(isFieldLocked("photo_url"))
+                .opacity(isFieldLocked("photo_url") ? 0.7 : 1.0)
+                .onChange(of: selectedImage) { _, newImage in
+                    if newImage != nil {
+                        removePhoto = false
+                    }
+                }
+
+                // Remove photo button - show when there's a photo to remove
+                if !isFieldLocked("photo_url") && (selectedImage != nil || (profile.photoUrl != nil && !removePhoto)) {
+                    Button(role: .destructive) {
+                        selectedImage = nil
+                        removePhoto = true
+                    } label: {
+                        Text("Remove Photo")
+                            .font(.appCaption)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 8)
+
+            sectionTitle("Personal Details")
+
+            AppTextField(placeholder: "Full Name *", text: $fullName)
+            AppTextField(placeholder: "Preferred Name", text: $preferredName)
+
+            Button {
+                showDatePicker = true
+            } label: {
+                HStack {
+                    Text(birthday != nil ? birthday!.formattedBirthday() : "Birthday")
+                        .foregroundColor(birthday != nil ? .textPrimary : .textSecondary)
+                        .font(.appBody)
+
+                    Spacer()
+
+                    if isFieldLocked("birthday") {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.textSecondary)
+                    } else {
+                        Image(systemName: "calendar")
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+                .padding()
+                .frame(height: AppDimensions.textFieldHeight)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+            }
+            .disabled(isFieldLocked("birthday"))
+
+            LockedFieldWrapper(isLocked: isFieldLocked("phone")) {
+                AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
+            }
+
+            LockedFieldWrapper(isLocked: isFieldLocked("email")) {
+                AppTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+            }
+
+            LockedFieldWrapper(isLocked: isFieldLocked("address")) {
+                AppTextField(placeholder: "Address", text: $address)
+            }
+        }
+    }
+
+    // MARK: Step 2 — Relationship / Family Tree / Memorial
+
+    private var relationshipStep: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Relationship Details (hidden for own profile)
+            if profile.type != .primary {
+                VStack(alignment: .leading, spacing: 12) {
+                    sectionTitle("Relationship Details")
+
+                    RelationshipFieldWithPicker(
+                        relationship: $relationship,
+                        showPicker: $showRelationshipPicker
+                    )
+                }
+            }
+
+            // Family Tree Connection
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Family Tree Connection")
+
+                // Include in Family Tree toggle
+                HStack {
+                    Text("Include in Family Tree")
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+
+                    Spacer()
+
+                    Toggle("", isOn: $includeInFamilyTree)
+                        .tint(appAccentColor)
+                        .labelsHidden()
+                        .onChange(of: includeInFamilyTree) { _, isOn in
+                            // Clear any chosen connection when removed from the family tree.
+                            if !isOn { connectedToProfileId = nil }
+                        }
+                }
+                .padding()
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+
+                // Connected To picker for family tree — only when included in the tree
+                if includeInFamilyTree && !allProfiles.isEmpty {
+                    ConnectedToPickerField(
+                        selectedProfileId: $connectedToProfileId,
+                        profiles: allProfiles,
+                        currentProfileId: profile.id
+                    )
+                }
+            }
+
+            // Memorial Status (only show for non-primary profiles)
+            if profile.type != .primary {
+                VStack(alignment: .leading, spacing: 12) {
+                    sectionTitle("Memorial Status")
+
+                    // Deceased toggle
+                    HStack {
+                        Text("Deceased")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Toggle("", isOn: $isDeceased)
+                            .tint(appAccentColor)
+                            .labelsHidden()
+                            .onChange(of: isDeceased) { _, newValue in
+                                if !newValue {
+                                    // Clear date of death when unchecking
+                                    dateOfDeath = nil
+                                }
+                            }
+                    }
+                    .padding()
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                    )
+
+                    // Date of Death picker (only shown if deceased)
+                    if isDeceased {
+                        Button {
+                            showDeathDatePicker = true
+                        } label: {
+                            HStack {
+                                Text(dateOfDeath != nil ? dateOfDeath!.formattedBirthday() : "Date of Passing")
+                                    .foregroundColor(dateOfDeath != nil ? .textPrimary : .textSecondary)
+
+                                Spacer()
+
+                                Image(systemName: "calendar")
+                                    .foregroundColor(.textSecondary)
+                            }
+                            .padding()
+                            .frame(height: AppDimensions.textFieldHeight)
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.buttonCornerRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                            )
+                        }
+
+                        Text("Deceased profiles show a simplified memorial view with essential information only.")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Step 3 — Additional Information
+
+    private var additionalStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Additional Information")
+
+            // Custom Fields Section
+            if !customFields.isEmpty {
+                List {
+                    ForEach(customFields) { field in
+                        CustomFieldRowView(
+                            detail: field,
+                            onEdit: {
+                                editingCustomField = field
+                                showEditCustomField = true
+                            }
+                        )
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                customFieldToDelete = field
+                                showDeleteCustomFieldConfirmation = true
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            .tint(.medicalRed)
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: AppDimensions.cardSpacing / 2, leading: 0, bottom: AppDimensions.cardSpacing / 2, trailing: 0))
+                    }
+                }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .scrollContentBackground(.hidden)
+                .frame(height: CGFloat(customFields.count) * 70)
+            }
+
+            // Add new information button
+            Button {
+                showAddCustomField = true
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 20))
+                    Text("Add new information")
+                        .font(.appButtonText)
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(appAccentColor)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+            }
+            .padding(.top, 8)
         }
     }
 
@@ -2880,7 +3137,7 @@ struct CustomFieldRowView: View {
         .cornerRadius(AppDimensions.buttonCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -2959,10 +3216,10 @@ struct AddCustomFieldView: View {
                 }
                 .padding(.horizontal, AppDimensions.screenPadding)
                 .padding(.vertical, 16)
-                .background(Color.appBackground)
+                .background(Color.appBackgroundLight)
 
                 ZStack {
-                    Color.appBackground.ignoresSafeArea()
+                    Color.appBackgroundLight.ignoresSafeArea()
 
                     ScrollView {
                         VStack(spacing: 20) {
@@ -3005,7 +3262,7 @@ struct AddCustomFieldView: View {
                     }
                 }
             }
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
             .navigationBarHidden(true)
         }
     }
@@ -3104,10 +3361,10 @@ struct EditCustomFieldView: View {
                 }
                 .padding(.horizontal, AppDimensions.screenPadding)
                 .padding(.vertical, 16)
-                .background(Color.appBackground)
+                .background(Color.appBackgroundLight)
 
                 ZStack {
-                    Color.appBackground.ignoresSafeArea()
+                    Color.appBackgroundLight.ignoresSafeArea()
 
                     ScrollView {
                         VStack(spacing: 20) {
@@ -3127,7 +3384,7 @@ struct EditCustomFieldView: View {
                     }
                 }
             }
-            .background(Color.appBackground)
+            .background(Color.appBackgroundLight)
             .navigationBarHidden(true)
         }
     }
@@ -3277,7 +3534,7 @@ struct ConnectionsListView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
-        .background(Color.appBackground)
+        .background(Color.appBackgroundLight)
         .navigationBarHidden(true)
         .sidePanel(isPresented: $showSettings) {
             SettingsPanelView(onDismiss: { showSettings = false })
@@ -3384,14 +3641,14 @@ struct RelationshipFieldWithPicker: View {
         HStack(spacing: 8) {
             TextField("Relationship (e.g., Son, Daughter)", text: $relationship)
                 .font(.appBody)
-                .foregroundColor(.textPrimary)
+                .foregroundColor(.textSecondary)
                 .padding()
                 .frame(height: AppDimensions.textFieldHeight)
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                 )
 
             Button {
@@ -3404,7 +3661,7 @@ struct RelationshipFieldWithPicker: View {
                     .foregroundColor(.black)
                     .frame(width: AppDimensions.textFieldHeight, height: AppDimensions.textFieldHeight)
                     .background(appAccentColor)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
                     .scaleEffect(isButtonPressed ? 0.9 : 1.0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isButtonPressed)
             }
@@ -4129,20 +4386,20 @@ struct ConnectedToPickerField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("FAMILY PARENT CONNECTION")
-                .font(.appCaption)
-                .foregroundColor(.textSecondary)
+            // Text("FAMILY TREE CONNECTION")
+            //     .font(.appCaption)
+            //     .foregroundColor(.textSecondary)
 
             Button {
                 showPicker = true
             } label: {
                 HStack {
                     if let name = selectedProfileFullName {
-                        Text("Parent: \(name)")
+                        Text("Linked to: \(name)")
                             .foregroundColor(.textPrimary)
                             .font(.appBody)
                     } else {
-                        Text("Connect to parent member")
+                        Text("Link to a contact")
                             .font(.appBody)
                             .foregroundColor(.textSecondary)
                     }
@@ -4156,17 +4413,17 @@ struct ConnectedToPickerField: View {
                 .padding()
                 .frame(height: AppDimensions.textFieldHeight)
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                 )
             }
 
             // Helper text
             if selectedProfileId != nil {
-                Text("This helps build the family tree by linking related people")
-                    .font(.system(size: 11))
+                Text("Link to someone directly above them on the Family Tree")
+                    .font(.system(size: 12))
                     .foregroundColor(.textSecondary)
                     .padding(.top, 2)
             }
@@ -4339,15 +4596,17 @@ struct ProfileConnectionRow: View {
                         .fill(isSelected ? accentColor : Color.cardBackground)
                         .frame(width: 44, height: 44)
 
-                    if let photoUrl = profile.photoUrl, let url = URL(string: photoUrl) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Text(profile.fullName.prefix(1).uppercased())
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(isSelected ? .black : .textPrimary)
+                    if let photoUrl = profile.photoUrl {
+                        SignedAsyncImage(reference: photoUrl) { phase in
+                            if let image = phase.image {
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } else {
+                                Text(profile.fullName.prefix(1).uppercased())
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(isSelected ? .black : .textPrimary)
+                            }
                         }
                         .frame(width: 40, height: 40)
                         .clipShape(Circle())
@@ -4398,7 +4657,7 @@ struct ProfileConnectionRow: View {
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? accentColor : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? accentColor : Color.clear, lineWidth: 0)
             )
             .contentShape(Rectangle())
         }

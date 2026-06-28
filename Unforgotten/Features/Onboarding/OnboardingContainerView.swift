@@ -159,6 +159,14 @@ struct OnboardingContainerView: View {
                 OnboardingThemeSelectionView(
                     themeManager: themeManager,
                     onContinue: {
+                        navigateTo(.motivation)
+                    }
+                )
+
+            case .motivation:
+                OnboardingMotivationView(
+                    accentColor: themeManager.accentColor,
+                    onContinue: {
                         navigateTo(.featureSelection)
                     }
                 )
@@ -174,6 +182,15 @@ struct OnboardingContainerView: View {
 
             case .friendCode:
                 OnboardingFriendCodeView(
+                    onboardingData: onboardingData,
+                    accentColor: themeManager.accentColor,
+                    onContinue: {
+                        navigateTo(.firstProfile)
+                    }
+                )
+
+            case .firstProfile:
+                OnboardingFirstProfileView(
                     onboardingData: onboardingData,
                     accentColor: themeManager.accentColor,
                     onContinue: {

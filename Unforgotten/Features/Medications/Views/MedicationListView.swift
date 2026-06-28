@@ -323,8 +323,8 @@ struct MedicationListRow: View {
         HStack {
                 HStack {
                     // Photo thumbnail
-                    if let urlString = medication.imageUrl, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
+                    if let urlString = medication.imageUrl {
+                        SignedAsyncImage(reference: urlString) { phase in
                             switch phase {
                             case .success(let image):
                                 image
@@ -609,11 +609,11 @@ struct MedicationDetailView: View {
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
                         // Photo (if available) - tap to view fullscreen
-                        if let urlString = medication.imageUrl, let url = URL(string: urlString) {
+                        if let urlString = medication.imageUrl {
                             Button {
                                 showFullscreenImage = true
                             } label: {
-                                AsyncImage(url: url) { phase in
+                                SignedAsyncImage(reference: urlString) { phase in
                                     switch phase {
                                     case .success(let image):
                                         image
@@ -712,7 +712,7 @@ struct MedicationDetailView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding()
                                 //.background(Color.cardBackgroundSoft)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
+                                .cornerRadius(AppDimensions.cardCornerRadius)
                             }
                             .disabled(isTogglingPause)
                             .padding(.horizontal, AppDimensions.screenPadding)
@@ -1101,7 +1101,7 @@ struct StreakBanner: View {
         .cornerRadius(AppDimensions.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 0)
         )
     }
 }
@@ -1324,7 +1324,7 @@ struct CalendarDayCell: View {
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isToday ? appAccentColor : Color.clear, lineWidth: 2)
+                    .stroke(isToday ? appAccentColor : Color.clear, lineWidth: 0)
             )
         }
     }
@@ -2376,24 +2376,63 @@ struct AddMedicationView: View {
     var onDismiss: (() -> Void)? = nil
     let onSave: (Medication) -> Void
 
+    // MARK: - Step
+
+    enum Step: Int, CaseIterable {
+        case name
+        case type
+        case strength
+        case intake
+        case frequency
+        case schedule
+        case summary
+    }
+
+    @State private var step: Step = .name
+
+    // MARK: - Form fields
+
     @State private var name = ""
-    @State private var strength = ""
+    @State private var strengthValue = ""
+    @State private var strengthUnit = ""
     @State private var form = ""
     @State private var reason = ""
     @State private var notes = ""
     @State private var intakeInstruction: IntakeInstruction?
     @State private var scheduleType: ScheduleType = .scheduled
-    @State private var schedules: [ScheduleData] = []
     @State private var selectedImage: UIImage?
     @State private var doseDescription = ""
-    @State private var editingScheduleIndex: Int?
-    @State private var newScheduleData = ScheduleData()
-    @State private var showScheduleModal = false
+
+    // Schedule (single inline schedule with per-time dosage)
+    @State private var selectedDays: [Int] = [0, 1, 2, 3, 4, 5, 6]
+    @State private var timeRows: [TimeDosageRow] = [TimeDosageRow()]
+    @State private var startDate: Date = Date()
+    @State private var useDuration = false
+    @State private var durationValue = 7
+    @State private var durationUnit: DurationUnit = .days
+    @State private var showEndDate = false
+    @State private var endDate: Date = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
 
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private let forms = ["Tablet", "Capsule", "Liquid", "Injection", "Inhaler", "Patch", "Cream", "Drops", "Spray", "Other"]
+    /// A time slot paired with its own dosage.
+    struct TimeDosageRow: Identifiable, Equatable {
+        let id = UUID()
+        var time: Date = {
+            var dc = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            dc.hour = 8
+            dc.minute = 0
+            return Calendar.current.date(from: dc) ?? Date()
+        }()
+        var dosage: String = ""
+    }
+
+    private let forms = ["Tablet", "Capsule", "Liquid", "Cream", "Inhaler", "Injection", "Other"]
+    private let strengthUnits = ["None", "mg", "mcg", "g", "mL"]
+
+    /// Days ordered Monday-first: [1, 2, 3, 4, 5, 6, 0]
+    private let mondayFirstDays = [1, 2, 3, 4, 5, 6, 0]
 
     private func dismissView() {
         if let onDismiss = onDismiss {
@@ -2403,14 +2442,99 @@ struct AddMedicationView: View {
         }
     }
 
+    // MARK: - Combined strength string
+
+    private var combinedStrength: String? {
+        let value = strengthValue.trimmingCharacters(in: .whitespaces)
+        guard !value.isEmpty else { return nil }
+        // strengthUnit is empty when "None" is selected — store just the value in that case.
+        return strengthUnit.isEmpty ? value : "\(value)\(strengthUnit)"
+    }
+
+    // MARK: - Step navigation
+
+    /// The ordered steps for the current flow. The schedule step is skipped when "As Required".
+    private var flow: [Step] {
+        scheduleType == .scheduled
+            ? Step.allCases
+            : Step.allCases.filter { $0 != .schedule }
+    }
+
+    private var isFirstStep: Bool {
+        flow.first == step
+    }
+
+    private var isLastStep: Bool {
+        flow.last == step
+    }
+
+    /// Whether the user can advance from the current step.
+    private var canAdvance: Bool {
+        switch step {
+        case .name:
+            return !name.isBlank
+        case .schedule:
+            return !selectedDays.isEmpty && !timeRows.isEmpty
+        default:
+            return true
+        }
+    }
+
+    private func goNext() {
+        guard let index = flow.firstIndex(of: step) else { return }
+        if index + 1 < flow.count {
+            withAnimation { step = flow[index + 1] }
+        }
+    }
+
+    private func goBack() {
+        guard let index = flow.firstIndex(of: step) else { return }
+        if index > 0 {
+            withAnimation { step = flow[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with icons
-            HStack {
+            header
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    stepContent
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppDimensions.screenPadding + 12)
+                .padding(.top, 48)
+                .padding(.bottom, AppDimensions.screenPadding)
+            }
+
+            footer
+        }
+        .background(Color.appBackgroundLight)
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
                 Button {
-                    dismissView()
+                    goBack()
                 } label: {
-                    Image(systemName: "xmark")
+                    Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white)
                         .frame(width: 48, height: 48)
@@ -2419,214 +2543,601 @@ struct AddMedicationView: View {
                                 .fill(Color.white.opacity(0.5))
                         )
                 }
-
-                Spacer()
-
-                Text("Add Medication")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Button {
-                    Task { await saveMedication() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                        )
-                }
-                .disabled(name.isBlank || isLoading)
             }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
 
-            ScrollView {
-                VStack(spacing: 24) {
+            Spacer()
 
+            Text("Add Medication")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
 
-                    // Basic info
-                    VStack(spacing: 16) {
-                        AppTextField(placeholder: "Medication Name *", text: $name)
-                        AppTextField(placeholder: "Strength (e.g., 10mg)", text: $strength)
+            Spacer()
 
-                        // Form picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("FORM")
-                                .font(.appCaption)
-                                .foregroundColor(appAccentColor)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(forms, id: \.self) { formOption in
-                                        Button {
-                                            form = formOption.lowercased()
-                                        } label: {
-                                            Text(formOption)
-                                                .font(.appCaption)
-                                                .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 10)
-                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackground)
-                                                .cornerRadius(20)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        AppTextField(placeholder: "Reason for taking", text: $reason)
-
-                        // Intake instruction picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("INTAKE INSTRUCTIONS")
-                                .font(.appCaption)
-                                .foregroundColor(appAccentColor)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    // None option
-                                    Button {
-                                        intakeInstruction = nil
-                                    } label: {
-                                        Text("None")
-                                            .font(.appCaption)
-                                            .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackground)
-                                            .cornerRadius(20)
-                                    }
-
-                                    ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
-                                        Button {
-                                            intakeInstruction = instruction
-                                        } label: {
-                                            Text(instruction.displayName)
-                                                .font(.appCaption)
-                                                .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 10)
-                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackground)
-                                                .cornerRadius(20)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        AppTextField(placeholder: "Notes (optional)", text: $notes)
-                    }
-
-                    // Schedule section
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Schedule type
-                        HStack(spacing: 12) {
-                            ForEach(ScheduleType.allCases, id: \.self) { type in
-                                Button {
-                                    scheduleType = type
-                                } label: {
-                                    Text(type.displayName)
-                                        .font(.appCaption)
-                                        .foregroundColor(scheduleType == type ? .black : .textPrimary)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
-                                        .background(scheduleType == type ? appAccentColor : Color.cardBackground)
-                                        .cornerRadius(20)
-                                }
-                            }
-                        }
-
-                        if scheduleType == .scheduled {
-                            // Existing schedule cards
-                            ForEach(schedules.indices, id: \.self) { index in
-                                ScheduleSummaryCard(
-                                    scheduleData: schedules[index],
-                                    onTap: {
-                                        editingScheduleIndex = index
-                                        showScheduleModal = true
-                                    },
-                                    onDelete: nil
-                                )
-                            }
-
-                            // Add Schedule button
-                            Button {
-                                editingScheduleIndex = nil
-                                showScheduleModal = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                    Text("Add Schedule")
-                                }
-                                .font(.appCaption)
-                                .foregroundColor(appAccentColor)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                                )
-                            }
-                        }
-
-                        if scheduleType == .asNeeded {
-                            AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
-                        }
-                    }
-
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.appCaption)
-                            .foregroundColor(.medicalRed)
-                    }
-
-
-                    // Photo picker
-                    HStack {
-                        Spacer()
-                        ImageSourcePicker(
-                            selectedImage: $selectedImage,
-                            onImageSelected: { _ in }
-                        )
-                        Spacer()
-                    }
-
-
-                }
-                .padding(AppDimensions.screenPadding)
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
             }
         }
-        .background(Color.appBackgroundLight)
-        .sheet(isPresented: $showScheduleModal) {
-            if let index = editingScheduleIndex {
-                MedicationScheduleModal(
-                    scheduleData: $schedules[index],
-                    isEditing: true,
-                    onSave: {},
-                    onDelete: {
-                        schedules.remove(at: index)
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Footer (Next button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if isLastStep {
+            Button {
+                Task { await saveMedication() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(name.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        } else {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(canAdvance ? appAccentColor : Color.gray.opacity(0.3))
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(!canAdvance)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .name:
+            nameStep
+        case .type:
+            typeStep
+        case .strength:
+            strengthStep
+        case .intake:
+            intakeStep
+        case .frequency:
+            frequencyStep
+        case .schedule:
+            scheduleStep
+        case .summary:
+            summaryStep
+        }
+    }
+
+    private func stepTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Name / Reason / Photo
+
+    private var nameStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Medication Name")
+            AppTextField(placeholder: "Add a medication name", text: $name)
+            AppTextField(placeholder: "Reason for taking", text: $reason)
+
+            HStack {
+                Spacer()
+                ImageSourcePicker(
+                    selectedImage: $selectedImage,
+                    onImageSelected: { _ in }
+                )
+                Spacer()
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: Step 2 — Type
+
+    private var typeStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Choose a medication type")
+
+            VStack(spacing: 1) {
+                ForEach(forms, id: \.self) { formOption in
+                    Button {
+                        form = formOption.lowercased()
+                    } label: {
+                        HStack {
+                            Text(formOption)
+                                .font(.appBody)
+                                .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
+                            Spacer()
+                            if form == formOption.lowercased() {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .padding()
+                        .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackground)
                     }
-                )
-            } else {
-                MedicationScheduleModal(
-                    scheduleData: $newScheduleData,
-                    isEditing: false,
-                    onSave: {
-                        schedules.append(newScheduleData)
-                        newScheduleData = ScheduleData()
-                    },
-                    onDelete: nil
-                )
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    // MARK: Step 3 — Strength
+
+    private var strengthStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Strength")
+            AppTextField(placeholder: "Add strength", text: $strengthValue)
+                .keyboardType(.decimalPad)
+
+            Text("Medication Strength")
+                .font(.appCardTitle)
+                .foregroundColor(.textPrimary)
+                .padding(.top, 8)
+
+            VStack(spacing: 1) {
+                ForEach(strengthUnits, id: \.self) { unit in
+                    // "None" maps to an empty stored unit (no default selected).
+                    let storedUnit = (unit == "None") ? "" : unit
+                    let selected = strengthUnit == storedUnit
+                    Button {
+                        strengthUnit = storedUnit
+                    } label: {
+                        HStack {
+                            Text(unit)
+                                .font(.appBody)
+                                .foregroundColor(selected ? .black : .textPrimary)
+                            Spacer()
+                            if selected {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .padding()
+                        .background(selected ? appAccentColor : Color.cardBackground)
+                    }
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    // MARK: Step 4 — Intake Instructions
+
+    private var intakeStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Intake Instructions")
+
+            VStack(spacing: 1) {
+                // None option
+                Button {
+                    intakeInstruction = nil
+                } label: {
+                    intakeRow(title: "None", selected: intakeInstruction == nil)
+                }
+
+                ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
+                    Button {
+                        intakeInstruction = instruction
+                    } label: {
+                        intakeRow(title: instruction.displayName, selected: intakeInstruction == instruction)
+                    }
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    private func intakeRow(title: String, selected: Bool) -> some View {
+        HStack {
+            Text(title)
+                .font(.appBody)
+                .foregroundColor(selected ? .black : .textPrimary)
+            Spacer()
+            if selected {
+                Image(systemName: "checkmark")
+                    .foregroundColor(.black)
+            }
+        }
+        .padding()
+        .background(selected ? appAccentColor : Color.cardBackground)
+    }
+
+    // MARK: Step 5 — Frequency
+
+    private var frequencyStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("How often will you take this?")
+
+            VStack(spacing: 1) {
+                ForEach(ScheduleType.allCases, id: \.self) { type in
+                    Button {
+                        scheduleType = type
+                    } label: {
+                        HStack {
+                            Text(type.displayName)
+                                .font(.appBody)
+                                .foregroundColor(scheduleType == type ? .black : .textPrimary)
+                            Spacer()
+                            if scheduleType == type {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .padding()
+                        .background(scheduleType == type ? appAccentColor : Color.cardBackground)
+                    }
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+
+            if scheduleType == .asNeeded {
+                Text("Dosage")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .padding(.top, 8)
+                AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
             }
         }
     }
+
+    // MARK: Step 6 — Schedule (with per-time dosage)
+
+    private var scheduleStep: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            stepTitle("Set a Schedule")
+
+            // Days
+            VStack(alignment: .leading, spacing: 12) {
+                Text("When will you take this?")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+
+                HStack(spacing: 8) {
+                    ForEach(mondayFirstDays, id: \.self) { day in
+                        Button {
+                            if selectedDays.contains(day) {
+                                selectedDays.removeAll { $0 == day }
+                            } else {
+                                selectedDays.append(day)
+                            }
+                        } label: {
+                            Text(Calendar.shortDaysOfWeek[day])
+                                .font(.appCaptionSmall)
+                                .foregroundColor(selectedDays.contains(day) ? .black : .textPrimary)
+                                .frame(width: 38, height: 38)
+                                .background(selectedDays.contains(day) ? appAccentColor : Color.cardBackground)
+                                .cornerRadius(18)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    dayPresetRow(title: "Every Day", days: [0, 1, 2, 3, 4, 5, 6])
+                    dayPresetRow(title: "Weekdays", days: [1, 2, 3, 4, 5])
+                    dayPresetRow(title: "Weekends", days: [0, 6])
+                }
+            }
+
+            // Times + per-time dosage
+            VStack(alignment: .leading, spacing: 8) {
+                Text("At What Time?")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+
+                ForEach(timeRows.indices, id: \.self) { index in
+                    HStack(spacing: 8) {
+                        if timeRows.count > 1 {
+                            Button {
+                                timeRows.remove(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundColor(.medicalRed)
+                                    .font(.system(size: 22))
+                            }
+                        }
+
+                        DatePicker(
+                            "",
+                            selection: $timeRows[index].time,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                        .tint(appAccentColor)
+
+                        TextField("Dosage", text: $timeRows[index].dosage)
+                            .font(.appCaption)
+                            .foregroundColor(.textPrimary)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+                }
+
+                // Add a time
+                Button {
+                    var row = TimeDosageRow()
+                    if let last = timeRows.last {
+                        row.time = Calendar.current.date(byAdding: .hour, value: 1, to: last.time) ?? last.time
+                    }
+                    timeRows.append(row)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.system(size: 22))
+                        Text("Add a time")
+                            .font(.appCaption)
+                            .foregroundColor(.textPrimary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                }
+            }
+
+            // Start Date
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Start Date")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+
+                DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
+                    .labelsHidden()
+                    .font(.appBody)
+                    .foregroundColor(.textPrimary)
+                    .tint(appAccentColor)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+
+            // End Date / Duration
+            VStack(alignment: .leading, spacing: 8) {
+                Text("End Date")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    Toggle(isOn: $useDuration) {
+                        Text("Use Duration")
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                    }
+                    .tint(appAccentColor)
+
+                    if useDuration {
+                        HStack {
+                            Text("Take for")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                            Spacer()
+                            Stepper("\(durationValue)", value: $durationValue, in: 1...maxDurationValue)
+                                .fixedSize()
+                            Picker("", selection: $durationUnit) {
+                                ForEach(DurationUnit.allCases, id: \.self) { unit in
+                                    Text(unit.displayName).tag(unit)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+                        }
+                    } else {
+                        Toggle(isOn: $showEndDate) {
+                            Text("Set End Date")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                        }
+                        .tint(appAccentColor)
+
+                        if showEndDate {
+                            DatePicker(
+                                "End Date",
+                                selection: $endDate,
+                                in: startDate...,
+                                displayedComponents: .date
+                            )
+                            .font(.appBody)
+                            .foregroundColor(.textPrimary)
+                            .tint(appAccentColor)
+                        }
+                    }
+                }
+                .padding(AppDimensions.cardPadding)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+        }
+    }
+
+    private func dayPresetRow(title: String, days: [Int]) -> some View {
+        let selected = selectedDays.sorted() == days.sorted()
+        return Button {
+            selectedDays = days
+        } label: {
+            Text(title)
+                .font(.appCaption)
+                .foregroundColor(selected ? .black : .textPrimary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(selected ? appAccentColor : Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    private var maxDurationValue: Int {
+        switch durationUnit {
+        case .days: return 365
+        case .weeks: return 52
+        case .months: return 12
+        }
+    }
+
+    // MARK: Step 7 — Summary
+
+    private var summaryStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stepTitle("Summary")
+
+            summarySection(title: "Medication Details") {
+                Text(name.isBlank ? "—" : name)
+                    .font(.appBody)
+                    .foregroundColor(.textSecondary)
+                if !form.isBlank {
+                    Text(form.capitalized)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+                if let strength = combinedStrength {
+                    Text(strength)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            if scheduleType == .scheduled {
+                // Days chips
+                HStack(spacing: 6) {
+                    ForEach(mondayFirstDays, id: \.self) { day in
+                        Text(Calendar.shortDaysOfWeek[day])
+                            .font(.appCaptionSmall)
+                            .foregroundColor(selectedDays.contains(day) ? .black : .textMuted)
+                            .frame(width: 32, height: 32)
+                            .background(selectedDays.contains(day) ? appAccentColor : Color.cardBackground)
+                            .clipShape(Circle())
+                    }
+                }
+
+                summarySection(title: "Schedule") {
+                    Text(daysSummaryText)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                    ForEach(sortedTimeRows) { row in
+                        Text("\(timeString(row.time))\(row.dosage.isBlank ? "" : "  \(row.dosage)")")
+                            .font(.appCaption)
+                            .foregroundColor(.textSecondary)
+                    }
+                    Text("Start Date: \(dateString(startDate))")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                    Text("End Date: \(endDateSummaryText)")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            } else {
+                summarySection(title: "As Required") {
+                    Text(doseDescription.isBlank ? "Take as needed" : doseDescription)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            if let instruction = intakeInstruction {
+                summarySection(title: "Intake") {
+                    Text(instruction.displayName)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Notes")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+                AppTextField(placeholder: "Notes (optional)", text: $notes)
+            }
+        }
+    }
+
+    private func summarySection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.appBodyMedium)
+                .foregroundColor(.textPrimary)
+            content()
+        }
+    }
+
+    private var sortedTimeRows: [TimeDosageRow] {
+        timeRows.sorted { $0.time < $1.time }
+    }
+
+    private var daysSummaryText: String {
+        let sorted = selectedDays.sorted()
+        if sorted.count == 7 { return "Every Day" }
+        if sorted == [1, 2, 3, 4, 5] { return "Weekdays" }
+        if sorted == [0, 6] { return "Weekends" }
+        return mondayFirstDays
+            .filter { selectedDays.contains($0) }
+            .map { Calendar.shortDaysOfWeek[$0] }
+            .joined(separator: ", ")
+    }
+
+    private var endDateSummaryText: String {
+        if useDuration, let end = computedEndDate {
+            return dateString(end)
+        } else if showEndDate {
+            return dateString(endDate)
+        }
+        return "Ongoing"
+    }
+
+    private func timeString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mma"
+        formatter.amSymbol = "AM"
+        formatter.pmSymbol = "PM"
+        return formatter.string(from: date)
+    }
+
+    private func dateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
+    }
+
+    private var computedEndDate: Date? {
+        let calendar = Calendar.current
+        switch durationUnit {
+        case .days:
+            return calendar.date(byAdding: .day, value: durationValue, to: startDate)
+        case .weeks:
+            return calendar.date(byAdding: .day, value: durationValue * 7, to: startDate)
+        case .months:
+            return calendar.date(byAdding: .month, value: durationValue, to: startDate)
+        }
+    }
+
+    // MARK: - Save
 
     private func saveMedication() async {
         guard let account = appState.currentAccount else { return }
@@ -2643,7 +3154,7 @@ struct AddMedicationView: View {
             accountId: account.id,
             profileId: primaryProfile.id,
             name: name,
-            strength: strength.isBlank ? nil : strength,
+            strength: combinedStrength,
             form: form.isBlank ? nil : form,
             reason: reason.isBlank ? nil : reason,
             notes: notes.isBlank ? nil : notes,
@@ -2660,30 +3171,52 @@ struct AddMedicationView: View {
                 medication = try await appState.medicationRepository.updateMedication(medication)
             }
 
-            // Create schedules if needed
-            if scheduleType == .scheduled && !schedules.isEmpty {
-                for schedule in schedules {
-                    let scheduleInsert = MedicationScheduleInsert(
-                        accountId: account.id,
-                        medicationId: medication.id,
-                        scheduleType: scheduleType,
-                        startDate: schedule.startDate,
-                        endDate: schedule.hasEndDate ? schedule.endDate : nil,
-                        scheduleEntries: schedule.entries,
-                        doseDescription: nil
-                    )
-                    _ = try await appState.medicationRepository.createSchedule(scheduleInsert)
+            // Create schedule
+            if scheduleType == .scheduled && !timeRows.isEmpty {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm"
+                let sortedDays = selectedDays.sorted()
 
-                    // Schedule notifications for each entry
-                    for entry in schedule.entries {
-                        if let scheduledTime = timeStringToDate(entry.time) {
-                            await NotificationService.shared.scheduleMedicationReminder(
-                                medicationId: medication.id,
-                                medicationName: medication.name,
-                                scheduledTime: scheduledTime,
-                                doseDescription: entry.dosage
-                            )
-                        }
+                let entries = sortedTimeRows.enumerated().map { index, row in
+                    ScheduleEntry(
+                        time: formatter.string(from: row.time),
+                        dosage: row.dosage.isBlank ? nil : row.dosage,
+                        daysOfWeek: sortedDays,
+                        durationValue: nil,
+                        durationUnit: .days,
+                        sortOrder: index
+                    )
+                }
+
+                let resolvedEndDate: Date?
+                if useDuration {
+                    resolvedEndDate = computedEndDate
+                } else if showEndDate {
+                    resolvedEndDate = endDate
+                } else {
+                    resolvedEndDate = nil
+                }
+
+                let scheduleInsert = MedicationScheduleInsert(
+                    accountId: account.id,
+                    medicationId: medication.id,
+                    scheduleType: scheduleType,
+                    startDate: startDate,
+                    endDate: resolvedEndDate,
+                    scheduleEntries: entries,
+                    doseDescription: nil
+                )
+                _ = try await appState.medicationRepository.createSchedule(scheduleInsert)
+
+                // Schedule notifications for each entry
+                for entry in entries {
+                    if let scheduledTime = timeStringToDate(entry.time) {
+                        await NotificationService.shared.scheduleMedicationReminder(
+                            medicationId: medication.id,
+                            medicationName: medication.name,
+                            scheduledTime: scheduledTime,
+                            doseDescription: entry.dosage
+                        )
                     }
                 }
             } else if scheduleType == .asNeeded {
@@ -2737,37 +3270,104 @@ struct EditMedicationView: View {
     var onDismiss: (() -> Void)? = nil
     let onSave: (Medication) -> Void
 
+    // MARK: - Step
+
+    /// The fixed-position steps. Schedule pages are inserted dynamically (one per schedule),
+    /// so they are represented as an associated-value case rather than a fixed enum case.
+    enum FlowStep: Equatable {
+        case name
+        case type
+        case strength
+        case intake
+        case frequency
+        case schedule(Int)   // index into scheduleDrafts
+        case summary
+    }
+
+    @State private var step: FlowStep = .name
+
+    // MARK: - Form fields
+
     @State private var name: String
-    @State private var strength: String
+    @State private var strengthValue: String
+    @State private var strengthUnit: String
     @State private var form: String
     @State private var reason: String
     @State private var notes: String
     @State private var intakeInstruction: IntakeInstruction?
     @State private var scheduleType: ScheduleType = .scheduled
-    @State private var schedules: [ScheduleData] = []
-    @State private var doseDescription: String = ""
-    @State private var editingScheduleIndex: Int?
-    @State private var newScheduleData = ScheduleData()
-    @State private var showScheduleModal = false
     @State private var selectedImage: UIImage?
     @State private var removePhoto = false
+    @State private var doseDescription = ""
+
+    /// One draft per schedule. A medication may have several schedules, each shown on its own page.
+    @State private var scheduleDrafts: [ScheduleDraft] = [ScheduleDraft()]
 
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showDeleteConfirmation = false
 
-    private let forms = ["Tablet", "Capsule", "Liquid", "Injection", "Inhaler", "Patch", "Cream", "Drops", "Spray", "Other"]
+    /// A time slot paired with its own dosage.
+    struct TimeDosageRow: Identifiable, Equatable {
+        let id = UUID()
+        var time: Date = {
+            var dc = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            dc.hour = 8
+            dc.minute = 0
+            return Calendar.current.date(from: dc) ?? Date()
+        }()
+        var dosage: String = ""
+    }
+
+    /// All editable state for a single schedule (its own page in the flow).
+    struct ScheduleDraft: Identifiable, Equatable {
+        let id = UUID()
+        /// Identifier of the existing schedule row, so save updates rather than inserts.
+        var existingScheduleId: UUID?
+        var selectedDays: [Int] = [0, 1, 2, 3, 4, 5, 6]
+        var timeRows: [TimeDosageRow] = [TimeDosageRow()]
+        var startDate: Date = Date()
+        var useDuration = false
+        var durationValue = 7
+        var durationUnit: DurationUnit = .days
+        var showEndDate = false
+        var endDate: Date = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+    }
+
+    private let forms = ["Tablet", "Capsule", "Liquid", "Cream", "Inhaler", "Injection", "Other"]
+    private let strengthUnits = ["None", "mg", "mcg", "g", "mL"]
+
+    /// Days ordered Monday-first: [1, 2, 3, 4, 5, 6, 0]
+    private let mondayFirstDays = [1, 2, 3, 4, 5, 6, 0]
 
     init(medication: Medication, onDismiss: (() -> Void)? = nil, onSave: @escaping (Medication) -> Void) {
         self.medication = medication
         self.onDismiss = onDismiss
         self.onSave = onSave
         _name = State(initialValue: medication.name)
-        _strength = State(initialValue: medication.strength ?? "")
         _form = State(initialValue: medication.form ?? "")
         _reason = State(initialValue: medication.reason ?? "")
         _notes = State(initialValue: medication.notes ?? "")
         _intakeInstruction = State(initialValue: medication.intakeInstruction)
+
+        // Split the stored strength (e.g. "10mg") into value + unit for the strength step.
+        let (value, unit) = Self.splitStrength(medication.strength)
+        _strengthValue = State(initialValue: value)
+        _strengthUnit = State(initialValue: unit)
+    }
+
+    /// Splits a stored strength string such as "10mg" into ("10", "mg").
+    /// An unrecognised unit (or none) leaves the unit empty and keeps the full value.
+    private static func splitStrength(_ stored: String?) -> (value: String, unit: String) {
+        guard let stored = stored?.trimmingCharacters(in: .whitespaces), !stored.isEmpty else {
+            return ("", "")
+        }
+        let knownUnits = ["mcg", "mg", "g", "mL"]
+        for unit in knownUnits where stored.lowercased().hasSuffix(unit.lowercased()) {
+            let value = String(stored.dropLast(unit.count)).trimmingCharacters(in: .whitespaces)
+            return (value, unit)
+        }
+        return (stored, "")
     }
 
     private func dismissView() {
@@ -2778,209 +3378,75 @@ struct EditMedicationView: View {
         }
     }
 
+    // MARK: - Combined strength string
+
+    private var combinedStrength: String? {
+        let value = strengthValue.trimmingCharacters(in: .whitespaces)
+        guard !value.isEmpty else { return nil }
+        // strengthUnit is empty when "None" is selected — store just the value in that case.
+        return strengthUnit.isEmpty ? value : "\(value)\(strengthUnit)"
+    }
+
+    // MARK: - Step navigation
+
+    /// The ordered steps for the current flow. When "Scheduled", one schedule page is inserted
+    /// per draft; when "As Required" the schedule pages are skipped entirely.
+    private var flow: [FlowStep] {
+        var steps: [FlowStep] = [.name, .type, .strength, .intake, .frequency]
+        if scheduleType == .scheduled {
+            steps.append(contentsOf: scheduleDrafts.indices.map { FlowStep.schedule($0) })
+        }
+        steps.append(.summary)
+        return steps
+    }
+
+    private var isFirstStep: Bool {
+        flow.first == step
+    }
+
+    private var isLastStep: Bool {
+        flow.last == step
+    }
+
+    /// Whether the user can advance from the current step.
+    private var canAdvance: Bool {
+        switch step {
+        case .name:
+            return !name.isBlank
+        case .schedule(let index):
+            guard scheduleDrafts.indices.contains(index) else { return true }
+            let draft = scheduleDrafts[index]
+            return !draft.selectedDays.isEmpty && !draft.timeRows.isEmpty
+        default:
+            return true
+        }
+    }
+
+    private func goNext() {
+        guard let index = flow.firstIndex(of: step) else { return }
+        if index + 1 < flow.count {
+            withAnimation { step = flow[index + 1] }
+        }
+    }
+
+    private func goBack() {
+        guard let index = flow.firstIndex(of: step) else { return }
+        if index > 0 {
+            withAnimation { step = flow[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with icons
-            HStack {
-                Button {
-                    dismissView()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.5))
-                        )
-                }
-
-                Spacer()
-
-                Text("Edit Medication")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Button {
-                    Task { await saveMedication() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                        )
-                }
-                .disabled(name.isBlank || isLoading)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
+            header
 
             ScrollView {
-                VStack(spacing: 24) {
-                    // Photo picker
-                    HStack {
-                        Spacer()
-                        ImageSourcePicker(
-                            selectedImage: $selectedImage,
-                            currentImageUrl: removePhoto ? nil : medication.imageUrl,
-                            onImageSelected: { _ in removePhoto = false },
-                            onRemove: { removePhoto = true }
-                        )
-                        Spacer()
-                    }
-
-                    // Basic info
-                    VStack(spacing: 16) {
-                        AppTextField(placeholder: "Medication Name *", text: $name)
-                        AppTextField(placeholder: "Strength (e.g., 10mg)", text: $strength)
-
-                        // Form picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Form")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(forms, id: \.self) { formOption in
-                                        Button {
-                                            form = formOption.lowercased()
-                                        } label: {
-                                            Text(formOption)
-                                                .font(.appCaption)
-                                                .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 10)
-                                                .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackground)
-                                                .cornerRadius(20)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        AppTextField(placeholder: "Reason for taking", text: $reason)
-
-                        // Intake instruction picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Intake Instructions")
-                                .font(.appCaption)
-                                .foregroundColor(.textSecondary)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    Button {
-                                        intakeInstruction = nil
-                                    } label: {
-                                        Text("None")
-                                            .font(.appCaption)
-                                            .foregroundColor(intakeInstruction == nil ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(intakeInstruction == nil ? appAccentColor : Color.cardBackground)
-                                            .cornerRadius(20)
-                                    }
-
-                                    ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
-                                        Button {
-                                            intakeInstruction = instruction
-                                        } label: {
-                                            Text(instruction.displayName)
-                                                .font(.appCaption)
-                                                .foregroundColor(intakeInstruction == instruction ? .black : .textPrimary)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 10)
-                                                .background(intakeInstruction == instruction ? appAccentColor : Color.cardBackground)
-                                                .cornerRadius(20)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        AppTextField(placeholder: "Notes (optional)", text: $notes)
-                    }
-
-                    // Schedule section
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Schedule type
-                        HStack(spacing: 12) {
-                            ForEach(ScheduleType.allCases, id: \.self) { type in
-                                Button {
-                                    scheduleType = type
-                                } label: {
-                                    Text(type.displayName)
-                                        .font(.appCaption)
-                                        .foregroundColor(scheduleType == type ? .black : .textPrimary)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
-                                        .background(scheduleType == type ? appAccentColor : Color.cardBackground)
-                                        .cornerRadius(20)
-                                }
-                            }
-                        }
-
-                        if scheduleType == .scheduled {
-                            // Existing schedule cards
-                            ForEach(schedules.indices, id: \.self) { index in
-                                ScheduleSummaryCard(
-                                    scheduleData: schedules[index],
-                                    onTap: {
-                                        editingScheduleIndex = index
-                                        showScheduleModal = true
-                                    },
-                                    onDelete: nil
-                                )
-                            }
-
-                            // Add Schedule button
-                            Button {
-                                editingScheduleIndex = nil
-                                showScheduleModal = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                    Text("Add Schedule")
-                                }
-                                .font(.appCaption)
-                                .foregroundColor(appAccentColor)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.cardBackground)
-                                .cornerRadius(AppDimensions.buttonCornerRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                                )
-                            }
-                        }
-
-                        if scheduleType == .asNeeded {
-                            AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
-                        }
-                    }
-
-                    // Delete button
-                    Button {
-                        showDeleteConfirmation = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "trash")
-                            Text("Delete Medication")
-                        }
-                        .font(.appBodyMedium)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.medicalRed)
-                        .cornerRadius(AppDimensions.buttonCornerRadius)
-                    }
-                    .padding(.top, 16)
+                VStack(alignment: .leading, spacing: 24) {
+                    stepContent
 
                     if let error = errorMessage {
                         Text(error)
@@ -2988,32 +3454,15 @@ struct EditMedicationView: View {
                             .foregroundColor(.medicalRed)
                     }
                 }
-                .padding(AppDimensions.screenPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppDimensions.screenPadding + 12)
+                .padding(.top, 48)
+                .padding(.bottom, AppDimensions.screenPadding)
             }
+
+            footer
         }
         .background(Color.appBackgroundLight)
-        .sheet(isPresented: $showScheduleModal) {
-            if let index = editingScheduleIndex {
-                MedicationScheduleModal(
-                    scheduleData: $schedules[index],
-                    isEditing: true,
-                    onSave: {},
-                    onDelete: {
-                        schedules.remove(at: index)
-                    }
-                )
-            } else {
-                MedicationScheduleModal(
-                    scheduleData: $newScheduleData,
-                    isEditing: false,
-                    onSave: {
-                        schedules.append(newScheduleData)
-                        newScheduleData = ScheduleData()
-                    },
-                    onDelete: nil
-                )
-            }
-        }
         .task {
             await loadSchedule()
         }
@@ -3027,46 +3476,771 @@ struct EditMedicationView: View {
         }
     }
 
-    private func loadSchedule() async {
-        do {
-            let loadedSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+    // MARK: - Header
 
-            if !loadedSchedules.isEmpty {
-                scheduleType = loadedSchedules.first?.scheduleType ?? .scheduled
+    private var header: some View {
+        HStack {
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button {
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
+            }
 
-                self.schedules = loadedSchedules.map { schedule in
-                    var data = ScheduleData()
-                    data.existingScheduleId = schedule.id
-                    data.startDate = schedule.startDate
+            Spacer()
 
-                    // Load schedule entries or convert legacy times
-                    if let entries = schedule.scheduleEntries, !entries.isEmpty {
-                        data.entries = entries
-                    } else if let times = schedule.times {
-                        data.entries = times.enumerated().map { index, time in
-                            ScheduleEntry(
-                                time: time,
-                                dosage: schedule.doseDescription,
-                                daysOfWeek: schedule.daysOfWeek ?? [0, 1, 2, 3, 4, 5, 6],
-                                sortOrder: index
-                            )
+            Text("Edit Medication")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
+            }
+        }
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Footer (Next / Done button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if isLastStep {
+            Button {
+                Task { await saveMedication() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(name.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(name.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        } else {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(canAdvance ? appAccentColor : Color.gray.opacity(0.3))
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(!canAdvance)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .name:
+            nameStep
+        case .type:
+            typeStep
+        case .strength:
+            strengthStep
+        case .intake:
+            intakeStep
+        case .frequency:
+            frequencyStep
+        case .schedule(let index):
+            scheduleStep(index)
+        case .summary:
+            summaryStep
+        }
+    }
+
+    private func stepTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Name / Reason / Photo
+
+    private var nameStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Medication Name")
+            AppTextField(placeholder: "Add a medication name", text: $name)
+            AppTextField(placeholder: "Reason for taking", text: $reason)
+
+            HStack {
+                Spacer()
+                ImageSourcePicker(
+                    selectedImage: $selectedImage,
+                    currentImageUrl: removePhoto ? nil : medication.imageUrl,
+                    onImageSelected: { _ in removePhoto = false },
+                    onRemove: { removePhoto = true }
+                )
+                Spacer()
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: Step 2 — Type
+
+    private var typeStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Choose a medication type")
+
+            VStack(spacing: 1) {
+                ForEach(forms, id: \.self) { formOption in
+                    Button {
+                        form = formOption.lowercased()
+                    } label: {
+                        HStack {
+                            Text(formOption)
+                                .font(.appBody)
+                                .foregroundColor(form == formOption.lowercased() ? .black : .textPrimary)
+                            Spacer()
+                            if form == formOption.lowercased() {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .padding()
+                        .background(form == formOption.lowercased() ? appAccentColor : Color.cardBackground)
+                    }
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    // MARK: Step 3 — Strength
+
+    private var strengthStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Strength")
+            AppTextField(placeholder: "Add strength", text: $strengthValue)
+                .keyboardType(.decimalPad)
+
+            Text("Medication Strength")
+                .font(.appCardTitle)
+                .foregroundColor(.textPrimary)
+                .padding(.top, 8)
+
+            VStack(spacing: 1) {
+                ForEach(strengthUnits, id: \.self) { unit in
+                    // "None" maps to an empty stored unit (no default selected).
+                    let storedUnit = (unit == "None") ? "" : unit
+                    let selected = strengthUnit == storedUnit
+                    Button {
+                        strengthUnit = storedUnit
+                    } label: {
+                        HStack {
+                            Text(unit)
+                                .font(.appBody)
+                                .foregroundColor(selected ? .black : .textPrimary)
+                            Spacer()
+                            if selected {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .padding()
+                        .background(selected ? appAccentColor : Color.cardBackground)
+                    }
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    // MARK: Step 4 — Intake Instructions
+
+    private var intakeStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("Intake Instructions")
+
+            VStack(spacing: 1) {
+                // None option
+                Button {
+                    intakeInstruction = nil
+                } label: {
+                    intakeRow(title: "None", selected: intakeInstruction == nil)
+                }
+
+                ForEach(IntakeInstruction.allCases, id: \.self) { instruction in
+                    Button {
+                        intakeInstruction = instruction
+                    } label: {
+                        intakeRow(title: instruction.displayName, selected: intakeInstruction == instruction)
+                    }
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    private func intakeRow(title: String, selected: Bool) -> some View {
+        HStack {
+            Text(title)
+                .font(.appBody)
+                .foregroundColor(selected ? .black : .textPrimary)
+            Spacer()
+            if selected {
+                Image(systemName: "checkmark")
+                    .foregroundColor(.black)
+            }
+        }
+        .padding()
+        .background(selected ? appAccentColor : Color.cardBackground)
+    }
+
+    // MARK: Step 5 — Frequency
+
+    private var frequencyStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            stepTitle("How often will you take this?")
+
+            VStack(spacing: 1) {
+                ForEach(ScheduleType.allCases, id: \.self) { type in
+                    Button {
+                        scheduleType = type
+                    } label: {
+                        HStack {
+                            Text(type.displayName)
+                                .font(.appBody)
+                                .foregroundColor(scheduleType == type ? .black : .textPrimary)
+                            Spacer()
+                            if scheduleType == type {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        .padding()
+                        .background(scheduleType == type ? appAccentColor : Color.cardBackground)
+                    }
+                }
+            }
+            .cornerRadius(AppDimensions.cardCornerRadius)
+
+            if scheduleType == .asNeeded {
+                Text("Dosage")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .padding(.top, 8)
+                AppTextField(placeholder: "Dose (e.g., 2 tablets)", text: $doseDescription)
+            }
+        }
+    }
+
+    // MARK: Step 6 — Schedule (with per-time dosage) — one page per schedule
+
+    @ViewBuilder
+    private func scheduleStep(_ index: Int) -> some View {
+        // Guard against a transient out-of-range index while drafts are being added/removed.
+        if scheduleDrafts.indices.contains(index) {
+            let draft = $scheduleDrafts[index]
+
+            VStack(alignment: .leading, spacing: 24) {
+                stepTitle("Edit Schedule \(index + 1)")
+
+                // Days
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("When will you take this?")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+
+                    HStack(spacing: 8) {
+                        ForEach(mondayFirstDays, id: \.self) { day in
+                            Button {
+                                if draft.wrappedValue.selectedDays.contains(day) {
+                                    draft.wrappedValue.selectedDays.removeAll { $0 == day }
+                                } else {
+                                    draft.wrappedValue.selectedDays.append(day)
+                                }
+                            } label: {
+                                Text(Calendar.shortDaysOfWeek[day])
+                                    .font(.appCaptionSmall)
+                                    .foregroundColor(draft.wrappedValue.selectedDays.contains(day) ? .black : .textPrimary)
+                                    .frame(width: 38, height: 38)
+                                    .background(draft.wrappedValue.selectedDays.contains(day) ? appAccentColor : Color.cardBackground)
+                                    .cornerRadius(18)
+                            }
                         }
                     }
 
-                    if let scheduleEndDate = schedule.endDate {
-                        data.hasEndDate = true
-                        data.endDate = scheduleEndDate
+                    HStack(spacing: 8) {
+                        dayPresetRow(draft, title: "Every Day", days: [0, 1, 2, 3, 4, 5, 6])
+                        dayPresetRow(draft, title: "Weekdays", days: [1, 2, 3, 4, 5])
+                        dayPresetRow(draft, title: "Weekends", days: [0, 6])
                     }
-
-                    return data
                 }
 
-                doseDescription = loadedSchedules.first?.doseDescription ?? ""
+                // Times + per-time dosage
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("At What Time?")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+
+                    ForEach(draft.timeRows.indices, id: \.self) { rowIndex in
+                        HStack(spacing: 8) {
+                            if draft.wrappedValue.timeRows.count > 1 {
+                                Button {
+                                    draft.wrappedValue.timeRows.remove(at: rowIndex)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundColor(.medicalRed)
+                                        .font(.system(size: 22))
+                                }
+                            }
+
+                            DatePicker(
+                                "",
+                                selection: draft.timeRows[rowIndex].time,
+                                displayedComponents: .hourAndMinute
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .tint(appAccentColor)
+
+                            TextField("Dosage", text: draft.timeRows[rowIndex].dosage)
+                                .font(.appCaption)
+                                .foregroundColor(.textPrimary)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                    }
+
+                    // Add a time
+                    Button {
+                        var row = TimeDosageRow()
+                        if let last = draft.wrappedValue.timeRows.last {
+                            row.time = Calendar.current.date(byAdding: .hour, value: 1, to: last.time) ?? last.time
+                        }
+                        draft.wrappedValue.timeRows.append(row)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.system(size: 22))
+                            Text("Add a time")
+                                .font(.appCaption)
+                                .foregroundColor(.textPrimary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                    }
+                }
+
+                // Start Date
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Start Date")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+
+                    DatePicker("Start Date", selection: draft.startDate, displayedComponents: .date)
+                        .labelsHidden()
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                        .tint(appAccentColor)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                }
+
+                // End Date / Duration
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("End Date")
+                        .font(.appBodyMedium)
+                        .foregroundColor(.textPrimary)
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        Toggle(isOn: draft.useDuration) {
+                            Text("Use Duration")
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                        }
+                        .tint(appAccentColor)
+
+                        if draft.wrappedValue.useDuration {
+                            HStack {
+                                Text("Take for")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                                Spacer()
+                                Stepper("\(draft.wrappedValue.durationValue)", value: draft.durationValue, in: 1...maxDurationValue(for: draft.wrappedValue.durationUnit))
+                                    .fixedSize()
+                                Picker("", selection: draft.durationUnit) {
+                                    ForEach(DurationUnit.allCases, id: \.self) { unit in
+                                        Text(unit.displayName).tag(unit)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(appAccentColor)
+                            }
+                        } else {
+                            Toggle(isOn: draft.showEndDate) {
+                                Text("Set End Date")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                            }
+                            .tint(appAccentColor)
+
+                            if draft.wrappedValue.showEndDate {
+                                DatePicker(
+                                    "End Date",
+                                    selection: draft.endDate,
+                                    in: draft.wrappedValue.startDate...,
+                                    displayedComponents: .date
+                                )
+                                .font(.appBody)
+                                .foregroundColor(.textPrimary)
+                                .tint(appAccentColor)
+                            }
+                        }
+                    }
+                    .padding(AppDimensions.cardPadding)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+                }
+
+                // Add / remove schedule controls
+                VStack(spacing: 12) {
+                    Button {
+                        addSchedule(after: index)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("Add another schedule")
+                        }
+                        .font(.appCaption)
+                        .foregroundColor(appAccentColor)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                    }
+
+                    if scheduleDrafts.count > 1 {
+                        Button {
+                            removeSchedule(at: index)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                Text("Remove this schedule")
+                            }
+                            .font(.appCaption)
+                            .foregroundColor(.medicalRed)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.cardBackground)
+                            .cornerRadius(AppDimensions.cardCornerRadius)
+                        }
+                    }
+                }
+                .padding(.top, 8)
             }
-        } catch {
-            // Leave schedules empty on error
         }
     }
+
+    private func dayPresetRow(_ draft: Binding<ScheduleDraft>, title: String, days: [Int]) -> some View {
+        let selected = draft.wrappedValue.selectedDays.sorted() == days.sorted()
+        return Button {
+            draft.wrappedValue.selectedDays = days
+        } label: {
+            Text(title)
+                .font(.appCaption)
+                .foregroundColor(selected ? .black : .textPrimary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(selected ? appAccentColor : Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+        }
+    }
+
+    private func maxDurationValue(for unit: DurationUnit) -> Int {
+        switch unit {
+        case .days: return 365
+        case .weeks: return 52
+        case .months: return 12
+        }
+    }
+
+    /// Inserts a new blank schedule after the given index and navigates to it.
+    private func addSchedule(after index: Int) {
+        let newIndex = min(index + 1, scheduleDrafts.count)
+        scheduleDrafts.insert(ScheduleDraft(), at: newIndex)
+        withAnimation { step = .schedule(newIndex) }
+    }
+
+    /// Removes the schedule at the given index and navigates to a sensible neighbouring page.
+    private func removeSchedule(at index: Int) {
+        guard scheduleDrafts.count > 1, scheduleDrafts.indices.contains(index) else { return }
+        scheduleDrafts.remove(at: index)
+        let target = min(index, scheduleDrafts.count - 1)
+        withAnimation { step = .schedule(target) }
+    }
+
+    // MARK: Step 7 — Summary
+
+    private var summaryStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stepTitle("Summary")
+
+            summarySection(title: "Medication Details") {
+                Text(name.isBlank ? "—" : name)
+                    .font(.appBody)
+                    .foregroundColor(.textSecondary)
+                if !form.isBlank {
+                    Text(form.capitalized)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+                if let strength = combinedStrength {
+                    Text(strength)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            if scheduleType == .scheduled {
+                ForEach(Array(scheduleDrafts.enumerated()), id: \.element.id) { offset, draft in
+                    // Days chips
+                    HStack(spacing: 6) {
+                        ForEach(mondayFirstDays, id: \.self) { day in
+                            Text(Calendar.shortDaysOfWeek[day])
+                                .font(.appCaptionSmall)
+                                .foregroundColor(draft.selectedDays.contains(day) ? .black : .textMuted)
+                                .frame(width: 32, height: 32)
+                                .background(draft.selectedDays.contains(day) ? appAccentColor : Color.cardBackground)
+                                .clipShape(Circle())
+                        }
+                    }
+
+                    summarySection(title: "Schedule \(offset + 1)") {
+                        Text(daysSummaryText(for: draft))
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                        ForEach(sortedTimeRows(for: draft)) { row in
+                            Text("\(timeString(row.time))\(row.dosage.isBlank ? "" : "  \(row.dosage)")")
+                                .font(.appCaption)
+                                .foregroundColor(.textSecondary)
+                        }
+                        Text("Start Date: \(dateString(draft.startDate))")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                        Text("End Date: \(endDateSummaryText(for: draft))")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+            } else {
+                summarySection(title: "As Required") {
+                    Text(doseDescription.isBlank ? "Take as needed" : doseDescription)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            if let instruction = intakeInstruction {
+                summarySection(title: "Intake") {
+                    Text(instruction.displayName)
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Notes")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.textPrimary)
+                AppTextField(placeholder: "Notes (optional)", text: $notes)
+            }
+
+            // Delete option lives on the final step.
+            Button {
+                showDeleteConfirmation = true
+            } label: {
+                HStack {
+                    Image(systemName: "trash")
+                    Text("Delete Medication")
+                }
+                .font(.appBodyMedium)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.medicalRed)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private func summarySection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.appBodyMedium)
+                .foregroundColor(.textPrimary)
+            content()
+        }
+    }
+
+    private func sortedTimeRows(for draft: ScheduleDraft) -> [TimeDosageRow] {
+        draft.timeRows.sorted { $0.time < $1.time }
+    }
+
+    private func daysSummaryText(for draft: ScheduleDraft) -> String {
+        let sorted = draft.selectedDays.sorted()
+        if sorted.count == 7 { return "Every Day" }
+        if sorted == [1, 2, 3, 4, 5] { return "Weekdays" }
+        if sorted == [0, 6] { return "Weekends" }
+        return mondayFirstDays
+            .filter { draft.selectedDays.contains($0) }
+            .map { Calendar.shortDaysOfWeek[$0] }
+            .joined(separator: ", ")
+    }
+
+    private func endDateSummaryText(for draft: ScheduleDraft) -> String {
+        if draft.useDuration, let end = computedEndDate(for: draft) {
+            return dateString(end)
+        } else if draft.showEndDate {
+            return dateString(draft.endDate)
+        }
+        return "Ongoing"
+    }
+
+    private func timeString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mma"
+        formatter.amSymbol = "AM"
+        formatter.pmSymbol = "PM"
+        return formatter.string(from: date)
+    }
+
+    private func dateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
+    }
+
+    private func computedEndDate(for draft: ScheduleDraft) -> Date? {
+        let calendar = Calendar.current
+        switch draft.durationUnit {
+        case .days:
+            return calendar.date(byAdding: .day, value: draft.durationValue, to: draft.startDate)
+        case .weeks:
+            return calendar.date(byAdding: .day, value: draft.durationValue * 7, to: draft.startDate)
+        case .months:
+            return calendar.date(byAdding: .month, value: draft.durationValue, to: draft.startDate)
+        }
+    }
+
+    /// Parses an "HH:mm" string into a Date (today) for the schedule time rows.
+    private func dateFromTimeString(_ timeString: String) -> Date {
+        let components = timeString.split(separator: ":").compactMap { Int($0) }
+        var dc = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        dc.hour = components.count > 0 ? components[0] : 8
+        dc.minute = components.count > 1 ? components[1] : 0
+        return Calendar.current.date(from: dc) ?? Date()
+    }
+
+    // MARK: - Load existing schedule
+
+    private func loadSchedule() async {
+        do {
+            let loadedSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+            guard !loadedSchedules.isEmpty else { return }
+
+            scheduleType = loadedSchedules.first?.scheduleType ?? .scheduled
+            doseDescription = loadedSchedules.first?.doseDescription ?? ""
+
+            // Build one draft per scheduled schedule. As-needed schedules carry no per-time data.
+            let scheduledSchedules = loadedSchedules.filter { $0.scheduleType == .scheduled }
+            let drafts: [ScheduleDraft] = scheduledSchedules.map { schedule in
+                var draft = ScheduleDraft()
+                draft.existingScheduleId = schedule.id
+                draft.startDate = schedule.startDate
+
+                // Resolve schedule entries (or convert legacy times) into per-time rows + selected days.
+                let entries: [ScheduleEntry]
+                if let scheduleEntries = schedule.scheduleEntries, !scheduleEntries.isEmpty {
+                    entries = scheduleEntries
+                } else if let times = schedule.times {
+                    entries = times.enumerated().map { index, time in
+                        ScheduleEntry(
+                            time: time,
+                            dosage: schedule.doseDescription,
+                            daysOfWeek: schedule.daysOfWeek ?? [0, 1, 2, 3, 4, 5, 6],
+                            sortOrder: index
+                        )
+                    }
+                } else {
+                    entries = []
+                }
+
+                if !entries.isEmpty {
+                    let sortedEntries = entries.sorted { $0.sortOrder < $1.sortOrder }
+                    draft.timeRows = sortedEntries.map { entry in
+                        var row = TimeDosageRow()
+                        row.time = dateFromTimeString(entry.time)
+                        row.dosage = entry.dosage ?? ""
+                        return row
+                    }
+                    if let days = sortedEntries.first?.daysOfWeek, !days.isEmpty {
+                        draft.selectedDays = days
+                    }
+                }
+
+                if let scheduleEndDate = schedule.endDate {
+                    draft.showEndDate = true
+                    draft.endDate = scheduleEndDate
+                }
+
+                return draft
+            }
+
+            if !drafts.isEmpty {
+                scheduleDrafts = drafts
+            }
+        } catch {
+            // Leave defaults on error.
+        }
+    }
+
+    // MARK: - Save
 
     private func saveMedication() async {
         guard let account = appState.currentAccount else { return }
@@ -3077,7 +4251,7 @@ struct EditMedicationView: View {
         // Create updated medication
         var updatedMedication = medication
         updatedMedication.name = name
-        updatedMedication.strength = strength.isBlank ? nil : strength
+        updatedMedication.strength = combinedStrength
         updatedMedication.form = form.isBlank ? nil : form
         updatedMedication.reason = reason.isBlank ? nil : reason
         updatedMedication.notes = notes.isBlank ? nil : notes
@@ -3105,44 +4279,82 @@ struct EditMedicationView: View {
         do {
             let savedMedication = try await appState.medicationRepository.updateMedication(updatedMedication)
 
-            // Update or create schedules
+            let existingSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+
             if scheduleType == .scheduled {
-                // Delete existing schedules that are no longer present
-                let existingSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
-                let keepIds = Set(schedules.compactMap { $0.existingScheduleId })
-                for existing in existingSchedules {
-                    if !keepIds.contains(existing.id) {
-                        try await appState.medicationRepository.deleteSchedule(id: existing.id)
-                    }
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm"
+
+                // Only drafts with at least one time row are persisted.
+                let drafts = scheduleDrafts.filter { !$0.timeRows.isEmpty }
+
+                // Delete any existing schedules whose draft was removed in the editor.
+                let keepIds = Set(drafts.compactMap { $0.existingScheduleId })
+                for existing in existingSchedules where !keepIds.contains(existing.id) {
+                    try await appState.medicationRepository.deleteSchedule(id: existing.id)
                 }
 
-                // Update existing or create new schedules
-                for schedule in schedules {
-                    if let existingId = schedule.existingScheduleId,
-                       let existingSchedule = existingSchedules.first(where: { $0.id == existingId }) {
-                        var updatedSchedule = existingSchedule
-                        updatedSchedule.scheduleType = scheduleType
-                        updatedSchedule.scheduleEntries = schedule.entries
-                        updatedSchedule.startDate = schedule.startDate
-                        updatedSchedule.endDate = schedule.hasEndDate ? schedule.endDate : nil
-                        updatedSchedule.doseDescription = nil
-                        _ = try await appState.medicationRepository.updateSchedule(updatedSchedule)
+                var allEntries: [ScheduleEntry] = []
+
+                for draft in drafts {
+                    let sortedDays = draft.selectedDays.sorted()
+                    let entries = sortedTimeRows(for: draft).enumerated().map { index, row in
+                        ScheduleEntry(
+                            time: formatter.string(from: row.time),
+                            dosage: row.dosage.isBlank ? nil : row.dosage,
+                            daysOfWeek: sortedDays,
+                            durationValue: nil,
+                            durationUnit: .days,
+                            sortOrder: index
+                        )
+                    }
+                    allEntries.append(contentsOf: entries)
+
+                    let resolvedEndDate: Date?
+                    if draft.useDuration {
+                        resolvedEndDate = computedEndDate(for: draft)
+                    } else if draft.showEndDate {
+                        resolvedEndDate = draft.endDate
+                    } else {
+                        resolvedEndDate = nil
+                    }
+
+                    // Update an existing schedule when this draft maps to one, otherwise insert.
+                    if let existingId = draft.existingScheduleId,
+                       var existingSchedule = existingSchedules.first(where: { $0.id == existingId }) {
+                        existingSchedule.scheduleType = scheduleType
+                        existingSchedule.scheduleEntries = entries
+                        existingSchedule.startDate = draft.startDate
+                        existingSchedule.endDate = resolvedEndDate
+                        existingSchedule.doseDescription = nil
+                        _ = try await appState.medicationRepository.updateSchedule(existingSchedule)
                     } else {
                         let scheduleInsert = MedicationScheduleInsert(
                             accountId: account.id,
                             medicationId: medication.id,
                             scheduleType: scheduleType,
-                            startDate: schedule.startDate,
-                            endDate: schedule.hasEndDate ? schedule.endDate : nil,
-                            scheduleEntries: schedule.entries,
+                            startDate: draft.startDate,
+                            endDate: resolvedEndDate,
+                            scheduleEntries: entries,
                             doseDescription: nil
                         )
                         _ = try await appState.medicationRepository.createSchedule(scheduleInsert)
                     }
                 }
+
+                // Schedule notifications across all entries from all schedules.
+                for entry in allEntries {
+                    if let scheduledTime = timeStringToDate(entry.time) {
+                        await NotificationService.shared.scheduleMedicationReminder(
+                            medicationId: medication.id,
+                            medicationName: savedMedication.name,
+                            scheduledTime: scheduledTime,
+                            doseDescription: entry.dosage
+                        )
+                    }
+                }
             } else if scheduleType == .asNeeded {
-                // Delete all existing scheduled schedules and create as-needed
-                let existingSchedules = try await appState.medicationRepository.getSchedules(medicationId: medication.id)
+                // Replace any existing schedules with a single as-needed schedule.
                 for existing in existingSchedules {
                     try await appState.medicationRepository.deleteSchedule(id: existing.id)
                 }
@@ -3171,6 +4383,18 @@ struct EditMedicationView: View {
         }
 
         isLoading = false
+    }
+
+    private func timeStringToDate(_ timeString: String) -> Date? {
+        let components = timeString.split(separator: ":").compactMap { Int($0) }
+        guard components.count >= 2 else { return nil }
+
+        let calendar = Calendar.current
+        var dateComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        dateComponents.hour = components[0]
+        dateComponents.minute = components[1]
+
+        return calendar.date(from: dateComponents)
     }
 
     private func deleteMedication() async {

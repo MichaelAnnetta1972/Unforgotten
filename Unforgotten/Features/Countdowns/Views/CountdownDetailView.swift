@@ -76,8 +76,8 @@ struct CountdownDetailView: View {
                         }
 
                         // Photo Card (if photo exists)
-                        if let imageUrl = countdown.imageUrl, let url = URL(string: imageUrl) {
-                            photoCard(url: url)
+                        if let imageUrl = countdown.imageUrl {
+                            photoCard(reference: imageUrl)
                         }
 
                         // Action Buttons
@@ -283,22 +283,13 @@ struct CountdownDetailView: View {
 
             VStack(alignment: .leading, spacing: 4) {
 
-                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                // HStack(alignment: .top, spacing: 8) {
                     Text(countdown.title)
                         .font(.appTitle)
                         .foregroundColor(.textPrimary)
                         .lineLimit(2)
 
-                    // Recurring badge
-                    if countdown.isRecurring {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.trianglehead.2.counterclockwise.rotate.90")
-                                .font(.system(size: 12))
-                            Text(countdown.recurrenceDescription ?? "Recurring")
-                                .font(.appCaption)
-                        }
-                        .foregroundColor(.textSecondary)
-                    }
+                    //Spacer(minLength: 0)
 
                     if isSharedByMe || isSharedFromOtherAccount {
                         HStack(spacing: 4) {
@@ -312,7 +303,19 @@ struct CountdownDetailView: View {
                         .padding(.vertical, 4)
                         .background(appAccentColor.opacity(0.15))
                         .cornerRadius(12)
+                        .fixedSize()
                     }
+                // }
+
+                if countdown.isRecurring {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.trianglehead.2.counterclockwise.rotate.90")
+                            .font(.system(size: 12))
+                        Text(countdown.recurrenceDescription ?? "Recurring")
+                            .font(.appCaption)
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.textSecondary)
                 }
 
                 if let subtitle = countdown.subtitle, !subtitle.isEmpty {
@@ -332,9 +335,9 @@ struct CountdownDetailView: View {
                     .font(.appBodyMedium)
                     .foregroundColor(.textPrimary)
 
-                Text(countdown.formattedDateShort)
-                    .font(.appBody)
-                    .foregroundColor(.textSecondary)
+                // Text(countdown.formattedDateShort)
+                //     .font(.appBody)
+                //     .foregroundColor(.textSecondary)
             }
 
         }
@@ -508,7 +511,7 @@ struct CountdownDetailView: View {
     }
 
     // MARK: - Photo Card
-    private func photoCard(url: URL) -> some View {
+    private func photoCard(reference: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("PHOTO")
                 .font(.appCaption)
@@ -517,7 +520,7 @@ struct CountdownDetailView: View {
             Button {
                 showFullscreenPhoto = true
             } label: {
-                AsyncImage(url: url) { phase in
+                SignedAsyncImage(reference: reference) { phase in
                     switch phase {
                     case .success(let image):
                         image

@@ -6,9 +6,10 @@ struct OnboardingWelcomeView: View {
     let onContinue: () -> Void
 
     @State private var hasAppeared = false
-    @State private var currentCarouselIndex = 0
     @State private var expandedItem: CarouselItem?
     @State private var expandedSourceFrame: CGRect = .zero
+    @State private var activeTutorial: Tutorial?
+    @State private var arrowsPulsing = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -41,8 +42,8 @@ struct OnboardingWelcomeView: View {
                     Spacer()
                         .frame(height: isRegularWidth ? 32 : 20)
 
-                    // Page indicators
-                    pageIndicator
+                    // Swipe hint
+                    swipeHint
 
                     Spacer()
 
@@ -62,6 +63,9 @@ struct OnboardingWelcomeView: View {
                 }
             )
             .background(ClearBackgroundView())
+        }
+        .fullScreenCover(item: $activeTutorial) { tutorial in
+            FullscreenVideoPlayerView(tutorial: tutorial)
         }
         .onAppear {
             guard !hasAppeared else { return }
@@ -109,20 +113,21 @@ struct OnboardingWelcomeView: View {
     // MARK: - Carousel Section
 
     private func carouselSection(in geometry: GeometryProxy) -> some View {
-        FeatureCarouselView(
+        SwipeableCardStackView(
             items: CarouselConfiguration.items,
             onItemTap: { item, frame in
-                // Convert frame to screen coordinates and show expanded view
-                expandedSourceFrame = CGRect(
-                    x: frame.origin.x,
-                    y: frame.origin.y + geometry.safeAreaInsets.top + (isRegularWidth ? 156 : 120),
-                    width: frame.width,
-                    height: frame.height
-                )
-                expandedItem = item
-            },
-            onIndexChange: { index in
-                currentCarouselIndex = index
+                if let tutorialId = item.tutorialId,
+                   let tutorial = Tutorial.allTutorials.first(where: { $0.id == tutorialId }) {
+                    activeTutorial = tutorial
+                } else {
+                    expandedSourceFrame = CGRect(
+                        x: frame.origin.x,
+                        y: frame.origin.y + geometry.safeAreaInsets.top + (isRegularWidth ? 156 : 120),
+                        width: frame.width,
+                        height: frame.height
+                    )
+                    expandedItem = item
+                }
             }
         )
         .opacity(hasAppeared ? 1 : 0)
@@ -134,19 +139,34 @@ struct OnboardingWelcomeView: View {
 
     // MARK: - Page Indicator
 
-    private var pageIndicator: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<CarouselConfiguration.itemCount, id: \.self) { index in
-                Circle()
-                    .fill(index == currentCarouselIndex ? Color.white : Color.white.opacity(0.4))
-                    .frame(width: 8, height: 8)
-            }
+    private var swipeHint: some View {
+        let pulseDistance: CGFloat = 8
+
+        return HStack(spacing: 28) {
+            Image(systemName: "chevron.left")
+                .offset(x: arrowsPulsing ? -pulseDistance : 0)
+                .opacity(arrowsPulsing ? 1.0 : 0.6)
+            Text("Swipe")
+            Image(systemName: "chevron.right")
+                .offset(x: arrowsPulsing ? pulseDistance : 0)
+                .opacity(arrowsPulsing ? 1.0 : 0.6)
         }
+        .font(.system(size: isRegularWidth ? 28 : 24, weight: .semibold))
+        .foregroundColor(.white.opacity(0.85))
+        .animation(
+            reduceMotion ? .none : .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+            value: arrowsPulsing
+        )
         .opacity(hasAppeared ? 1 : 0)
         .animation(
             reduceMotion ? .none : .spring(response: 0.6, dampingFraction: 0.8).delay(0.3),
             value: hasAppeared
         )
+        .accessibilityLabel("Swipe left or right to browse features")
+        .onAppear {
+            guard !reduceMotion else { return }
+            arrowsPulsing = true
+        }
     }
 
     // MARK: - Bottom Section
@@ -154,10 +174,10 @@ struct OnboardingWelcomeView: View {
     private func bottomSection(in geometry: GeometryProxy) -> some View {
         VStack(spacing: isRegularWidth ? 32 : 24) {
 
-            Text("Scroll through our huge range of features")
-                .font(.system(size: isRegularWidth ? 18 : 16, weight: .medium))
-                .foregroundColor(.textSecondary)
-
+            // Text("Swipe through our huge range of features")
+            //     .font(.system(size: isRegularWidth ? 18 : 16, weight: .medium))
+            //     .foregroundColor(.textSecondary)
+            Spacer()
             // Get Started button
             Button(action: onContinue) {
                 Text("Get started")

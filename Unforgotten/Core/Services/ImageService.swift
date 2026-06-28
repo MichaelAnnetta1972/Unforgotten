@@ -87,7 +87,7 @@ final class ImageUploadService {
 
     private init() {}
 
-    /// Uploads a profile photo and returns the public URL
+    /// Uploads a profile photo and returns the storage path.
     func uploadProfilePhoto(image: UIImage, profileId: UUID) async throws -> String {
         try await uploadImage(
             image: image,
@@ -96,7 +96,7 @@ final class ImageUploadService {
         )
     }
 
-    /// Uploads a medication photo and returns the public URL
+    /// Uploads a medication photo and returns the storage path.
     func uploadMedicationPhoto(image: UIImage, medicationId: UUID) async throws -> String {
         try await uploadImage(
             image: image,
@@ -105,7 +105,7 @@ final class ImageUploadService {
         )
     }
 
-    /// Uploads an appointment photo and returns the public URL
+    /// Uploads an appointment photo and returns the storage path.
     func uploadAppointmentPhoto(image: UIImage, appointmentId: UUID) async throws -> String {
         try await uploadImage(
             image: image,
@@ -114,7 +114,7 @@ final class ImageUploadService {
         )
     }
 
-    /// Uploads a countdown event photo and returns the public URL
+    /// Uploads a countdown event photo and returns the storage path.
     func uploadCountdownPhoto(image: UIImage, countdownId: UUID) async throws -> String {
         try await uploadImage(
             image: image,
@@ -123,7 +123,7 @@ final class ImageUploadService {
         )
     }
 
-    /// Uploads a recipe photo and returns the public URL
+    /// Uploads a recipe photo and returns the storage path.
     func uploadRecipePhoto(image: UIImage, recipeId: UUID) async throws -> String {
         try await uploadImage(
             image: image,
@@ -132,7 +132,7 @@ final class ImageUploadService {
         )
     }
 
-    /// Uploads an important account photo and returns the public URL
+    /// Uploads an important account photo and returns the storage path.
     func uploadAccountPhoto(image: UIImage, accountId: UUID) async throws -> String {
         try await uploadImage(
             image: image,
@@ -141,22 +141,19 @@ final class ImageUploadService {
         )
     }
 
-    /// Generic image upload method
+    /// Generic image upload method. Returns the storage path (not a public URL),
+    /// since buckets are private and consumers must request signed URLs to read.
     private func uploadImage(image: UIImage, bucket: String, path: String) async throws -> String {
-        // Resize image if needed
         let resizedImage = resizeImage(image, maxDimension: SupabaseConfig.maxImageDimension)
 
-        // Convert to JPEG data with EXIF metadata stripped
         guard let imageData = resizedImage.jpegDataStrippingMetadata(compressionQuality: 0.8) else {
             throw SupabaseError.invalidData
         }
 
-        // Check file size
         if imageData.count > SupabaseConfig.maxImageSizeBytes {
             throw SupabaseError.uploadFailed
         }
 
-        // Upload to Supabase Storage
         try await supabase.storage
             .from(bucket)
             .upload(
@@ -169,14 +166,9 @@ final class ImageUploadService {
                 )
             )
 
-        // Get public URL with cache-busting timestamp
-        let publicURL = try supabase.storage
-            .from(bucket)
-            .getPublicURL(path: path)
+        SignedImageURLService.shared.invalidate(bucket: bucket, path: path)
 
-        // Add timestamp query parameter to bust SwiftUI's AsyncImage cache
-        let timestamp = Int(Date().timeIntervalSince1970)
-        return "\(publicURL.absoluteString)?t=\(timestamp)"
+        return path
     }
 
     /// Delete an image from storage
@@ -204,21 +196,25 @@ final class ImageUploadService {
 }
 
 // MARK: - Async Image View
+/// Displays an image from a stored reference (storage path or legacy public URL).
+/// Resolves paths to short-lived signed URLs on appear via SignedImageURLService.
 struct AsyncProfileImage: View {
-    let url: String?
+    let reference: String?
     let size: CGFloat
     let placeholder: String
 
+    @State private var resolvedURL: URL?
+
     init(url: String?, size: CGFloat = 80, placeholder: String = "person.circle.fill") {
-        self.url = url
+        self.reference = url
         self.size = size
         self.placeholder = placeholder
     }
 
     var body: some View {
         Group {
-            if let urlString = url, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
+            if let resolvedURL {
+                AsyncImage(url: resolvedURL) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
@@ -235,9 +231,15 @@ struct AsyncProfileImage: View {
                         placeholderView
                     }
                 }
+            } else if reference != nil && !(reference?.isEmpty ?? true) {
+                ProgressView()
+                    .frame(width: size, height: size)
             } else {
                 placeholderView
             }
+        }
+        .task(id: reference) {
+            resolvedURL = await SignedImageURLService.shared.resolveURL(reference: reference)
         }
     }
 
@@ -248,6 +250,38 @@ struct AsyncProfileImage: View {
             .frame(width: size, height: size)
             .background(Color.cardBackgroundSoft)
             .clipShape(Circle())
+    }
+}
+
+/// Displays an image from a stored reference (storage path or legacy public URL),
+/// without applying a circular clip. Use for rectangular medication / recipe /
+/// appointment / countdown photos. Mirrors AsyncImage's `phase` API.
+struct SignedAsyncImage<Content: View>: View {
+    let reference: String?
+    @ViewBuilder let content: (AsyncImagePhase) -> Content
+
+    @State private var resolvedURL: URL?
+    @State private var hasResolved: Bool = false
+
+    init(reference: String?, @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
+        self.reference = reference
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if let resolvedURL {
+                AsyncImage(url: resolvedURL, content: content)
+            } else if hasResolved || reference == nil || (reference?.isEmpty ?? true) {
+                content(.empty)
+            } else {
+                content(.empty)
+            }
+        }
+        .task(id: reference) {
+            resolvedURL = await SignedImageURLService.shared.resolveURL(reference: reference)
+            hasResolved = true
+        }
     }
 }
 

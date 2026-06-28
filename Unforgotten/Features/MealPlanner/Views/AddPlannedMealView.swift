@@ -105,7 +105,7 @@ struct AddPlannedMealView: View {
 
                             // Meal type picker
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("MEAL")
+                                Text("MEAL TYPE")
                                     .font(.appCaption)
                                     .foregroundColor(appAccentColor)
 
@@ -134,25 +134,9 @@ struct AddPlannedMealView: View {
 
                             // Recipe selection
                             VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("RECIPE")
-                                        .font(.appCaption)
-                                        .foregroundColor(appAccentColor)
-
-                                    Spacer()
-
-                                    Button {
-                                        showNewRecipeField.toggle()
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: showNewRecipeField ? "xmark" : "plus")
-                                                .font(.system(size: 12))
-                                            Text(showNewRecipeField ? "Cancel" : "New Meal")
-                                                .font(.appBody)
-                                        }
-                                        .foregroundColor(appAccentColor)
-                                    }
-                                }
+                                Text("MEAL")
+                                    .font(.appCaption)
+                                    .foregroundColor(appAccentColor)
 
                                 if showNewRecipeField {
                                     inlineNewRecipeSection
@@ -186,22 +170,41 @@ struct AddPlannedMealView: View {
     @ViewBuilder
     private var recipeSelectionSection: some View {
         VStack(spacing: 8) {
-            // Search
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.textSecondary)
-                    .font(.system(size: 14))
-                TextField("Search meals", text: $recipeSearchText)
-                    .font(.appBody)
-                    .foregroundColor(.textPrimary)
+            // Search + New Meal button
+            HStack(spacing: 8) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.textSecondary)
+                        .font(.system(size: 14))
+                    TextField("Search meals", text: $recipeSearchText)
+                        .font(.appBody)
+                        .foregroundColor(.textPrimary)
+                }
+                .padding(12)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                )
+
+                Button {
+                    showNewRecipeField.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("New Meal")
+                            .font(.appBody)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(appAccentColor)
+                    .cornerRadius(AppDimensions.buttonCornerRadius)
+                }
             }
-            .padding(12)
-            .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-            )
 
             if isLoadingRecipes {
                 ProgressView()
@@ -264,20 +267,41 @@ struct AddPlannedMealView: View {
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
 
-            Button {
-                Task { await createAndSelectRecipe() }
-            } label: {
-                Text("Add Meal")
-                    .font(.appBody)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(appAccentColor)
-                    .cornerRadius(AppDimensions.cardCornerRadius)
+            HStack(spacing: 8) {
+                Button {
+                    showNewRecipeField = false
+                    newRecipeName = ""
+                    newRecipeUrl = ""
+                } label: {
+                    Text("Cancel")
+                        .font(.appBody)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Color.cardBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                        )
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                }
+
+                Button {
+                    Task { await createAndSelectRecipe() }
+                } label: {
+                    Text("Add Meal")
+                        .font(.appBody)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(appAccentColor)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
+                }
+                .disabled(newRecipeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(newRecipeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
             }
-            .disabled(newRecipeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity(newRecipeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
         }
         .padding(12)
         .background(Color.cardBackground)

@@ -8,6 +8,7 @@ struct CarouselItem: Identifiable, Equatable {
     let subtitle: String
     let cardImageName: String
     let expandedMedia: ExpandedMedia
+    let tutorialId: String?
 
     /// Media type for the expanded full-screen view
     enum ExpandedMedia: Equatable {
@@ -21,91 +22,110 @@ struct CarouselItem: Identifiable, Equatable {
     }
 
     /// Convenience initializer for image-only cards (same image for card and expanded)
-    init(id: String, title: String, subtitle: String, imageName: String) {
+    init(id: String, title: String, subtitle: String, imageName: String, tutorialId: String? = nil) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.cardImageName = imageName
         self.expandedMedia = .image(imageName)
+        self.tutorialId = tutorialId
     }
 
     /// Full initializer with separate expanded media
-    init(id: String, title: String, subtitle: String, cardImageName: String, expandedMedia: ExpandedMedia) {
+    init(id: String, title: String, subtitle: String, cardImageName: String, expandedMedia: ExpandedMedia, tutorialId: String? = nil) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.cardImageName = cardImageName
         self.expandedMedia = expandedMedia
+        self.tutorialId = tutorialId
     }
 }
 
 // MARK: - Carousel Configuration
 /// Central configuration for onboarding carousel items
-/// Add new items here to have them automatically appear in the carousel
+/// Cards mirror the tutorials available in Settings. Tapping a card plays the matching tutorial video.
 struct CarouselConfiguration {
 
-    /// All carousel items - add new features here
-    /// The carousel will automatically pick up any new items added to this array
+    /// All carousel items - one per tutorial in `Tutorial.allTutorials`
     static let items: [CarouselItem] = [
         CarouselItem(
-            id: "themes",
-            title: "Personalised Themes",
-            subtitle: "Choose from preset themes or create your own personalised theme",
-            cardImageName: "carousel-feature-themes",
-            expandedMedia: .image("carousel-feature-themes-expanded")
+            id: "welcome",
+            title: "Welcome to Unforgotten",
+            subtitle: "What is Unforgotten?",
+            imageName: "carousel-feature-unforgotten",
+            tutorialId: "welcome"
         ),
         CarouselItem(
-            id: "profiles",
-            title: "Family Profiles",
-            subtitle: "Keep important details about your loved ones all in one place",
-            cardImageName: "carousel-feature-profiles",
-            expandedMedia: .image("carousel-feature-profiles-expanded")
+            id: "home",
+            title: "The Home Screen",
+            subtitle: "A quick tour of the home screen.",
+            imageName: "carousel-feature-home",
+            tutorialId: "Home"
         ),
         CarouselItem(
             id: "calendar",
-            title: "Smart Calendar",
-            subtitle: "Track birthdays, appointments and important dates effortlessly",
-            cardImageName: "carousel-feature-calendar",
-            expandedMedia: .image("carousel-feature-calendar-expanded")
+            title: "Using the Calendar",
+            subtitle: "The Calendar shows you all of your upcoming dates.",
+            imageName: "carousel-feature-calendar",
+            tutorialId: "calendar"
         ),
         CarouselItem(
-            id: "medications",
-            title: "Medication Tracking",
-            subtitle: "Never miss a dose with smart reminders and easy logging",
-            cardImageName: "carousel-feature-medications",
-            expandedMedia: .image("carousel-feature-medications-expanded")
+            id: "adding-medications",
+            title: "Adding Medications",
+            subtitle: "Add medications, set dosage, and choose reminder times.",
+            imageName: "carousel-feature-medications",
+            tutorialId: "adding-medications"
         ),
-
+        CarouselItem(
+            id: "adding-appointments",
+            title: "Adding Appointments",
+            subtitle: "Schedule an appointment, create a reminders, and even share it.",
+            imageName: "carousel-feature-appointments",
+            tutorialId: "adding-appointments"
+        ),
+        CarouselItem(
+            id: "todo-lists",
+            title: "Using To-Do Lists",
+            subtitle: "Create tasks, set due dates, and mark items complete.",
+            imageName: "carousel-feature-todo",
+            tutorialId: "todo-lists"
+        ),
+        CarouselItem(
+            id: "creating-event",
+            title: "Creating an Event",
+            subtitle: "Create an event and share it in the Family Calendar.",
+            imageName: "carousel-feature-events",
+            tutorialId: "creating-event"
+        ),
+        CarouselItem(
+            id: "meal-planner",
+            title: "Plan Your Meals",
+            subtitle: "Create a Meal Planner",
+            imageName: "carousel-feature-meals",
+            tutorialId: "meal-planner"
+        ),
+        CarouselItem(
+            id: "sticky-reminders",
+            title: "Sticky Reminders",
+            subtitle: "Create reminders that stick!",
+            imageName: "carousel-feature-reminders",
+            tutorialId: "sticky-reminders"
+        ),
+        CarouselItem(
+            id: "family-and-friends",
+            title: "Family and Friends",
+            subtitle: "Create profiles for your Family and Friends",
+            imageName: "carousel-feature-profiles",
+            tutorialId: "family-and-friends"
+        ),
         CarouselItem(
             id: "birthdays",
-            title: "Birthday Tracker",
-            subtitle: "All of your upcoming birthdays in the one place, with notifications so you never forget someone's birthday again.",
-            cardImageName: "carousel-feature-birthdays",
-            expandedMedia: .image("carousel-feature-birthdays-expanded")
-        ),
-        CarouselItem(
-            id: "notes",
-            title: "Notes and To Do Lists",
-            subtitle: "Keep track of things to do, or make a note and send it someone else",
-            cardImageName: "carousel-feature-notes",
-            expandedMedia: .image("carousel-feature-notes-expanded")
-        ),
-        CarouselItem(
-            id: "reminders",
-            title: "Sticky Reminders",
-            subtitle: "Create reminders that repeat until you log in and switch them off!",
-            cardImageName: "carousel-feature-reminders",
-            expandedMedia: .image("carousel-feature-reminders-expanded")
-        ),
-        CarouselItem(
-            id: "contacts",
-            title: "Useful Contacts",
-            subtitle: "Make a list of all your important contacts, like doctors or tradesmen.",
-            cardImageName: "carousel-feature-contacts",
-            expandedMedia: .image("carousel-feature-contacts-expanded")
+            title: "Birthdays",
+            subtitle: "Never forget a birthday again.",
+            imageName: "carousel-feature-birthdays",
+            tutorialId: "birthdays"
         )
-
-
     ]
 
     /// Number of items (used for infinite scroll calculations)

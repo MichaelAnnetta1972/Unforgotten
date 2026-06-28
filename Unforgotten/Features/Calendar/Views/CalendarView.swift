@@ -321,7 +321,7 @@ struct CalendarView: View {
                 }
             }
         }
-        .background(Color.cardBackgroundSoft)
+        .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }
 
@@ -346,13 +346,13 @@ struct CalendarView: View {
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
                                 .background(
-                                    viewModel.selectedTab == tab ? appAccentColor : Color.clear
+                                    viewModel.selectedTab == tab ? appAccentColor : Color.cardBackground
                                 )
                         }
                     }
                 }
                 .fixedSize()
-                .background(Color.cardBackgroundSoft)
+                .background(Color.cardBackground)
                 .cornerRadius(AppDimensions.pillCornerRadius)
             }
 
@@ -365,9 +365,9 @@ struct CalendarView: View {
                     .foregroundColor(appAccentColor)
                     .frame(minWidth: 60)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.cardBackgroundSoft)
-                    .cornerRadius(AppDimensions.pillCornerRadius)
+                    .padding(.vertical, 12)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
             }
 
             // Month/Week toggle
@@ -382,13 +382,14 @@ struct CalendarView: View {
                         viewModel.currentMonth = viewModel.currentWeekStart
                         viewModel.displayMode = .month
                     }
+                    viewModel.saveDisplayMode()
                 }
             } label: {
                 Image(systemName: viewModel.displayMode == .month ? "calendar.day.timeline.left" : "calendar")
                     .font(.system(size: 20))
                     .foregroundColor(appAccentColor)
                     .frame(width: 44, height: 44)
-                    .background(Color.cardBackgroundSoft)
+                    .background(Color.cardBackground)
                     .cornerRadius(AppDimensions.cardCornerRadius)
             }
 
@@ -405,7 +406,7 @@ struct CalendarView: View {
                         .font(.system(size: 20))
                         .foregroundColor(viewModel.collapseMultiDay ? appAccentColor : .textSecondary)
                         .frame(width: 44, height: 44)
-                        .background(Color.cardBackgroundSoft)
+                        .background(Color.cardBackground)
                         .cornerRadius(AppDimensions.cardCornerRadius)
                 }
             }
@@ -422,7 +423,7 @@ struct CalendarView: View {
                         ? appAccentColor
                         : .textSecondary)
                     .frame(width: 44, height: 44)
-                    .background(Color.cardBackgroundSoft)
+                    .background(Color.cardBackground)
                     .cornerRadius(AppDimensions.cardCornerRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
@@ -446,7 +447,7 @@ struct CalendarView: View {
                             ? appAccentColor
                             : .textSecondary)
                         .frame(width: 44, height: 44)
-                        .background(Color.cardBackgroundSoft)
+                        .background(Color.cardBackground)
                         .cornerRadius(AppDimensions.cardCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)

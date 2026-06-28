@@ -327,8 +327,8 @@ struct iPadMedicationRowView: View {
 
     @ViewBuilder
     private var medicationImage: some View {
-        if let urlString = medication.imageUrl, let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
+        if let urlString = medication.imageUrl {
+            SignedAsyncImage(reference: urlString) { phase in
                 switch phase {
                 case .success(let image):
                     image

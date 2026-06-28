@@ -564,21 +564,21 @@ struct CountdownEventCard: View {
                         .cornerRadius(16)
 
                     // Multi-day count pill (shown when collapsed)
-                    if let dayCount = multiDayCount, dayCount > 1 {
-                        Text("\(dayCount) days")
-                            .font(.appCaption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(appAccentColor)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(appAccentColor.opacity(0.15))
-                            .cornerRadius(16)
-                    }
+                    // if let dayCount = multiDayCount, dayCount > 1 {
+                    //     Text("\(dayCount) days")
+                    //         .font(.appCaption)
+                    //         .fontWeight(.semibold)
+                    //         .foregroundColor(appAccentColor)
+                    //         .padding(.horizontal, 10)
+                    //         .padding(.vertical, 6)
+                    //         .background(appAccentColor.opacity(0.15))
+                    //         .cornerRadius(16)
+                    // }
 
 
                     Text(countdown.formattedDateShort)
                         .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                        .foregroundColor(.textMuted)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -937,7 +937,7 @@ struct AppointmentDetailView: View {
                             }
 
                             // Photo
-                            if let urlString = appointment.imageUrl, let url = URL(string: urlString) {
+                            if let urlString = appointment.imageUrl {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Photo")
                                         .font(.appCaption)
@@ -946,14 +946,17 @@ struct AppointmentDetailView: View {
                                     Button {
                                         showFullscreenPhoto = true
                                     } label: {
-                                        AsyncImage(url: url) { phase in
+                                        SignedAsyncImage(reference: urlString) { phase in
                                             switch phase {
                                             case .success(let image):
-                                                image
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fill)
+                                                Color.clear
                                                     .frame(maxWidth: .infinity)
                                                     .frame(height: 200)
+                                                    .overlay(
+                                                        image
+                                                            .resizable()
+                                                            .aspectRatio(contentMode: .fill)
+                                                    )
                                                     .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
                                             case .empty:
                                                 ProgressView()
@@ -1350,243 +1353,56 @@ struct AddAppointmentView: View {
         }
     }
 
+    // MARK: - Step
+
+    enum Step: Int, CaseIterable {
+        case details
+        case date
+    }
+
+    @State private var step: Step = .details
+
+    private var isFirstStep: Bool { step == Step.allCases.first }
+    private var isLastStep: Bool { step == Step.allCases.last }
+
+    private func goNext() {
+        guard let index = Step.allCases.firstIndex(of: step),
+              index + 1 < Step.allCases.count else { return }
+        focusedField = false
+        withAnimation { step = Step.allCases[index + 1] }
+    }
+
+    private func goBack() {
+        guard let index = Step.allCases.firstIndex(of: step) else { return }
+        focusedField = false
+        if index > 0 {
+            withAnimation { step = Step.allCases[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with icons
-            HStack {
-                Button {
-                    dismissView()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.5))
-                        )
-                }
-
-                Spacer()
-
-                Text("Add Appointment")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Button {
-                    Task { await saveAppointment() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                        )
-                }
-                .disabled(title.isBlank || isLoading)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
+            header
 
             ScrollView {
-                VStack(spacing: 20) {
-
-
-
-                    AppTextField(placeholder: "Title *", text: $title)
-                        .focused($focusedField)
-
-                    // Family Calendar Sharing
-                    familySharingSection
-
+                VStack(alignment: .leading, spacing: 20) {
                     if let error = errorMessage {
                         Text(error)
                             .font(.appCaption)
                             .foregroundColor(.medicalRed)
                     }
 
-                    // Type selection
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("TYPE")
-                            .font(.appCaption)
-                            .foregroundColor(appAccentColor)
-
-                        AppointmentTypePicker(selectedType: $selectedType)
-                    }
-
-                    // Date picker
-                    VStack(alignment: .leading, spacing: 4) {
-                        VStack(spacing: 0) {
-                            Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
-                                .font(.appBodyMedium)
-                                .foregroundColor(appAccentColor)
-                                .padding(.top, 12)
-
-                            DatePicker(
-                                "",
-                                selection: $date,
-                                in: Date()...maximumDate,
-                                displayedComponents: .date
-                            )
-                            .datePickerStyle(.wheel)
-                            .labelsHidden()
-                            .tint(appAccentColor)
-                            .frame(maxWidth: .infinity)
-                            .clipped()
-                        }
-                        .padding(.horizontal)
-                        .background(Color.cardBackground)
-                        .cornerRadius(AppDimensions.buttonCornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                        )
-
-                        // Show limit info for free users
-                        if !hasPremiumAccess {
-                            Text("Free plan: limited to next 30 days")
-                                .font(.appCaption)
-                                .foregroundColor(.textMuted)
-                                .padding(.horizontal, 4)
-                        }
-                    }
-
-                    // Time toggle and picker
-                    HStack {
-                        Toggle("Include time", isOn: $hasTime)
-                            .tint(appAccentColor)
-                            .font(.appBody)
-                        if hasTime {
-                            Spacer()
-                            DatePicker(
-                                "",
-                                selection: $time,
-                                displayedComponents: .hourAndMinute
-                            )
-                            .datePickerStyle(.compact)
-                            .tint(appAccentColor)
-                            .labelsHidden()
-                        }
-                    }
-                    .padding()
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    AppTextField(placeholder: "Location (optional)", text: $location)
-                    AppTextField(placeholder: "Notes (optional)", text: $notes)
-
-                    // Reminder picker
-                    VStack(spacing: 12) {
-                        Toggle(isOn: $reminderAtEvent) {
-                            Text("Remind at time of event")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                        }
-                        .tint(appAccentColor)
-                        .padding(.horizontal)
-
-                        if !reminderAtEvent {
-                            HStack(spacing: 0) {
-                                Text("Remind me")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Picker("Number", selection: $reminderNumber) {
-                                    ForEach(1...60, id: \.self) { num in
-                                        Text("\(num)").tag(num)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-
-                                Picker("Unit", selection: $reminderUnit) {
-                                    ForEach(ReminderUnit.allCases) { unit in
-                                        Text(reminderNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-
-                                Text("before")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-                            }
-                        }
-
-                    }
-                    .padding(.vertical)
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Repeat appointment
-                    VStack(spacing: 12) {
-                        Toggle(isOn: $repeatEnabled) {
-                            Text("Repeat appointment")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                        }
-                        .tint(appAccentColor)
-
-                        if repeatEnabled {
-                            HStack(spacing: 12) {
-                                Text("Every")
-                                    .font(.appBody)
-                                    .foregroundColor(.textPrimary)
-
-                                Picker("Number", selection: $repeatNumber) {
-                                    ForEach(1...60, id: \.self) { num in
-                                        Text("\(num)").tag(num)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-
-                                Picker("Unit", selection: $selectedRepeatUnit) {
-                                    ForEach(RepeatUnit.allCases) { unit in
-                                        Text(repeatNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(appAccentColor)
-                                .fixedSize(horizontal: true, vertical: false)
-
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-
-                    // Photo picker
-                    HStack {
-                        Spacer()
-                        ImageSourcePicker(
-                            selectedImage: $selectedImage,
-                            onImageSelected: { _ in }
-                        )
-                        Spacer()
-                    }
-
+                    stepContent
                 }
-                .padding(AppDimensions.screenPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppDimensions.screenPadding + 12)
+                .padding(.top, 32)
+                .padding(.bottom, AppDimensions.screenPadding)
             }
+
+            footer
         }
         .background(Color.appBackgroundLight)
         .onChange(of: selectedType) { _, _ in
@@ -1612,6 +1428,319 @@ struct AddAppointmentView: View {
             .presentationBackground(Color.appBackgroundLight)
         }
     }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button {
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
+            }
+
+            Spacer()
+
+            Text("Add Appointment")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
+            }
+        }
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Footer (Next / Done button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if isLastStep {
+            Button {
+                Task { await saveAppointment() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        } else {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .details:
+            detailsStep
+        case .date:
+            dateStep
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appCardTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Appointment Details
+
+    private var detailsStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Appointment Details")
+
+
+            AppTextField(placeholder: "Title *", text: $title)
+                .focused($focusedField)
+            AppointmentTypePicker(selectedType: $selectedType)
+
+            AppTextField(placeholder: "Location (optional)", text: $location)
+            AppTextField(placeholder: "Notes (optional)", text: $notes)
+
+            // Photo picker
+            HStack {
+                Spacer()
+                ImageSourcePicker(
+                    selectedImage: $selectedImage,
+                    onImageSelected: { _ in }
+                )
+                Spacer()
+            }
+            .padding(.top, 8)
+            
+            // Share this appointment
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Share this appointment?")
+
+                familySharingSection
+            }
+            .padding(.top, 8)
+
+
+        }
+    }
+
+    // MARK: Step 2 — Appointment Date
+
+    private var dateStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Appointment Date and Time")
+
+            // Date picker
+            VStack(alignment: .leading, spacing: 4) {
+                VStack(spacing: 0) {
+                    Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                        .font(.appBodyMedium)
+                        .foregroundColor(appAccentColor)
+                        .padding(.top, 12)
+
+                    DatePicker(
+                        "",
+                        selection: $date,
+                        in: Date()...maximumDate,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .tint(appAccentColor)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                }
+                .padding(.horizontal)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+
+                // Show limit info for free users
+                if !hasPremiumAccess {
+                    Text("Free plan: limited to next 30 days")
+                        .font(.appCaption)
+                        .foregroundColor(.textMuted)
+                        .padding(.horizontal, 4)
+                }
+            }
+
+            // Time toggle and picker
+            HStack {
+                Toggle("Include Time", isOn: $hasTime)
+                    .tint(appAccentColor)
+                    .foregroundColor(.textSecondary)
+                    .font(.appBody)
+                if hasTime {
+                    Spacer()
+                    DatePicker(
+                        "",
+                        selection: $time,
+                        displayedComponents: .hourAndMinute
+                    )
+                    .datePickerStyle(.compact)
+                    .tint(appAccentColor)
+                    .labelsHidden()
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Repeat appointment
+            VStack(spacing: 12) {
+                Toggle(isOn: $repeatEnabled) {
+                    Text("Repeat Appointment")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+                .tint(appAccentColor)
+
+                if repeatEnabled {
+                    HStack(spacing: 12) {
+                        Text("Repeat every")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                            .fixedSize()
+
+                        Spacer(minLength: 0)
+
+                        Picker("Number", selection: $repeatNumber) {
+                            ForEach(1...60, id: \.self) { num in
+                                Text("\(num)").tag(num)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+
+                        Picker("Unit", selection: $selectedRepeatUnit) {
+                            ForEach(RepeatUnit.allCases) { unit in
+                                Text(repeatNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Reminder
+            VStack(alignment: .leading, spacing: 12) {
+                //sectionTitle("Reminder")
+
+                VStack(spacing: 12) {
+                    Toggle(isOn: $reminderAtEvent) {
+                        Text("Remind me at time of event")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .tint(appAccentColor)
+                    .padding(.horizontal)
+
+                    if !reminderAtEvent {
+
+                        HStack(spacing: 0) {
+                            Text("Remind me before")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+                                .fixedSize()
+
+                            Spacer(minLength: 0)
+
+                            Picker("Number", selection: $reminderNumber) {
+                                ForEach(1...60, id: \.self) { num in
+                                    Text("\(num)").tag(num)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+
+                            Picker("Unit", selection: $reminderUnit) {
+                                ForEach(ReminderUnit.allCases) { unit in
+                                    Text(reminderNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+                            .fixedSize()
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.vertical)
+                .frame(maxWidth: .infinity)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+            }
+            .padding(.top, 8)
+        }
+    }
+
 
     // MARK: - Family Sharing Section
 
@@ -1645,10 +1774,10 @@ struct AddAppointmentView: View {
                 }
                 .padding()
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -1683,10 +1812,10 @@ struct AddAppointmentView: View {
             }
             .padding()
             .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .cornerRadius(AppDimensions.cardCornerRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
             )
             .opacity(0.7)
         }
@@ -1884,249 +2013,56 @@ struct EditAppointmentView: View {
         }
     }
 
+    // MARK: - Step
+
+    enum Step: Int, CaseIterable {
+        case details
+        case date
+    }
+
+    @State private var step: Step = .details
+
+    private var isFirstStep: Bool { step == Step.allCases.first }
+    private var isLastStep: Bool { step == Step.allCases.last }
+
+    private func goNext() {
+        guard let index = Step.allCases.firstIndex(of: step),
+              index + 1 < Step.allCases.count else { return }
+        focusedField = false
+        withAnimation { step = Step.allCases[index + 1] }
+    }
+
+    private func goBack() {
+        guard let index = Step.allCases.firstIndex(of: step) else { return }
+        focusedField = false
+        if index > 0 {
+            withAnimation { step = Step.allCases[index - 1] }
+        } else {
+            dismissView()
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Custom header with icons
-            HStack {
-                Button {
-                    dismissView()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.5))
-                        )
-                }
-
-                Spacer()
-
-                Text("Edit Appointment")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                Button {
-                    Task { await updateAppointment() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
-                        )
-                }
-                .disabled(title.isBlank || isLoading)
-            }
-            .padding(.horizontal, AppDimensions.screenPadding)
-            .padding(.vertical, 16)
+            header
 
             ScrollView {
-                VStack(spacing: 20) {
-
-
-                    AppTextField(placeholder: "Title *", text: $title)
-                        .focused($focusedField)
-                // Family Calendar Sharing
-                editFamilySharingSection
-
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.appCaption)
-                        .foregroundColor(.medicalRed)
-                }
-                // Type selection
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("TYPE")
-                        .font(.appCaption)
-                        .foregroundColor(appAccentColor)
-
-                    AppointmentTypePicker(selectedType: $selectedType)
-                }
-
-                // Date picker
-                VStack(alignment: .leading, spacing: 4) {
-                    VStack(spacing: 0) {
-                        Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
-                            .font(.appBodyMedium)
-                            .foregroundColor(appAccentColor)
-                            .padding(.top, 12)
-
-                        DatePicker(
-                            "",
-                            selection: $date,
-                            in: Date()...maximumDate,
-                            displayedComponents: .date
-                        )
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                        .tint(appAccentColor)
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                    }
-                    .padding(.horizontal)
-                    .background(Color.cardBackground)
-                    .cornerRadius(AppDimensions.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                    )
-
-                    // Show limit info for free users
-                    if !hasPremiumAccess {
-                        Text("Free plan: limited to next 30 days")
+                VStack(alignment: .leading, spacing: 20) {
+                    if let error = errorMessage {
+                        Text(error)
                             .font(.appCaption)
-                            .foregroundColor(.textMuted)
-                            .padding(.horizontal, 4)
+                            .foregroundColor(.medicalRed)
                     }
+
+                    stepContent
                 }
-
-                // Time toggle and picker
-                HStack {
-                    Toggle("Include Time", isOn: $hasTime)
-                        .font(.appBody)
-                        .foregroundColor(.textPrimary)
-                        .tint(appAccentColor)
-
-                    if hasTime {
-                        Spacer()
-                        DatePicker(
-                            "",
-                            selection: $time,
-                            displayedComponents: .hourAndMinute
-                        )
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .tint(appAccentColor)
-                    }
-                }
-                .padding()
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                )
-
-                AppTextField(placeholder: "Location", text: $location)
-                AppTextField(placeholder: "Notes", text: $notes)
-
-                // Reminder picker
-                VStack(spacing: 12) {
-                    Toggle(isOn: $reminderAtEvent) {
-                        Text("Remind me at time of event")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                    }
-                    .tint(appAccentColor)
-                    .padding(.horizontal)
-
-                    if !reminderAtEvent {
-                        HStack(spacing: 0) {
-                            Text("Remind")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .fixedSize()
-
-                            Picker("Number", selection: $reminderNumber) {
-                                ForEach(1...60, id: \.self) { num in
-                                    Text("\(num)").tag(num)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(appAccentColor)
-
-                            Picker("Unit", selection: $reminderUnit) {
-                                ForEach(ReminderUnit.allCases) { unit in
-                                    Text(reminderNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(appAccentColor)
-                            .fixedSize()
-
-                            Text("before")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-                                .fixedSize()
-
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 4)
-                    }
-                }
-                .padding(.vertical)
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                )
-
-                // Repeat appointment
-                VStack(spacing: 12) {
-                    Toggle(isOn: $repeatEnabled) {
-                        Text("Repeat appointment")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
-                    }
-                    .tint(appAccentColor)
-
-                    if repeatEnabled {
-                        HStack(spacing: 12) {
-                            Text("Every")
-                                .font(.appBody)
-                                .foregroundColor(.textPrimary)
-
-                            Picker("Number", selection: $repeatNumber) {
-                                ForEach(1...60, id: \.self) { num in
-                                    Text("\(num)").tag(num)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(appAccentColor)
-
-                            Picker("Unit", selection: $selectedRepeatUnit) {
-                                ForEach(RepeatUnit.allCases) { unit in
-                                    Text(repeatNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(appAccentColor)
-                        }
-                    }
-                }
-                .padding()
-                .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
-                )
-
-
-
-                // Photo picker
-                HStack {
-                    Spacer()
-                    ImageSourcePicker(
-                        selectedImage: $selectedImage,
-                        currentImageUrl: appointment.imageUrl,
-                        onImageSelected: { _ in removePhoto = false },
-                        onRemove: { removePhoto = true }
-                    )
-                    Spacer()
-                }
-
-                }
-                .padding(AppDimensions.screenPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppDimensions.screenPadding + 12)
+                .padding(.top, 32)
+                .padding(.bottom, AppDimensions.screenPadding)
             }
+
+            footer
         }
         .background(Color.appBackgroundLight)
         .onChange(of: selectedType) { _, _ in
@@ -2153,6 +2089,317 @@ struct EditAppointmentView: View {
         }
         .task {
             await loadExistingFamilyShare()
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button {
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
+            }
+
+            Spacer()
+
+            Text("Edit Appointment")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
+            }
+        }
+        .padding(.horizontal, AppDimensions.screenPadding + 12)
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - Footer (Next / Done button)
+
+    @ViewBuilder
+    private var footer: some View {
+        if isLastStep {
+            Button {
+                Task { await updateAppointment() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        } else {
+            Button {
+                goNext()
+            } label: {
+                Text("Next")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(title.isBlank ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(title.isBlank)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .details:
+            detailsStep
+        case .date:
+            dateStep
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appCardTitle)
+            .foregroundColor(.textPrimary)
+    }
+
+    // MARK: Step 1 — Appointment Details
+
+    private var detailsStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Appointment Details")
+
+            AppointmentTypePicker(selectedType: $selectedType)
+
+            AppTextField(placeholder: "Title *", text: $title)
+                .focused($focusedField)
+            AppTextField(placeholder: "Location (optional)", text: $location)
+            AppTextField(placeholder: "Notes (optional)", text: $notes)
+
+            // Photo picker
+            HStack {
+                Spacer()
+                ImageSourcePicker(
+                    selectedImage: $selectedImage,
+                    currentImageUrl: appointment.imageUrl,
+                    onImageSelected: { _ in removePhoto = false },
+                    onRemove: { removePhoto = true }
+                )
+                Spacer()
+            }
+            .padding(.top, 8)
+
+            // Share this appointment
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("Share this appointment?")
+
+                editFamilySharingSection
+            }
+            .padding(.top, 8)
+
+        }
+    }
+
+    // MARK: Step 2 — Appointment Date
+
+    private var dateStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle("Appointment Date and Time")
+
+            // Date picker
+            VStack(alignment: .leading, spacing: 4) {
+                VStack(spacing: 0) {
+                    Text(date.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
+                        .font(.appBodyMedium)
+                        .foregroundColor(appAccentColor)
+                        .padding(.top, 12)
+
+                    DatePicker(
+                        "",
+                        selection: $date,
+                        in: Date()...maximumDate,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .tint(appAccentColor)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                }
+                .padding(.horizontal)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+
+                // Show limit info for free users
+                if !hasPremiumAccess {
+                    Text("Free plan: limited to next 30 days")
+                        .font(.appCaption)
+                        .foregroundColor(.textMuted)
+                        .padding(.horizontal, 4)
+                }
+            }
+
+            // Time toggle and picker
+            HStack {
+                Toggle("Include Time", isOn: $hasTime)
+                    .font(.appBody)
+                    .foregroundColor(.textSecondary)
+                    .tint(appAccentColor)
+
+                if hasTime {
+                    Spacer()
+                    DatePicker(
+                        "",
+                        selection: $time,
+                        displayedComponents: .hourAndMinute
+                    )
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .tint(appAccentColor)
+                }
+            }
+            .padding()
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Repeat appointment
+            VStack(spacing: 12) {
+                Toggle(isOn: $repeatEnabled) {
+                    Text("Repeat Appointment")
+                        .font(.appBody)
+                        .foregroundColor(.textSecondary)
+                }
+                .tint(appAccentColor)
+
+                if repeatEnabled {
+                    HStack(spacing: 12) {
+                        Text("Repeat every")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                            .fixedSize()
+
+                        Spacer(minLength: 0)
+
+                        Picker("Number", selection: $repeatNumber) {
+                            ForEach(1...60, id: \.self) { num in
+                                Text("\(num)").tag(num)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+
+                        Picker("Unit", selection: $selectedRepeatUnit) {
+                            ForEach(RepeatUnit.allCases) { unit in
+                                Text(repeatNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(appAccentColor)
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
+                }
+            }
+            .padding()
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            )
+
+            // Reminder
+            VStack(alignment: .leading, spacing: 12) {
+                //sectionTitle("Reminder")
+
+                VStack(spacing: 12) {
+                    Toggle(isOn: $reminderAtEvent) {
+                        Text("Remind me at time of event")
+                            .font(.appBody)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .tint(appAccentColor)
+                    .padding(.horizontal)
+
+                    if !reminderAtEvent {
+
+                        HStack(spacing: 0) {
+                            Text("Remind me before")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
+                                .fixedSize()
+                            
+                            Spacer()
+
+                            Picker("Number", selection: $reminderNumber) {
+                                ForEach(1...60, id: \.self) { num in
+                                    Text("\(num)").tag(num)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+
+                            Picker("Unit", selection: $reminderUnit) {
+                                ForEach(ReminderUnit.allCases) { unit in
+                                    Text(reminderNumber == 1 ? unit.singularLabel : unit.pluralLabel).tag(unit)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+                            .fixedSize()
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.vertical)
+                .frame(maxWidth: .infinity)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                )
+            }
+            .padding(.top, 8)
         }
     }
 
@@ -2188,10 +2435,10 @@ struct EditAppointmentView: View {
                 }
                 .padding()
                 .background(Color.cardBackground)
-                .cornerRadius(AppDimensions.buttonCornerRadius)
+                .cornerRadius(AppDimensions.cardCornerRadius)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
                 )
             }
             .buttonStyle(PlainButtonStyle())
@@ -2226,10 +2473,10 @@ struct EditAppointmentView: View {
             }
             .padding()
             .background(Color.cardBackground)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .cornerRadius(AppDimensions.cardCornerRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                    .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
             )
             .opacity(0.7)
         }
@@ -2619,7 +2866,7 @@ struct AppointmentDayCell: View {
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isToday ? appAccentColor : Color.clear, lineWidth: 2)
+                    .stroke(isToday ? appAccentColor : Color.clear, lineWidth: 1)
             )
         }
     }
@@ -3062,7 +3309,7 @@ struct AppointmentTypeFilterButton: View {
             .cornerRadius(AppDimensions.pillCornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: AppDimensions.pillCornerRadius)
-                    .stroke(isSelected ? color : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? color : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -3072,52 +3319,35 @@ struct AppointmentTypeFilterButton: View {
 // MARK: - Appointment Type Picker
 struct AppointmentTypePicker: View {
     @Binding var selectedType: AppointmentType
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 90, maximum: 120), spacing: 8)
-    ]
-
-    var body: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(AppointmentType.allCases, id: \.self) { type in
-                AppointmentTypeBadge(
-                    type: type,
-                    isSelected: selectedType == type,
-                    onTap: { selectedType = type }
-                )
-            }
-        }
-    }
-}
-
-// MARK: - Appointment Type Badge
-struct AppointmentTypeBadge: View {
-    let type: AppointmentType
-    let isSelected: Bool
-    let onTap: () -> Void
     @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 4) {
-                Image(systemName: type.icon)
-                    .font(.caption)
-                Text(type.displayName)
-                    .font(.appCaption)
-                    .lineLimit(1)
+        HStack {
+            Text("Type")
+                .font(.appBody)
+                .foregroundColor(.textSecondary)
+
+            Spacer()
+
+            Picker("Type", selection: $selectedType) {
+                ForEach(AppointmentType.allCases, id: \.self) { type in
+                    Label(type.displayName, systemImage: type.icon)
+                        .tag(type)
+                        .font(.appBody)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .background(isSelected ? appAccentColor.opacity(0.3) : Color.cardBackground)
-            .foregroundColor(isSelected ? appAccentColor : .textSecondary)
-            .cornerRadius(AppDimensions.pillCornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.pillCornerRadius)
-                    .stroke(isSelected ? appAccentColor : Color.clear, lineWidth: 2)
-            )
+            .pickerStyle(.menu)
+            .tint(appAccentColor)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+        )
     }
 }
 

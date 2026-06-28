@@ -75,7 +75,7 @@ struct OnboardingActivationView: View {
                 .frame(height: isRegularWidth ? 80 : 60)
 
             // Header
-            Text("Activating your workspace")
+            Text("All done! We're just setting up your home screen.")
                 .font(.appLargeTitle)
                 .foregroundColor(.textPrimary)
                 .multilineTextAlignment(.center)

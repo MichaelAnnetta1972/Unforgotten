@@ -31,6 +31,8 @@ struct CustomizableHeaderView: View {
     var editButtonPosition: HeaderButtonPosition = .topRight
     var showAddButton: Bool = false
     var addAction: (() -> Void)? = nil
+    var showImportButton: Bool = false
+    var importAction: (() -> Void)? = nil
     var showReorderButton: Bool = false
     var isReordering: Bool = false
     var reorderAction: (() -> Void)? = nil
@@ -207,6 +209,10 @@ struct CustomizableHeaderView: View {
                                 .background(isReordering ? effectiveAccentColor : Color.white.opacity(0.2))
                                 .cornerRadius(16)
                             }
+                        }
+
+                        if showImportButton, let importAction = importAction {
+                            HeaderBottomActionButton(icon: "square.and.arrow.down", label: nil, action: importAction)
                         }
 
                         if showAddButton, let addAction = addAction {
