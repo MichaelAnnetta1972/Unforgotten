@@ -2666,17 +2666,22 @@ struct EditProfileView: View {
 
     private var header: some View {
         HStack {
-            Button {
-                goBack()
-            } label: {
-                Image(systemName: isFirstStep ? "xmark" : "chevron.left")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 48, height: 48)
-                    .background(
-                        Circle()
-                            .fill(Color.white.opacity(0.5))
-                    )
+            // Leading slot: back chevron on later steps, otherwise a balancing spacer.
+            if isFirstStep {
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button {
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.5))
+                        )
+                }
             }
 
             Spacer()
@@ -2687,23 +2692,18 @@ struct EditProfileView: View {
 
             Spacer()
 
-            // Trailing slot: checkmark on the last step, otherwise a balancing spacer.
-            if isLastStep {
-                Button {
-                    Task { await updateProfile() }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Circle()
-                                .fill(fullName.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
-                        )
-                }
-                .disabled(fullName.isBlank || isLoading)
-            } else {
-                Color.clear.frame(width: 48, height: 48)
+            // Trailing slot: cancel icon dismisses the flow on every step.
+            Button {
+                dismissView()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.5))
+                    )
             }
         }
         .padding(.horizontal, AppDimensions.screenPadding + 12)
@@ -2711,11 +2711,27 @@ struct EditProfileView: View {
         .background(Color.appBackgroundLight)
     }
 
-    // MARK: - Footer (Next button)
+    // MARK: - Footer (Next / Done button)
 
     @ViewBuilder
     private var footer: some View {
-        if !isLastStep {
+        if isLastStep {
+            Button {
+                Task { await updateProfile() }
+            } label: {
+                Text("Done")
+                    .font(.appBodyMedium)
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(fullName.isBlank || isLoading ? Color.gray.opacity(0.3) : appAccentColor)
+                    .cornerRadius(AppDimensions.cardCornerRadius)
+            }
+            .disabled(fullName.isBlank || isLoading)
+            .padding(.horizontal, AppDimensions.screenPadding + 12)
+            .padding(.vertical, 16)
+            .background(Color.appBackgroundLight)
+        } else {
             Button {
                 goNext()
             } label: {

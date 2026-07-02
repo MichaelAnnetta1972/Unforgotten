@@ -69,6 +69,14 @@ extension Date {
         return "\(day)\(suffix) \(formatter.string(from: self))"
     }
 
+    /// Day and abbreviated month, e.g. "10 Oct"
+    func formattedDayMonthShort() -> String {
+        let day = Calendar.current.component(.day, from: self)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM"
+        return "\(day) \(formatter.string(from: self))"
+    }
+
     /// Calculate age from birthday
     func age() -> Int {
         Calendar.current.dateComponents([.year], from: self, to: Date()).year ?? 0

@@ -1122,6 +1122,26 @@ enum AppointmentType: String, Codable, CaseIterable {
     case grooming
     case other
 
+    /// Resilient decoding: any unknown/removed raw value (e.g. "hospital",
+    /// "dentist", "gym", "travel", "shopping" — types that were removed from
+    /// the app) decodes to a safe fallback instead of throwing. Without this,
+    /// a single stored appointment with a retired type would fail to decode the
+    /// entire fetched array and make ALL appointments silently disappear.
+    /// Medical-adjacent legacy types map to `.medical`; everything else to `.general`.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if let known = AppointmentType(rawValue: raw) {
+            self = known
+        } else {
+            switch raw {
+            case "hospital", "dentist":
+                self = .medical
+            default:
+                self = .general
+            }
+        }
+    }
+
     var displayName: String {
         switch self {
         case .general: return "General"
@@ -1319,6 +1339,7 @@ struct UsefulContact: Codable, Identifiable, Equatable {
     var address: String?
     var notes: String?
     var isFavourite: Bool
+    var photoUrl: String?
     var sortOrder: Int
     let createdAt: Date
     var updatedAt: Date
@@ -1335,6 +1356,7 @@ struct UsefulContact: Codable, Identifiable, Equatable {
         case address
         case notes
         case isFavourite = "is_favourite"
+        case photoUrl = "photo_url"
         case sortOrder = "sort_order"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -1353,6 +1375,7 @@ struct UsefulContact: Codable, Identifiable, Equatable {
         address: String? = nil,
         notes: String? = nil,
         isFavourite: Bool = false,
+        photoUrl: String? = nil,
         sortOrder: Int = 0,
         createdAt: Date,
         updatedAt: Date
@@ -1368,6 +1391,7 @@ struct UsefulContact: Codable, Identifiable, Equatable {
         self.address = address
         self.notes = notes
         self.isFavourite = isFavourite
+        self.photoUrl = photoUrl
         self.sortOrder = sortOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -1387,6 +1411,7 @@ struct UsefulContact: Codable, Identifiable, Equatable {
         address = try container.decodeIfPresent(String.self, forKey: .address)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
         isFavourite = try container.decodeIfPresent(Bool.self, forKey: .isFavourite) ?? false
+        photoUrl = try container.decodeIfPresent(String.self, forKey: .photoUrl)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
@@ -2310,8 +2335,8 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
     /// Short formatted date string without year (for list cards)
     var formattedDateShort: String {
         if let endDate = endDate {
-            let startStr = date.formattedDayMonth()
-            let endStr = endDate.formattedDayMonth()
+            let startStr = date.formattedDayMonthShort()
+            let endStr = endDate.formattedDayMonthShort()
             if hasTime {
                 let timeFormatter = DateFormatter()
                 timeFormatter.dateFormat = "h:mm a"
@@ -2319,7 +2344,7 @@ struct Countdown: Codable, Identifiable, Equatable, Hashable {
             }
             return "\(startStr) – \(endStr)"
         } else {
-            let dateStr = date.formattedDayMonth()
+            let dateStr = date.formattedDayMonthShort()
             if hasTime {
                 let timeFormatter = DateFormatter()
                 timeFormatter.dateFormat = "h:mm a"

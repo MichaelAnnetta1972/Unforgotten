@@ -372,12 +372,13 @@ struct ImageSourcePicker: View {
         Button {
             showActionSheet = true
         } label: {
-            ZStack {
+            ZStack(alignment: .bottomTrailing) {
                 if let image = selectedImage {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 100, height: 100)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 100)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else if let urlString = currentImageUrl {
                     SignedAsyncImage(reference: urlString) { phase in
@@ -386,13 +387,15 @@ struct ImageSourcePicker: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 100, height: 100)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 100)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         case .failure:
                             photoPlaceholder
                         case .empty:
                             ProgressView()
-                                .frame(width: 100, height: 100)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 100)
                         @unknown default:
                             photoPlaceholder
                         }
@@ -403,7 +406,8 @@ struct ImageSourcePicker: View {
                     Image(uiImage: localImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 100, height: 100)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 100)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else {
                     photoPlaceholder
@@ -416,7 +420,7 @@ struct ImageSourcePicker: View {
                         .foregroundColor(.accentYellow)
                         .background(Color.cardBackground)
                         .clipShape(Circle())
-                        .offset(x: 40, y: 40)
+                        .padding(8)
                 }
             }
         }
@@ -451,7 +455,7 @@ struct ImageSourcePicker: View {
     }
 
     private var photoPlaceholder: some View {
-        VStack(spacing: 8) {
+        HStack(spacing: 8) {
             Image(systemName: "camera.fill")
                 .font(.system(size: 24))
                 .foregroundColor(.textSecondary)
@@ -459,7 +463,8 @@ struct ImageSourcePicker: View {
                 .font(.appCaption)
                 .foregroundColor(.textSecondary)
         }
-        .frame(width: 100, height: 100)
+        .frame(maxWidth: .infinity)
+        .frame(height: 100)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
         .overlay(

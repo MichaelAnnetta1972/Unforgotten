@@ -98,6 +98,7 @@ final class SignedImageURLService {
         case "countdowns": return SupabaseConfig.countdownPhotosBucket
         case "recipes": return SupabaseConfig.recipePhotosBucket
         case "accounts": return SupabaseConfig.accountPhotosBucket
+        case "useful-contacts": return SupabaseConfig.usefulContactPhotosBucket
         default: return nil
         }
     }

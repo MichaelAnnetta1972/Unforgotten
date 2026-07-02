@@ -517,14 +517,10 @@ struct AddCountdownView: View {
             )
 
             // Photo picker
-            HStack {
-                Spacer()
-                ImageSourcePicker(
-                    selectedImage: $selectedImage,
-                    onImageSelected: { _ in }
-                )
-                Spacer()
-            }
+            ImageSourcePicker(
+                selectedImage: $selectedImage,
+                onImageSelected: { _ in }
+            )
             .padding(.top, 8)
         }
     }
@@ -549,10 +545,6 @@ struct AddCountdownView: View {
 
                             if shareToFamily && !selectedMemberIds.isEmpty {
                                 Text("\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
-                            } else if shareToFamily {
-                                Text("Tap to select members")
                                     .font(.appCaption)
                                     .foregroundColor(.textSecondary)
                             }
@@ -1375,20 +1367,16 @@ struct EditCountdownView: View {
             )
 
             // Photo picker
-            HStack {
-                Spacer()
-                ImageSourcePicker(
-                    selectedImage: $selectedImage,
-                    currentImageUrl: countdown.imageUrl,
-                    onImageSelected: { _ in
-                        removePhoto = false
-                    },
-                    onRemove: {
-                        removePhoto = true
-                    }
-                )
-                Spacer()
-            }
+            ImageSourcePicker(
+                selectedImage: $selectedImage,
+                currentImageUrl: countdown.imageUrl,
+                onImageSelected: { _ in
+                    removePhoto = false
+                },
+                onRemove: {
+                    removePhoto = true
+                }
+            )
             .padding(.top, 8)
 
             // Group actions for multi-day events

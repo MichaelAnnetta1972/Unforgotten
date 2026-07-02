@@ -436,7 +436,7 @@ struct ProfileListRow: View {
                         .offset(x: 2, y: 2)
                 }
             }
-
+        
             VStack(alignment: .leading, spacing: 4) {
                 Text(profile.displayName)
                     .font(.appCardTitle)

@@ -11,6 +11,7 @@ struct UsefulContactDetailView: View {
     @State var contact: UsefulContact
     @State private var showEditContact = false
     @State private var showSettings = false
+    @State private var showFullscreenPhoto = false
 
     var body: some View {
         ScrollView {
@@ -36,6 +37,36 @@ struct UsefulContactDetailView: View {
 
                 // Content
                 VStack(spacing: AppDimensions.cardSpacing) {
+                        // Contact photo
+                        if let photoUrl = contact.photoUrl, !photoUrl.isEmpty {
+                            Button {
+                                showFullscreenPhoto = true
+                            } label: {
+                                SignedAsyncImage(reference: photoUrl) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 200)
+                                            .clipped()
+                                            .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                                            .contentShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+                                    case .failure:
+                                        EmptyView()
+                                    case .empty:
+                                        ProgressView()
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 200)
+                                    @unknown default:
+                                        EmptyView()
+                                    }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+
                         // Action buttons
                         HStack(spacing: 12) {
                             if let phone = contact.phone {
@@ -146,6 +177,11 @@ struct UsefulContactDetailView: View {
                 onDismiss: { showEditContact = false }
             ) { updatedContact in
                 contact = updatedContact
+            }
+        }
+        .fullScreenCover(isPresented: $showFullscreenPhoto) {
+            if let photoUrl = contact.photoUrl {
+                RemoteFullscreenImageView(imageUrl: photoUrl, title: contact.name)
             }
         }
     }

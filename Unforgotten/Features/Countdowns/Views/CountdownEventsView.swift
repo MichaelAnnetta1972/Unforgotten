@@ -500,24 +500,24 @@ struct CountdownEventCard: View {
         if days == 0 {
             return "Today!"
         } else if days == 1 {
-            return "1 day"
+            return "Tomorrow"
         } else if days < 0 {
             let absDays = abs(days)
             return absDays == 1 ? "1 day ago" : "\(absDays) days ago"
         } else {
-            return "\(days) days"
+            return "in \(days) days"
         }
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Left side - Type icon
-            Image(systemName: countdown.type.icon)
-                .font(.system(size: 20))
-                .foregroundColor(appAccentColor)
-                .frame(width: 40, height: 40)
-                .background(appAccentColor.opacity(0.15))
-                .cornerRadius(8)
+            // Image(systemName: countdown.type.icon)
+            //     .font(.system(size: 20))
+            //     .foregroundColor(appAccentColor)
+            //     .frame(width: 40, height: 40)
+            //     .background(appAccentColor.opacity(0.15))
+            //     .cornerRadius(8)
 
             // Middle - Title and type/date info
             VStack(alignment: .leading, spacing: 6) {
@@ -564,16 +564,16 @@ struct CountdownEventCard: View {
                         .cornerRadius(16)
 
                     // Multi-day count pill (shown when collapsed)
-                    // if let dayCount = multiDayCount, dayCount > 1 {
-                    //     Text("\(dayCount) days")
-                    //         .font(.appCaption)
-                    //         .fontWeight(.semibold)
-                    //         .foregroundColor(appAccentColor)
-                    //         .padding(.horizontal, 10)
-                    //         .padding(.vertical, 6)
-                    //         .background(appAccentColor.opacity(0.15))
-                    //         .cornerRadius(16)
-                    // }
+                    if let dayCount = multiDayCount, dayCount > 1 {
+                        Text("\(dayCount) days")
+                            .font(.appCaption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(appAccentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(appAccentColor.opacity(0.15))
+                            .cornerRadius(16)
+                    }
 
 
                     Text(countdown.formattedDateShort)
@@ -605,17 +605,30 @@ class CountdownEventsViewModel: ObservableObject {
         isLoading = true
 
         do {
-            // Load own countdowns sorted by days until next occurrence
+            // Load own countdowns
             var allCountdowns = try await appState.countdownRepository.getUpcomingCountdowns(accountId: account.id, days: 365)
 
             // Also load shared countdowns from other accounts (via RPC to bypass RLS)
             let ownIds = Set(allCountdowns.map { $0.id })
             if let shared = try? await appState.countdownRepository.getSharedCountdowns() {
                 let newShared = shared.filter { !ownIds.contains($0.id) }
-                if !newShared.isEmpty {
-                    allCountdowns.append(contentsOf: newShared)
-                    allCountdowns.sort { $0.daysUntilNextOccurrence < $1.daysUntilNextOccurrence }
+                allCountdowns.append(contentsOf: newShared)
+            }
+
+            // Sort by days until next occurrence, with a deterministic tie-breaker
+            // (date, then id) so the order is stable across every load / refresh.
+            // Without a stable tie-breaker, events sharing the same
+            // daysUntilNextOccurrence would reorder on pull-to-refresh. This must
+            // run unconditionally — recurring events sort by their computed next
+            // occurrence, which differs from the repository's raw `date` ordering.
+            allCountdowns.sort {
+                if $0.daysUntilNextOccurrence != $1.daysUntilNextOccurrence {
+                    return $0.daysUntilNextOccurrence < $1.daysUntilNextOccurrence
                 }
+                if $0.date != $1.date {
+                    return $0.date < $1.date
+                }
+                return $0.id.uuidString < $1.id.uuidString
             }
 
             countdowns = allCountdowns

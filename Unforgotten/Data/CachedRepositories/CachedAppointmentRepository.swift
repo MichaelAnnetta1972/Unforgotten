@@ -109,6 +109,8 @@ final class CachedAppointmentRepository {
 
     /// Get today's appointments
     func getTodaysAppointments(accountId: UUID) async throws -> [Appointment] {
+        await warmCacheIfNeeded(accountId: accountId)
+
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: Date())
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
@@ -135,8 +137,31 @@ final class CachedAppointmentRepository {
         return try modelContext.fetch(descriptor).first?.toRemote()
     }
 
+    /// Ensures the local cache has been populated for this account.
+    ///
+    /// The date-filtered read methods below query the local `LocalAppointment`
+    /// store only. If the local store is empty for an account (e.g. it was wiped
+    /// because a SwiftData schema change forced a store recreate, or a refresh
+    /// hasn't run yet), those queries would return nothing even though the rows
+    /// still exist on the server. This pulls fresh data from remote so a cold
+    /// cache self-heals instead of silently showing an empty list.
+    private func warmCacheIfNeeded(accountId: UUID) async {
+        guard networkMonitor.isConnected else { return }
+
+        let existingDescriptor = FetchDescriptor<LocalAppointment>(
+            predicate: #Predicate { $0.accountId == accountId && !$0.locallyDeleted }
+        )
+        let hasCached = (try? modelContext.fetch(existingDescriptor).first) != nil
+        guard !hasCached else { return }
+
+        // Cache is cold for this account — pull from remote to repopulate it.
+        _ = try? await refreshFromRemote(accountId: accountId)
+    }
+
     /// Get upcoming appointments
     func getUpcomingAppointments(accountId: UUID, days: Int = 30) async throws -> [Appointment] {
+        await warmCacheIfNeeded(accountId: accountId)
+
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let futureDate = calendar.date(byAdding: .day, value: days, to: today)!
@@ -157,6 +182,8 @@ final class CachedAppointmentRepository {
 
     /// Get appointments in a date range
     func getAppointmentsInRange(accountId: UUID, startDate: Date, endDate: Date) async throws -> [Appointment] {
+        await warmCacheIfNeeded(accountId: accountId)
+
         let descriptor = FetchDescriptor<LocalAppointment>(
             predicate: #Predicate {
                 $0.accountId == accountId &&

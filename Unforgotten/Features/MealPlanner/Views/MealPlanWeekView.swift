@@ -1,5 +1,22 @@
 import SwiftUI
 
+// MARK: - Meal Type Tag
+/// Small pill shown next to a planned meal indicating its meal type.
+struct MealTypeTag: View {
+    let mealType: MealType
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        Text(mealType.displayName)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundColor(appAccentColor)
+            //.padding(.horizontal, 12)
+            //.padding(.vertical, 5)
+            //.background(appAccentColor.opacity(0.18))
+            //.clipShape(Capsule())
+    }
+}
+
 // MARK: - Meal Plan Week View
 struct MealPlanWeekView: View {
     @EnvironmentObject var appState: AppState
@@ -8,19 +25,14 @@ struct MealPlanWeekView: View {
     var onAddMeal: (Date, MealType) -> Void
     var onOpenRecipe: (UUID) -> Void = { _ in }
     var refreshTrigger: Int = 0
-    var mealTypeFilters: Set<MealType> = []
-
-    private var visibleMealTypes: [MealType] {
-        if mealTypeFilters.isEmpty {
-            return MealType.allCases
-        }
-        return MealType.allCases.filter { mealTypeFilters.contains($0) }
-    }
 
     @State private var weekOffset = 0
     @State private var meals: [PlannedMeal] = []
+    @State private var recipes: [Recipe] = []
     @State private var isLoading = true
     @State private var mealToDelete: PlannedMeal?
+
+    private var canEdit: Bool { appState.canEdit }
 
     private var calendar: Calendar { Calendar.current }
 
@@ -50,7 +62,7 @@ struct MealPlanWeekView: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 20) {
             // Week navigation
             HStack {
                 Button {
@@ -98,21 +110,24 @@ struct MealPlanWeekView: View {
             }
             .padding(.horizontal, AppDimensions.screenPadding)
 
-
-
             if isLoading {
                 LoadingView(message: "Loading meals...")
                     .padding(.top, 40)
             } else {
-                // Week grid
-                weekGrid
+                // Day cards
+                VStack(spacing: 20) {
+                    ForEach(weekDays, id: \.self) { day in
+                        dayCard(for: day)
+                    }
+                }
+                .padding(.horizontal, AppDimensions.screenPadding)
             }
         }
         .task(id: "\(weekOffset)-\(refreshTrigger)") {
-            await loadMeals()
+            await loadData()
         }
         .onReceive(NotificationCenter.default.publisher(for: .mealsDidChange)) { _ in
-            Task { await loadMeals() }
+            Task { await loadData() }
         }
         .sheet(item: $mealToDelete) { meal in
             MealActionSheet(
@@ -130,122 +145,138 @@ struct MealPlanWeekView: View {
         }
     }
 
-    // MARK: - Week Grid
+    // MARK: - Day Card
 
     @ViewBuilder
-    private var weekGrid: some View {
-        VStack(spacing: 8) {
-            // Column headers: empty + Breakfast / Lunch / Dinner
-            HStack(spacing: 8) {
-                Text("")
-                    .frame(width: 56)
+    private func dayCard(for day: Date) -> some View {
+        let dayMeals = mealsForDay(day)
 
-                ForEach(visibleMealTypes) { mealType in
-                    HStack(spacing: 4) {
-                        // Image(systemName: mealType.icon)
-                        //     .font(.system(size: 12))
-                        //     .foregroundColor(appAccentColor)
-                        Text(mealType.displayName)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.textSecondary)
+        VStack(alignment: .leading, spacing: 12) {
+            // Day heading + add button
+            HStack {
+                Text(dayHeading(for: day))
+                    .font(.appCardTitle)
+                    .foregroundColor(isToday(day) ? appAccentColor : .textMuted)
+
+                Spacer()
+
+                if canEdit {
+                    Button {
+                        onAddMeal(day, .dinner)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Color.textSecondary.opacity(0.4))
+                            .frame(width: 32, height: 32)
+                            .overlay(
+                                Circle().stroke(Color.textSecondary.opacity(0.4), lineWidth: 1.5)
+                            )
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, AppDimensions.screenPadding)
 
-            // Day rows
-            ForEach(weekDays, id: \.self) { day in
-                HStack(spacing: 8) {
-                    // Day label
-                    VStack(spacing: 4) {
-                        Text(dayAbbreviation(for: day))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(isToday(day) ? appAccentColor : .textSecondary)
-                        Text(dayNumber(for: day))
-                            .font(.system(size: 14, weight: isToday(day) ? .bold : .regular))
-                            .foregroundColor(isToday(day) ? appAccentColor : .textPrimary)
-                    }
-                    .frame(width: 40)
-                    .padding(8)
-                    .background(Color.cardBackground)
-                    .cornerRadius(8)
-                    .frame(height: 50)
-
-
-                    // Meal cells for each type
-                    ForEach(visibleMealTypes) { mealType in
-                        mealCell(for: day, mealType: mealType)
+            // Meals card (only if there are meals)
+            if !dayMeals.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(dayMeals.enumerated()), id: \.element.id) { index, meal in
+                        if index > 0 {
+                            Divider()
+                                .background(Color.textSecondary.opacity(0.15))
+                                .padding(.leading, 76)
+                        }
+                        mealRow(meal)
                     }
                 }
-                .padding(.horizontal, AppDimensions.screenPadding)
+                .background(Color.cardBackground)
+                .cornerRadius(AppDimensions.cardCornerRadius)
             }
         }
     }
 
-    // MARK: - Meal Cell
+    // MARK: - Meal Row
 
     @ViewBuilder
-    private func mealCell(for day: Date, mealType: MealType) -> some View {
-        let meal = mealForDayAndType(day: day, mealType: mealType)
-
+    private func mealRow(_ meal: PlannedMeal) -> some View {
         Button {
-            if let meal = meal {
-                mealToDelete = meal
-            } else {
-                onAddMeal(day, mealType)
-            }
+            mealToDelete = meal
         } label: {
-            HStack {
-                if let meal = meal {
+            HStack(spacing: 14) {
+
+                VStack(alignment: .leading, spacing: 6) {
+                    MealTypeTag(mealType: meal.mealType)
+
                     Text(meal.recipeName ?? "Meal")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.appCardTitle)
                         .foregroundColor(.textPrimary)
-                        .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                } else {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14))
-                        .foregroundColor(.textMuted)
+                        .lineLimit(2)
+
                 }
+
                 Spacer(minLength: 0)
+
+                mealThumbnail(for: meal)
             }
-            .padding(.horizontal, 6)
-            .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background(meal != nil ? appAccentColor.opacity(opacityForMealType(mealType)) : Color.cardBackground)
-            .cornerRadius(8)
+            .padding(14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
+    private func mealThumbnail(for meal: PlannedMeal) -> some View {
+        let imageUrl = recipes.first(where: { $0.id == meal.recipeId })?.imageUrl
+
+        Group {
+            if let imageUrl, !imageUrl.isEmpty {
+                SignedAsyncImage(reference: imageUrl) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    case .empty:
+                        ZStack {
+                            Color.textMuted
+                            ProgressView().tint(appAccentColor)
+                        }
+                    default:
+                        thumbnailPlaceholder
+                    }
+                }
+            } else {
+                thumbnailPlaceholder
+            }
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var thumbnailPlaceholder: some View {
+        ZStack {
+            Color.cardBackgroundLight
+            Image(systemName: "fork.knife")
+                .font(.system(size: 18))
+                .foregroundColor(.textMuted)
+        }
+    }
+
     // MARK: - Helpers
 
-    private func opacityForMealType(_ mealType: MealType) -> Double {
-        switch mealType {
-        case .breakfast: return 0.1
-        case .lunch: return 0.15
-        case .dinner: return 0.2
-        case .dessert: return 0.25
-        }
-    }
-
-    private func mealForDayAndType(day: Date, mealType: MealType) -> PlannedMeal? {
+    private func mealsForDay(_ day: Date) -> [PlannedMeal] {
         let dayStart = calendar.startOfDay(for: day)
-        return meals.first { meal in
-            calendar.startOfDay(for: meal.date) == dayStart && meal.mealType == mealType
-        }
+        return meals
+            .filter { calendar.startOfDay(for: $0.date) == dayStart }
+            .sorted { sortIndex($0.mealType) < sortIndex($1.mealType) }
     }
 
-    private func dayAbbreviation(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date).uppercased()
+    private func sortIndex(_ mealType: MealType) -> Int {
+        MealType.allCases.firstIndex(of: mealType) ?? 0
     }
 
-    private func dayNumber(for date: Date) -> String {
+    private func dayHeading(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "d"
+        formatter.dateFormat = "EEEE d MMMM"
         return formatter.string(from: date)
     }
 
@@ -255,14 +286,17 @@ struct MealPlanWeekView: View {
 
     // MARK: - Data
 
-    private func loadMeals() async {
+    private func loadData() async {
         guard let accountId = appState.currentAccount?.id else { return }
         isLoading = true
         do {
-            meals = try await appState.mealPlannerRepository.getPlannedMealsForWeek(
+            async let mealsResult = appState.mealPlannerRepository.getPlannedMealsForWeek(
                 accountId: accountId,
                 weekStart: weekStart
             )
+            async let recipesResult = appState.mealPlannerRepository.getRecipes(accountId: accountId)
+            meals = try await mealsResult
+            recipes = try await recipesResult
         } catch {
             #if DEBUG
             print("Error loading meals: \(error)")

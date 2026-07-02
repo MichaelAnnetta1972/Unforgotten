@@ -530,10 +530,10 @@ struct UsefulContactRow: View {
     var body: some View {
         HStack {
             // Icon
-            Image(systemName: contact.category.icon)
-                .font(.title3)
-                .foregroundColor(appAccentColor)
-                .frame(width: 40)
+            // Image(systemName: contact.category.icon)
+            //     .font(.title3)
+            //     .foregroundColor(appAccentColor)
+            //     .frame(width: 40)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(contact.name)
@@ -542,7 +542,7 @@ struct UsefulContactRow: View {
 
                 Text(contact.category.displayName)
                     .font(.appCaption)
-                    .foregroundColor(.textSecondary)
+                    .foregroundColor(appAccentColor)
             }
 
             Spacer()

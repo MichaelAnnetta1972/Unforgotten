@@ -17,6 +17,7 @@ final class LocalUsefulContact {
     var address: String?
     var notes: String?
     var isFavourite: Bool
+    var photoUrl: String?
     var sortOrder: Int
     var createdAt: Date
     var updatedAt: Date
@@ -38,6 +39,7 @@ final class LocalUsefulContact {
         address: String? = nil,
         notes: String? = nil,
         isFavourite: Bool = false,
+        photoUrl: String? = nil,
         sortOrder: Int = 0,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -55,6 +57,7 @@ final class LocalUsefulContact {
         self.address = address
         self.notes = notes
         self.isFavourite = isFavourite
+        self.photoUrl = photoUrl
         self.sortOrder = sortOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -76,6 +79,7 @@ final class LocalUsefulContact {
             address: remote.address,
             notes: remote.notes,
             isFavourite: remote.isFavourite,
+            photoUrl: remote.photoUrl,
             sortOrder: remote.sortOrder,
             createdAt: remote.createdAt,
             updatedAt: remote.updatedAt,
@@ -98,6 +102,7 @@ final class LocalUsefulContact {
             address: address,
             notes: notes,
             isFavourite: isFavourite,
+            photoUrl: photoUrl,
             sortOrder: sortOrder,
             createdAt: createdAt,
             updatedAt: updatedAt
@@ -116,6 +121,7 @@ final class LocalUsefulContact {
         self.address = remote.address
         self.notes = remote.notes
         self.isFavourite = remote.isFavourite
+        self.photoUrl = remote.photoUrl
         self.sortOrder = remote.sortOrder
         self.createdAt = remote.createdAt
         self.updatedAt = remote.updatedAt

@@ -237,6 +237,7 @@ final class CachedUsefulContactRepository {
         local.address = contact.address
         local.notes = contact.notes
         local.isFavourite = contact.isFavourite
+        local.photoUrl = contact.photoUrl
         local.sortOrder = contact.sortOrder
         local.markAsModified()
 

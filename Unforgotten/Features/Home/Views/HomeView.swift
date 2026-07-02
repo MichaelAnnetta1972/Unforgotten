@@ -487,9 +487,9 @@ struct TodayMedicationRow: View {
     private var statusColors: (foreground: Color, background: Color) {
         switch log.status {
         case .scheduled:
-            return (.appBackground, appAccentColor)
-        case .taken:
             return (appAccentColor, appAccentColor.opacity(0.15))
+        case .taken:
+            return (.appBackground, appAccentColor)
         case .skipped:
             return (.textSecondary, Color.textSecondary.opacity(0.15))
         case .missed:

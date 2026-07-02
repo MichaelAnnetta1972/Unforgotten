@@ -25,6 +25,7 @@ struct AddUsefulContactView: View {
     @State private var website = ""
     @State private var address = ""
     @State private var notes = ""
+    @State private var selectedImage: UIImage?
 
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -76,28 +77,29 @@ struct AddUsefulContactView: View {
                     VStack(spacing: 20) {
                         AppTextField(placeholder: "Name / Company *", text: $name)
 
-                        // Category picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("CATEGORY")
-                                .font(.appCaption)
-                                .foregroundColor(appAccentColor)
+                        // Category dropdown (same style as the Add Appointment page)
+                        HStack {
+                            Text("Category")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
 
-                            FlowLayout(spacing: 8) {
+                            Spacer()
+
+                            Picker("Category", selection: $category) {
                                 ForEach(ContactCategory.allCases, id: \.self) { cat in
-                                    Button {
-                                        category = cat
-                                    } label: {
-                                        Text(cat.displayName)
-                                            .font(.appCaption)
-                                            .foregroundColor(category == cat ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(category == cat ? appAccentColor : Color.cardBackground)
-                                            .cornerRadius(20)
-                                    }
+                                    Label(cat.displayName, systemImage: cat.icon)
+                                        .tag(cat)
+                                        .font(.appBody)
                                 }
                             }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
 
                         AppTextField(placeholder: "Company Name (if different)", text: $companyName)
                         AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
@@ -105,6 +107,12 @@ struct AddUsefulContactView: View {
                         AppTextField(placeholder: "Website", text: $website, keyboardType: .URL)
                         AppTextField(placeholder: "Address", text: $address)
                         AppTextField(placeholder: "Notes", text: $notes)
+
+                        // Photo picker
+                        ImageSourcePicker(
+                            selectedImage: $selectedImage,
+                            onImageSelected: { _ in }
+                        )
 
                         if let error = errorMessage {
                             Text(error)
@@ -143,11 +151,35 @@ struct AddUsefulContactView: View {
         )
 
         do {
-            let contact = try await appState.usefulContactRepository.createContact(insert)
+            var contact = try await appState.usefulContactRepository.createContact(insert)
+
+            // If a photo was selected, upload it (needs the created contact's id
+            // for a stable storage path), then persist the URL on the contact.
+            // A photo-upload failure must NOT lose the contact the user just
+            // created, so it's handled separately from the create itself.
+            if let image = selectedImage {
+                do {
+                    let photoURL = try await ImageUploadService.shared.uploadUsefulContactPhoto(
+                        image: image,
+                        contactId: contact.id
+                    )
+                    contact.photoUrl = photoURL
+                    contact = try await appState.usefulContactRepository.updateContact(contact)
+                } catch {
+                    #if DEBUG
+                    print("❌ contact photo upload failed: \(error)")
+                    #endif
+                    errorMessage = "Contact saved, but the photo couldn't be uploaded: \(error.localizedDescription)"
+                }
+            }
+
             onSave(contact)
             dismissView()
         } catch {
-            errorMessage = "Failed to save contact"
+            #if DEBUG
+            print("❌ saveContact failed: \(error)")
+            #endif
+            errorMessage = "Failed to save contact: \(error.localizedDescription)"
         }
 
         isLoading = false

@@ -23,19 +23,6 @@ struct MealPlannerView: View {
     @State private var recipeToDelete: Recipe?
     @State private var showDeleteConfirmation = false
     @State private var recipeListHeight: CGFloat = 0
-    @AppStorage("mealPlannerMealTypeFilters") private var savedMealFilters: String = ""
-
-    private var selectedMealFilters: Set<MealType> {
-        get {
-            guard !savedMealFilters.isEmpty else { return [] }
-            let types = savedMealFilters.split(separator: ",").compactMap { MealType(rawValue: String($0)) }
-            return Set(types)
-        }
-    }
-
-    private func setMealFilters(_ filters: Set<MealType>) {
-        savedMealFilters = filters.map(\.rawValue).joined(separator: ",")
-    }
 
     // For pre-filling add meal form
     @State private var addMealPrefill: MealPrefill?
@@ -47,14 +34,6 @@ struct MealPlannerView: View {
 
     var filteredRecipes: [Recipe] {
         var result = recipes
-
-        // Filter by meal type if filters are active
-        if !selectedMealFilters.isEmpty {
-            result = result.filter { recipe in
-                guard let type = recipe.mealType else { return true } // Show "Any" recipes always
-                return selectedMealFilters.contains(type)
-            }
-        }
 
         if !searchText.isEmpty {
             result = result.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
@@ -112,49 +91,6 @@ struct MealPlannerView: View {
                         .padding(.horizontal, AppDimensions.screenPadding)
                         .padding(.top, AppDimensions.cardSpacing)
 
-                        // Meal type filter buttons
-                        HStack(spacing: 8) {
-                            ForEach(MealType.allCases) { mealType in
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        var filters = selectedMealFilters
-                                        if filters.isEmpty {
-                                            // All are shown — deselect this one by selecting all others
-                                            filters = Set(MealType.allCases)
-                                            filters.remove(mealType)
-                                        } else if filters.contains(mealType) {
-                                            filters.remove(mealType)
-                                            // If none left, reset to show all
-                                            if filters.isEmpty {
-                                                filters = []
-                                            }
-                                        } else {
-                                            filters.insert(mealType)
-                                            // If all are selected, reset to show all
-                                            if filters.count == MealType.allCases.count {
-                                                filters = []
-                                            }
-                                        }
-                                        setMealFilters(filters)
-                                    }
-                                } label: {
-                                    let isSelected = selectedMealFilters.contains(mealType) || selectedMealFilters.isEmpty
-                                    HStack(spacing: 4) {
-                                        // Image(systemName: mealType.icon)
-                                        //     .font(.system(size: 12))
-                                        Text(mealType.displayName)
-                                            .font(.appCaption)
-                                    }
-                                    .foregroundColor(isSelected ? .black : .textSecondary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(isSelected ? appAccentColor : Color.cardBackground)
-                                    .cornerRadius(AppDimensions.cardCornerRadius)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, AppDimensions.screenPadding)
-
                         if selectedTab == 0 {
                             MealPlanWeekView(
                                 onAddMeal: { date, mealType in
@@ -173,8 +109,7 @@ struct MealPlannerView: View {
                                         }
                                     }
                                 },
-                                refreshTrigger: mealRefreshTrigger,
-                                mealTypeFilters: selectedMealFilters
+                                refreshTrigger: mealRefreshTrigger
                             )
                         } else {
                             recipesSection
@@ -263,10 +198,10 @@ struct MealPlannerView: View {
                     .foregroundColor(.textPrimary)
             }
             .padding(AppDimensions.cardPadding)
-            .background(Color.cardBackgroundSoft)
-            .cornerRadius(AppDimensions.buttonCornerRadius)
+            .background(Color.cardBackground)
+            .cornerRadius(AppDimensions.cardCornerRadius)
             .overlay(
-                RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
                     .stroke(Color.textSecondary.opacity(0.3), lineWidth: 1)
             )
             .padding(.horizontal, AppDimensions.screenPadding)
@@ -469,48 +404,48 @@ struct AddRecipeSheet: View {
                             AppTextField(placeholder: "Meal Name *", text: $name)
 
                             // Meal type selector
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Type")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                            // VStack(alignment: .leading, spacing: 8) {
+                            //     Text("Type")
+                            //         .font(.appCaption)
+                            //         .foregroundColor(.textSecondary)
 
-                                FlowLayout(spacing: 8) {
-                                    // "Any" option
-                                    Button {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            selectedMealType = nil
-                                        }
-                                    } label: {
-                                        Text("Any")
-                                            .font(.appBody)
-                                            .foregroundColor(selectedMealType == nil ? .black : .textSecondary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedMealType == nil ? appAccentColor : Color.cardBackground)
-                                            .cornerRadius(AppDimensions.cardCornerRadius)
-                                    }
+                            //     FlowLayout(spacing: 8) {
+                            //         // "Any" option
+                            //         Button {
+                            //             withAnimation(.easeInOut(duration: 0.2)) {
+                            //                 selectedMealType = nil
+                            //             }
+                            //         } label: {
+                            //             Text("Any")
+                            //                 .font(.appBody)
+                            //                 .foregroundColor(selectedMealType == nil ? .black : .textSecondary)
+                            //                 .padding(.horizontal, 16)
+                            //                 .padding(.vertical, 10)
+                            //                 .background(selectedMealType == nil ? appAccentColor : Color.cardBackground)
+                            //                 .cornerRadius(AppDimensions.cardCornerRadius)
+                            //         }
 
-                                    ForEach(MealType.allCases) { type in
-                                        Button {
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                selectedMealType = type
-                                            }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: type.icon)
-                                                    .font(.system(size: 12))
-                                                Text(type.displayName)
-                                                    .font(.appBody)
-                                            }
-                                            .foregroundColor(selectedMealType == type ? .black : .textSecondary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedMealType == type ? appAccentColor : Color.cardBackground)
-                                            .cornerRadius(AppDimensions.cardCornerRadius)
-                                        }
-                                    }
-                                }
-                            }
+                            //         ForEach(MealType.allCases) { type in
+                            //             Button {
+                            //                 withAnimation(.easeInOut(duration: 0.2)) {
+                            //                     selectedMealType = type
+                            //                 }
+                            //             } label: {
+                            //                 HStack(spacing: 4) {
+                            //                     Image(systemName: type.icon)
+                            //                         .font(.system(size: 12))
+                            //                     Text(type.displayName)
+                            //                         .font(.appBody)
+                            //                 }
+                            //                 .foregroundColor(selectedMealType == type ? .black : .textSecondary)
+                            //                 .padding(.horizontal, 16)
+                            //                 .padding(.vertical, 10)
+                            //                 .background(selectedMealType == type ? appAccentColor : Color.cardBackground)
+                            //                 .cornerRadius(AppDimensions.cardCornerRadius)
+                            //             }
+                            //         }
+                            //     }
+                            // }
 
                             // Website URL with launch button
                             HStack(spacing: 8) {
@@ -690,48 +625,48 @@ struct EditRecipeSheet: View {
                             AppTextField(placeholder: "Recipe Name *", text: $name)
 
                             // Meal type selector
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Type")
-                                    .font(.appCaption)
-                                    .foregroundColor(.textSecondary)
+                            // VStack(alignment: .leading, spacing: 8) {
+                            //     Text("Type")
+                            //         .font(.appCaption)
+                            //         .foregroundColor(.textSecondary)
 
-                                FlowLayout(spacing: 8) {
-                                    // "Any" option
-                                    Button {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            selectedMealType = nil
-                                        }
-                                    } label: {
-                                        Text("Any")
-                                            .font(.appBody)
-                                            .foregroundColor(selectedMealType == nil ? .black : .textSecondary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedMealType == nil ? appAccentColor : Color.cardBackground)
-                                            .cornerRadius(AppDimensions.cardCornerRadius)
-                                    }
+                            //     FlowLayout(spacing: 8) {
+                            //         // "Any" option
+                            //         Button {
+                            //             withAnimation(.easeInOut(duration: 0.2)) {
+                            //                 selectedMealType = nil
+                            //             }
+                            //         } label: {
+                            //             Text("Any")
+                            //                 .font(.appBody)
+                            //                 .foregroundColor(selectedMealType == nil ? .black : .textSecondary)
+                            //                 .padding(.horizontal, 16)
+                            //                 .padding(.vertical, 10)
+                            //                 .background(selectedMealType == nil ? appAccentColor : Color.cardBackground)
+                            //                 .cornerRadius(AppDimensions.cardCornerRadius)
+                            //         }
 
-                                    ForEach(MealType.allCases) { type in
-                                        Button {
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                selectedMealType = type
-                                            }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: type.icon)
-                                                    .font(.system(size: 12))
-                                                Text(type.displayName)
-                                                    .font(.appBody)
-                                            }
-                                            .foregroundColor(selectedMealType == type ? .black : .textSecondary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(selectedMealType == type ? appAccentColor : Color.cardBackground)
-                                            .cornerRadius(AppDimensions.cardCornerRadius)
-                                        }
-                                    }
-                                }
-                            }
+                            //         ForEach(MealType.allCases) { type in
+                            //             Button {
+                            //                 withAnimation(.easeInOut(duration: 0.2)) {
+                            //                     selectedMealType = type
+                            //                 }
+                            //             } label: {
+                            //                 HStack(spacing: 4) {
+                            //                     Image(systemName: type.icon)
+                            //                         .font(.system(size: 12))
+                            //                     Text(type.displayName)
+                            //                         .font(.appBody)
+                            //                 }
+                            //                 .foregroundColor(selectedMealType == type ? .black : .textSecondary)
+                            //                 .padding(.horizontal, 16)
+                            //                 .padding(.vertical, 10)
+                            //                 .background(selectedMealType == type ? appAccentColor : Color.cardBackground)
+                            //                 .cornerRadius(AppDimensions.cardCornerRadius)
+                            //             }
+                            //         }
+                            //     }
+                            // }
 
                             // Website URL with launch button
                             HStack(spacing: 8) {

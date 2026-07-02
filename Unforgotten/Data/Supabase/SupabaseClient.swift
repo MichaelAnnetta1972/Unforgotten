@@ -14,6 +14,7 @@ enum SupabaseConfig {
     static let countdownPhotosBucket = "countdown-photos"
     static let recipePhotosBucket = "recipe-photos"
     static let accountPhotosBucket = "account-photos"
+    static let usefulContactPhotosBucket = "useful-contact-photos"
 
     // Image upload limits
     static let maxImageSizeBytes = 5 * 1024 * 1024 // 5MB

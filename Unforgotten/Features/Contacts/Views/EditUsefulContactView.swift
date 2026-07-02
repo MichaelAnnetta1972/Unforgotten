@@ -18,6 +18,8 @@ struct EditUsefulContactView: View {
     @State private var website: String
     @State private var address: String
     @State private var notes: String
+    @State private var selectedImage: UIImage?
+    @State private var removePhoto = false
 
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -91,28 +93,29 @@ struct EditUsefulContactView: View {
                     VStack(spacing: 20) {
                         AppTextField(placeholder: "Name / Company *", text: $name)
 
-                        // Category picker
-                        VStack(alignment: .leading, spacing: 8) {
+                        // Category dropdown (same style as the Add Appointment page)
+                        HStack {
                             Text("Category")
-                                .font(.appCaption)
+                                .font(.appBody)
                                 .foregroundColor(.textSecondary)
 
-                            FlowLayout(spacing: 8) {
+                            Spacer()
+
+                            Picker("Category", selection: $category) {
                                 ForEach(ContactCategory.allCases, id: \.self) { cat in
-                                    Button {
-                                        category = cat
-                                    } label: {
-                                        Text(cat.displayName)
-                                            .font(.appCaption)
-                                            .foregroundColor(category == cat ? .black : .textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .background(category == cat ? appAccentColor : Color.cardBackgroundSoft)
-                                            .cornerRadius(20)
-                                    }
+                                    Label(cat.displayName, systemImage: cat.icon)
+                                        .tag(cat)
+                                        .font(.appBody)
                                 }
                             }
+                            .pickerStyle(.menu)
+                            .tint(appAccentColor)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppDimensions.cardCornerRadius)
 
                         AppTextField(placeholder: "Company Name (if different)", text: $companyName)
                         AppTextField(placeholder: "Phone", text: $phone, keyboardType: .phonePad)
@@ -120,6 +123,14 @@ struct EditUsefulContactView: View {
                         AppTextField(placeholder: "Website", text: $website, keyboardType: .URL)
                         AppTextField(placeholder: "Address", text: $address)
                         AppTextField(placeholder: "Notes", text: $notes)
+
+                        // Photo picker (shows existing photo, supports replace/remove)
+                        ImageSourcePicker(
+                            selectedImage: $selectedImage,
+                            currentImageUrl: removePhoto ? nil : contact.photoUrl,
+                            onImageSelected: { _ in removePhoto = false },
+                            onRemove: { removePhoto = true }
+                        )
 
                         if let error = errorMessage {
                             Text(error)
@@ -152,6 +163,34 @@ struct EditUsefulContactView: View {
         updatedContact.website = website.isBlank ? nil : website
         updatedContact.address = address.isBlank ? nil : address
         updatedContact.notes = notes.isBlank ? nil : notes
+
+        // Resolve the photo change before persisting.
+        do {
+            if let image = selectedImage {
+                // Uploaded a new/replacement photo.
+                let photoURL = try await ImageUploadService.shared.uploadUsefulContactPhoto(
+                    image: image,
+                    contactId: contact.id
+                )
+                updatedContact.photoUrl = photoURL
+            } else if removePhoto {
+                // Removed the existing photo.
+                if let existing = contact.photoUrl {
+                    try? await ImageUploadService.shared.deleteImage(
+                        bucket: SupabaseConfig.usefulContactPhotosBucket,
+                        path: existing
+                    )
+                }
+                updatedContact.photoUrl = nil
+            }
+        } catch {
+            #if DEBUG
+            print("❌ contact photo change failed: \(error)")
+            #endif
+            errorMessage = "Couldn't update the photo: \(error.localizedDescription)"
+            isLoading = false
+            return
+        }
 
         do {
             let saved = try await appState.usefulContactRepository.updateContact(updatedContact)

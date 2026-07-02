@@ -16,15 +16,15 @@ struct ToDoListCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             // Icon - rounded square like Notes list
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(appAccentColor.opacity(isSelected ? 0.3 : 0.15))
-                    .frame(width: 48, height: 48)
+            // ZStack {
+            //     RoundedRectangle(cornerRadius: 14)
+            //         .fill(appAccentColor.opacity(isSelected ? 0.3 : 0.15))
+            //         .frame(width: 48, height: 48)
 
-                Image(systemName: "checklist")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(appAccentColor)
-            }
+            //     Image(systemName: "checklist")
+            //         .font(.system(size: 18, weight: .medium))
+            //         .foregroundColor(appAccentColor)
+            // }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -57,7 +57,7 @@ struct ToDoListCard: View {
 
                     Text(list.listType ?? "Other")
                         .font(.appCaption)
-                        .foregroundColor(.textSecondary)
+                        .foregroundColor(appAccentColor)
 
                     if let dueDate = list.dueDate {
                         HStack(spacing: 4) {

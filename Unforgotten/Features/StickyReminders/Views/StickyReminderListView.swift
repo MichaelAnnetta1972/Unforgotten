@@ -46,7 +46,18 @@ struct StickyReminderListView: View {
     }
 
     private var activeReminders: [StickyReminder] {
-        reminders.filter { !$0.isDismissed && $0.isActive }
+        reminders
+            .filter { !$0.isDismissed && $0.isActive }
+            .sorted {
+                // Sort by next reminder time (soonest first). Reminders with no
+                // computed next time sort to the end. Deterministic tie-breakers
+                // (title, then id) keep the order stable across reloads.
+                let lhs = $0.nextNotificationTime ?? Date.distantFuture
+                let rhs = $1.nextNotificationTime ?? Date.distantFuture
+                if lhs != rhs { return lhs < rhs }
+                if $0.title != $1.title { return $0.title < $1.title }
+                return $0.id.uuidString < $1.id.uuidString
+            }
     }
 
     private var dismissedReminders: [StickyReminder] {
@@ -356,34 +367,35 @@ struct StickyReminderCard: View {
     @Environment(\.appAccentColor) private var appAccentColor
     let reminder: StickyReminder
 
+    /// Compact date + time formatter for the next reminder (e.g. "2 Jul, 3:45 PM")
+    private static let nextReminderFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM, h:mm a"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             // Icon
-            ZStack {
-                Circle()
-                    .fill(reminder.isDismissed ? Color.textSecondary.opacity(0.2) : appAccentColor.opacity(0.2))
-                    .frame(width: 44, height: 44)
+            // ZStack {
+            //     Circle()
+            //         .fill(reminder.isDismissed ? Color.textSecondary.opacity(0.2) : appAccentColor.opacity(0.2))
+            //         .frame(width: 44, height: 44)
 
-                Image(systemName: reminder.isDismissed ? "bell.slash" : "bell.badge.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(reminder.isDismissed ? .textSecondary : appAccentColor)
-            }
+            //     Image(systemName: reminder.isDismissed ? "bell.slash" : "bell.badge.fill")
+            //         .font(.system(size: 20))
+            //         .foregroundColor(reminder.isDismissed ? .textSecondary : appAccentColor)
+            // }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(reminder.title)
                     .font(.appBodyMedium)
                     .foregroundColor(reminder.isDismissed ? .textSecondary : .textPrimary)
 
                 // Info details (frequency and status)
                 HStack(spacing: 8) {
-                    // Repeat interval
-                    HStack(spacing: 4) {
-                        Image(systemName: reminder.repeatInterval.icon)
-                            .font(.system(size: 11))
-                        Text(reminder.repeatInterval.displayName)
-                            .font(.appCaption)
-                    }
-                    .foregroundColor(.textSecondary)
+
 
                     // Status badge
                     if reminder.isDismissed {
@@ -397,7 +409,7 @@ struct StickyReminderCard: View {
                     } else if reminder.shouldNotify {
                         Text("Active")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white)
+                            .foregroundColor(.appBackground)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(appAccentColor)
@@ -410,6 +422,28 @@ struct StickyReminderCard: View {
                             .padding(.vertical, 2)
                             .background(appAccentColor.opacity(0.2))
                             .clipShape(Capsule())
+                    }
+                    // Repeat interval
+                    HStack(spacing: 4) {
+                        Image(systemName: reminder.repeatInterval.icon)
+                            .font(.system(size: 11))
+                        Text(reminder.repeatInterval.displayName)
+                            .font(.appCaption)
+                    }
+                    .foregroundColor(.textSecondary)
+
+                
+                    Spacer()
+
+                    // Next reminder date/time (for active, non-dismissed reminders)
+                    if !reminder.isDismissed, let next = reminder.nextNotificationTime {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock.badge")
+                                .font(.system(size: 11))
+                            Text(Self.nextReminderFormatter.string(from: next))
+                                .font(.appCaption)
+                        }
+                        .foregroundColor(.textMuted)
                     }
                 }
             }

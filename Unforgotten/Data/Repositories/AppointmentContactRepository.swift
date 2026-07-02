@@ -482,7 +482,8 @@ final class UsefulContactRepository: UsefulContactRepositoryProtocol {
             website: contact.website,
             address: contact.address,
             notes: contact.notes,
-            isFavourite: contact.isFavourite
+            isFavourite: contact.isFavourite,
+            photoUrl: contact.photoUrl
         )
         
         let updated: UsefulContact = try await supabase
@@ -531,6 +532,7 @@ struct UsefulContactInsert: Encodable {
     let address: String?
     let notes: String?
     let isFavourite: Bool
+    let photoUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -544,6 +546,7 @@ struct UsefulContactInsert: Encodable {
         case address
         case notes
         case isFavourite = "is_favourite"
+        case photoUrl = "photo_url"
     }
 
     init(
@@ -557,7 +560,8 @@ struct UsefulContactInsert: Encodable {
         website: String? = nil,
         address: String? = nil,
         notes: String? = nil,
-        isFavourite: Bool = false
+        isFavourite: Bool = false,
+        photoUrl: String? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -570,6 +574,7 @@ struct UsefulContactInsert: Encodable {
         self.address = address
         self.notes = notes
         self.isFavourite = isFavourite
+        self.photoUrl = photoUrl
     }
 }
 
@@ -583,7 +588,8 @@ private struct UsefulContactUpdate: Encodable {
     let address: String?
     let notes: String?
     let isFavourite: Bool
-    
+    let photoUrl: String?
+
     enum CodingKeys: String, CodingKey {
         case name
         case category
@@ -594,6 +600,7 @@ private struct UsefulContactUpdate: Encodable {
         case address
         case notes
         case isFavourite = "is_favourite"
+        case photoUrl = "photo_url"
     }
 }
 

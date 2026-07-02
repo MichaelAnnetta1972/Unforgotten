@@ -536,12 +536,12 @@ struct AppointmentListRow: View {
     var body: some View {
         HStack {
             // Type icon with background
-            Image(systemName: appointment.type.icon)
-                .font(.system(size: horizontalSizeClass == .regular ? 22 : 18))
-                .foregroundColor(appAccentColor)
-                .frame(width: iconSize, height: iconSize)
-                .background(appAccentColor.opacity(0.15))
-                .cornerRadius(8)
+            // Image(systemName: appointment.type.icon)
+            //     .font(.system(size: horizontalSizeClass == .regular ? 22 : 18))
+            //     .foregroundColor(appAccentColor)
+            //     .frame(width: iconSize, height: iconSize)
+            //     .background(appAccentColor.opacity(0.15))
+            //     .cornerRadius(8)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1547,15 +1547,11 @@ struct AddAppointmentView: View {
             AppTextField(placeholder: "Notes (optional)", text: $notes)
 
             // Photo picker
-            HStack {
-                Spacer()
-                ImageSourcePicker(
-                    selectedImage: $selectedImage,
-                    onImageSelected: { _ in }
-                )
-                Spacer()
-            }
-            .padding(.top, 8)
+            ImageSourcePicker(
+                selectedImage: $selectedImage,
+                onImageSelected: { _ in }
+            )
+            //.padding(.top, 8)
             
             // Share this appointment
             VStack(alignment: .leading, spacing: 12) {
@@ -1748,38 +1744,94 @@ struct AddAppointmentView: View {
     private var familySharingSection: some View {
         if hasFamilyAccess {
             // Family Plus user - show full controls
-            Button {
-                showFamilySharingSheet = true
-            } label: {
-                HStack {
-                    Image(systemName: "person.2.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(shareToFamily ? appAccentColor : .textSecondary)
+  
+                  VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Add to Family Calendar")
+                                .font(.appBody)
+                                .foregroundColor(.textSecondary)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Family Calendar")
-                            .font(.appBody)
-                            .foregroundColor(.textPrimary)
+                            if shareToFamily && !selectedMemberIds.isEmpty {
+                                Text("\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected")
+                                    .font(.appCaption)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
 
-                        Text(shareToFamily ? "\(selectedMemberIds.count) member(s) selected" : "Not shared")
-                            .font(.appCaption)
-                            .foregroundColor(.textSecondary)
+                        Spacer()
+
+                        Toggle("", isOn: $shareToFamily)
+                            .labelsHidden()
+                            .tint(appAccentColor)
                     }
 
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14))
-                        .foregroundColor(.textSecondary)
+                    if shareToFamily {
+                        Button {
+                            showFamilySharingSheet = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.2")
+                                    .foregroundColor(appAccentColor)
+                                Text("Select Members")
+                                    .font(.appBody)
+                                    .foregroundColor(.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+                    }
                 }
-                .padding()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
                 .background(Color.cardBackground)
                 .cornerRadius(AppDimensions.cardCornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                        .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
-                )
-            }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+                            .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+                    )
+  
+  
+            // Button {
+            //     showFamilySharingSheet = true
+            // } label: {
+            //     HStack {
+            //         Image(systemName: "person.2.fill")
+            //             .font(.system(size: 16))
+            //             .foregroundColor(shareToFamily ? appAccentColor : .textSecondary)
+
+            //         VStack(alignment: .leading, spacing: 2) {
+            //             Text("Family Calendar")
+            //                 .font(.appBody)
+            //                 .foregroundColor(.textPrimary)
+
+            //                 if shareToFamily && !selectedMemberIds.isEmpty {
+            //                     Text("\(selectedMemberIds.count) member\(selectedMemberIds.count == 1 ? "" : "s") selected")
+            //                         .font(.appCaption)
+            //                         .foregroundColor(.textSecondary)
+            //                 }
+
+
+            //             // Text(shareToFamily ? "\(selectedMemberIds.count) member(s) selected" : "Not shared")
+            //             //     .font(.appCaption)
+            //             //     .foregroundColor(.textSecondary)
+            //         }
+
+            //         Spacer()
+
+            //         Image(systemName: "chevron.right")
+            //             .font(.system(size: 14))
+            //             .foregroundColor(.textSecondary)
+            //     }
+            //     .padding()
+            //     .background(Color.cardBackground)
+            //     .cornerRadius(AppDimensions.cardCornerRadius)
+            //     .overlay(
+            //         RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
+            //             .stroke(Color.textSecondary.opacity(0.3), lineWidth: 0)
+            //     )
+            // }
             .buttonStyle(PlainButtonStyle())
         } else {
             // Free user - show upgrade prompt
@@ -2209,17 +2261,13 @@ struct EditAppointmentView: View {
             AppTextField(placeholder: "Notes (optional)", text: $notes)
 
             // Photo picker
-            HStack {
-                Spacer()
-                ImageSourcePicker(
-                    selectedImage: $selectedImage,
-                    currentImageUrl: appointment.imageUrl,
-                    onImageSelected: { _ in removePhoto = false },
-                    onRemove: { removePhoto = true }
-                )
-                Spacer()
-            }
-            .padding(.top, 8)
+            ImageSourcePicker(
+                selectedImage: $selectedImage,
+                currentImageUrl: appointment.imageUrl,
+                onImageSelected: { _ in removePhoto = false },
+                onRemove: { removePhoto = true }
+            )
+            //.padding(.top, 8)
 
             // Share this appointment
             VStack(alignment: .leading, spacing: 12) {

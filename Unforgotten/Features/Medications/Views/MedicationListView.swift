@@ -2644,14 +2644,10 @@ struct AddMedicationView: View {
             AppTextField(placeholder: "Add a medication name", text: $name)
             AppTextField(placeholder: "Reason for taking", text: $reason)
 
-            HStack {
-                Spacer()
-                ImageSourcePicker(
-                    selectedImage: $selectedImage,
-                    onImageSelected: { _ in }
-                )
-                Spacer()
-            }
+            ImageSourcePicker(
+                selectedImage: $selectedImage,
+                onImageSelected: { _ in }
+            )
             .padding(.top, 8)
         }
     }
@@ -3597,16 +3593,12 @@ struct EditMedicationView: View {
             AppTextField(placeholder: "Add a medication name", text: $name)
             AppTextField(placeholder: "Reason for taking", text: $reason)
 
-            HStack {
-                Spacer()
-                ImageSourcePicker(
-                    selectedImage: $selectedImage,
-                    currentImageUrl: removePhoto ? nil : medication.imageUrl,
-                    onImageSelected: { _ in removePhoto = false },
-                    onRemove: { removePhoto = true }
-                )
-                Spacer()
-            }
+            ImageSourcePicker(
+                selectedImage: $selectedImage,
+                currentImageUrl: removePhoto ? nil : medication.imageUrl,
+                onImageSelected: { _ in removePhoto = false },
+                onRemove: { removePhoto = true }
+            )
             .padding(.top, 8)
         }
     }

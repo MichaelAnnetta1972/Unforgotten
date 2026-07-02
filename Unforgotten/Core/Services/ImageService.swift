@@ -141,6 +141,15 @@ final class ImageUploadService {
         )
     }
 
+    /// Uploads a useful contact photo and returns the storage path.
+    func uploadUsefulContactPhoto(image: UIImage, contactId: UUID) async throws -> String {
+        try await uploadImage(
+            image: image,
+            bucket: SupabaseConfig.usefulContactPhotosBucket,
+            path: "useful-contacts/\(contactId.uuidString)/photo.jpg"
+        )
+    }
+
     /// Generic image upload method. Returns the storage path (not a public URL),
     /// since buckets are private and consumers must request signed URLs to read.
     private func uploadImage(image: UIImage, bucket: String, path: String) async throws -> String {

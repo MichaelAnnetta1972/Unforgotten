@@ -226,6 +226,8 @@ struct BirthdayCard: View {
                     }
                 }
             }
+            .padding(.horizontal, 12)
+
 
             Spacer()
 
@@ -234,22 +236,22 @@ struct BirthdayCard: View {
                 VStack(spacing: 1) {
                     Text(turningLabel)
                         .font(.appCaption)
-                        .foregroundColor(.white)
+                        .foregroundColor(.textSecondary)
 
                     Text("\(age)")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(appAccentColor)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.cardBackgroundLight.opacity(0.4))
+                        .fill(Color.cardBackgroundLight)
                 )
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }
