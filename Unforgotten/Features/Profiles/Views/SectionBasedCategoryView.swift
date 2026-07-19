@@ -191,7 +191,7 @@ struct SectionBasedCategoryView: View {
                                     SectionCard(
                                         sectionName: group.section,
                                         items: group.items,
-                                        accentColor: .white,
+                                        accentColor: .textPrimary,
                                         syncedDetailIds: syncedDetailIds,
                                         sourceName: profile.isSyncedProfile ? profile.displayName : nil,
                                         onAddItem: {
@@ -542,7 +542,7 @@ struct SectionCard: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(accentColor)
                         .frame(width: 28, height: 28)
-                        .background(.white.opacity(0.2))
+                        .background(Color.textPrimary.opacity(0.2))
                         .clipShape(Circle())
                 }
                 .buttonStyle(.borderless)
@@ -636,9 +636,9 @@ struct AddSectionView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
-                        .background(Circle().fill(Color.white.opacity(0.5)))
+                        .background(Circle().fill(Color.textPrimary.opacity(0.5)))
                 }
 
                 Spacer()
@@ -660,7 +660,7 @@ struct AddSectionView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(customSectionName.isBlank ? Color.white.opacity(0.5) : appAccentColor)
+                                .fill(customSectionName.isBlank ? Color.textPrimary.opacity(0.5) : appAccentColor)
                         )
                 }
                 .disabled(customSectionName.isBlank)
@@ -755,9 +755,9 @@ struct AddSectionItemView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
-                        .background(Circle().fill(Color.white.opacity(0.5)))
+                        .background(Circle().fill(Color.textPrimary.opacity(0.5)))
                 }
 
                 Spacer()
@@ -806,7 +806,7 @@ struct AddSectionItemView: View {
                                         .foregroundColor(.textPrimary)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .background(.white.opacity(0.3))
+                                        .background(Color.textPrimary.opacity(0.3))
                                         .cornerRadius(16)
                                 }
                             }

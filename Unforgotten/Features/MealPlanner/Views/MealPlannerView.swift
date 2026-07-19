@@ -297,12 +297,7 @@ private struct RecipeCard: View {
     var body: some View {
         Button { onEdit() } label: {
             HStack(spacing: 12) {
-                Image(systemName: "fork.knife")
-                    .font(.system(size: 16))
-                    .foregroundColor(accentColor)
-                    .frame(width: 36, height: 36)
-                    .background(accentColor.opacity(0.15))
-                    .cornerRadius(8)
+                thumbnail
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(recipe.name)
@@ -332,6 +327,42 @@ private struct RecipeCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        Group {
+            if let imageUrl = recipe.imageUrl, !imageUrl.isEmpty {
+                SignedAsyncImage(reference: imageUrl) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    case .empty:
+                        ZStack {
+                            accentColor.opacity(0.15)
+                            ProgressView().tint(accentColor)
+                        }
+                    default:
+                        thumbnailPlaceholder
+                    }
+                }
+            } else {
+                thumbnailPlaceholder
+            }
+        }
+        .frame(width: 36, height: 36)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var thumbnailPlaceholder: some View {
+        ZStack {
+            accentColor.opacity(0.15)
+            Image(systemName: "fork.knife")
+                .font(.system(size: 16))
+                .foregroundColor(accentColor)
+        }
     }
 }
 
@@ -366,7 +397,7 @@ struct AddRecipeSheet: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.textPrimary)
                                 .frame(width: 48, height: 48)
-                                .background(Circle().fill(Color.white.opacity(0.15)))
+                                .background(Circle().fill(Color.textPrimary.opacity(0.15)))
                         }
 
                         Spacer()
@@ -587,7 +618,7 @@ struct EditRecipeSheet: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.textPrimary)
                                 .frame(width: 48, height: 48)
-                                .background(Circle().fill(Color.white.opacity(0.15)))
+                                .background(Circle().fill(Color.textPrimary.opacity(0.15)))
                         }
 
                         Spacer()

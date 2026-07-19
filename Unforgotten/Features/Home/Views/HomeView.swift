@@ -394,7 +394,7 @@ struct TodayCard: View {
             ForEach(visibleItems) { item in
                 VStack(spacing: 0) {
                     Divider()
-                        .background(Color.white.opacity(0.1))
+                        .background(Color.textPrimary.opacity(0.1))
 
                     switch item {
                     case .medication(let log):
@@ -414,7 +414,7 @@ struct TodayCard: View {
             // See all button
             if hasMoreItems {
                 Divider()
-                    .background(Color.white.opacity(0.1))
+                    .background(Color.textPrimary.opacity(0.1))
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -436,7 +436,7 @@ struct TodayCard: View {
                 }
             }
         }
-        .background(Color.cardBackgroundLight.opacity(0.8))
+        .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }
 }
@@ -1008,6 +1008,7 @@ class HomeViewModel: ObservableObject {
                 todayMedications[index].status = .taken
                 todayMedications[index].takenAt = Date()
             }
+            await MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: appState)
         } catch {
             self.error = "Failed to update medication: \(error.localizedDescription)"
         }
@@ -1021,6 +1022,7 @@ class HomeViewModel: ObservableObject {
                 todayMedications[index].status = .skipped
                 todayMedications[index].takenAt = nil
             }
+            await MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: appState)
         } catch {
             self.error = "Failed to skip medication: \(error.localizedDescription)"
         }
@@ -1034,6 +1036,7 @@ class HomeViewModel: ObservableObject {
                 todayMedications[index].status = .scheduled
                 todayMedications[index].takenAt = nil
             }
+            await MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: appState)
         } catch {
             self.error = "Failed to update medication: \(error.localizedDescription)"
         }

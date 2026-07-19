@@ -35,7 +35,7 @@ struct CalendarWeekView: View {
 
                     if !calendar.isDate(date, inSameDayAs: daysOfWeek.last ?? date) {
                         Divider()
-                            .background(Color.white.opacity(0.1))
+                            .background(Color.textPrimary.opacity(0.1))
                     }
                 }
             }

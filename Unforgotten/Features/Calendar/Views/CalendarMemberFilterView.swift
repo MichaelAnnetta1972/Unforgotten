@@ -92,7 +92,7 @@ struct CalendarMemberFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.white.opacity(0.2))
+                                        .background(Color.textPrimary.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
 
@@ -104,7 +104,7 @@ struct CalendarMemberFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.white.opacity(0.2))
+                                        .background(Color.textPrimary.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
                             }

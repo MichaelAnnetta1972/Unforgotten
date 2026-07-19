@@ -106,7 +106,7 @@ struct CalendarEventRow: View {
         .background(style == .filled ? Color.cardBackgroundLight.opacity(0.4) : Color.clear)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                .stroke(style == .outlined ? .white.opacity(0.2) : Color.clear, lineWidth: 1)
+                .stroke(style == .outlined ? Color.textPrimary.opacity(0.2) : Color.clear, lineWidth: 1)
         )
         .cornerRadius(AppDimensions.cardCornerRadius)
     }

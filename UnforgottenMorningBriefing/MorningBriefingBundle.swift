@@ -6,5 +6,6 @@ struct MorningBriefingBundle: WidgetBundle {
     var body: some Widget {
         MorningBriefingWidget()
         DailySummaryLiveActivity()
+        MedicationDoseLiveActivity()
     }
 }

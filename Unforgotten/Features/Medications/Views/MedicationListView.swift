@@ -140,12 +140,12 @@ struct MedicationListView: View {
 
                             Text("Medication History")
                                 .font(.appCardTitle)
-                                .foregroundColor(.white)
+                                .foregroundColor(.textPrimary)
 
                             Spacer()
 
                             Image(systemName: "chevron.right")
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.textPrimary.opacity(0.7))
                         }
                         .padding(AppDimensions.cardPaddingLarge)
                         .background(Color.cardBackground)
@@ -1565,6 +1565,9 @@ struct DayDetailSheet: View {
             // Notify parent to refresh calendar
             await onLogUpdated?()
 
+            // Keep the Lock Screen dose card in sync
+            await MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: appState)
+
             // Only marking meds as taken counts as a moment of value
             if newStatus == .taken {
                 ReviewRequestService.shared.recordSignificantEventAndMaybeRequest()
@@ -2540,7 +2543,7 @@ struct AddMedicationView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
             }
@@ -2563,7 +2566,7 @@ struct AddMedicationView: View {
                     .frame(width: 48, height: 48)
                     .background(
                         Circle()
-                            .fill(Color.white.opacity(0.5))
+                            .fill(Color.textPrimary.opacity(0.5))
                     )
             }
         }
@@ -3489,7 +3492,7 @@ struct EditMedicationView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
             }
@@ -3512,7 +3515,7 @@ struct EditMedicationView: View {
                     .frame(width: 48, height: 48)
                     .background(
                         Circle()
-                            .fill(Color.white.opacity(0.5))
+                            .fill(Color.textPrimary.opacity(0.5))
                     )
             }
         }

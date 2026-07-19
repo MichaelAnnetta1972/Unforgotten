@@ -359,7 +359,7 @@ struct iPadBirthdayDetailPane: View {
                 } else {
                     Text("\(birthday.daysUntil)")
                         .font(.system(size: 36, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                     Text(birthday.daysUntil == 1 ? "day away" : "days away")
                         .font(.appCaption)
                         .foregroundColor(.textSecondary)

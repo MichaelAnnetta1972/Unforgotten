@@ -557,7 +557,7 @@ struct CountdownEventCard: View {
                     Text(countdownText)
                         .font(.appCaption)
                         .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Color.cardBackgroundLight)

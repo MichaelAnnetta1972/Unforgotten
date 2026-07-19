@@ -11,6 +11,9 @@ enum NotificationTheme {
     static let accentYellow = Color(hex: "FFC93A")
     static let headerGradientStart = Color(hex: "283C96")
     static let headerGradientEnd = Color(hex: "F25BA5")
+    /// Expanded (long-press) notification background: near-black, slightly
+    /// translucent so the system notification material shows through.
+    static let panelBackground = Color(hex: "0E0E12").opacity(0.92)
     static let textPrimary = Color.white
     static let textSecondary = Color(hex: "c1bfbf")
     static let medicalRed = Color(hex: "F36A6A")
@@ -25,13 +28,6 @@ enum NotificationTheme {
     static let bodyFont = Font.system(size: 20, weight: .regular)
     static let captionFont = Font.system(size: 14, weight: .medium)
     static let buttonFont = Font.system(size: 20, weight: .semibold)
-
-    // Header gradient
-    static let headerGradient = LinearGradient(
-        colors: [headerGradientStart, headerGradientEnd],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
 }
 
 extension Color {

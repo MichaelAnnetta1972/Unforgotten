@@ -56,11 +56,11 @@ struct EditUsefulContactView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.textPrimary)
                             .frame(width: 48, height: 48)
                             .background(
                                 Circle()
-                                    .fill(Color.white.opacity(0.5))
+                                    .fill(Color.textPrimary.opacity(0.5))
                             )
                     }
 

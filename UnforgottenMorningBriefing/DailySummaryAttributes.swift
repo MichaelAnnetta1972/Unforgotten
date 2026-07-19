@@ -11,7 +11,16 @@ struct DailySummaryAttributes: ActivityAttributes {
         var birthdays: [String]
         var countdowns: [CountdownItem]
         var taskCount: Int
-        var lastUpdated: Date
+        /// ISO8601 string instead of Date: ActivityKit's push payload decoder
+        /// rejects date strings with fractional seconds (as produced by both the
+        /// Supabase encoder and JS toISOString), silently dropping push-to-start
+        /// events. A plain String always decodes. Same reason `date` is a String.
+        var lastUpdated: String
+
+        /// Current timestamp in a push-safe format.
+        static func timestampNow() -> String {
+            ISO8601DateFormatter().string(from: Date())
+        }
     }
 
     /// A single appointment shown in the Live Activity.

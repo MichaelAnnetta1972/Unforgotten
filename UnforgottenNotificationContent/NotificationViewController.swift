@@ -9,7 +9,9 @@ class NotificationViewController: UIViewController, UNNotificationContentExtensi
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        // Clear so the translucent SwiftUI panel background actually shows
+        // the system notification material behind it
+        view.backgroundColor = .clear
     }
 
     func didReceive(_ notification: UNNotification) {

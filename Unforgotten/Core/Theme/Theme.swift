@@ -59,16 +59,30 @@ extension Color {
     }
 }
 
+// MARK: - Adaptive Color Initializer
+extension Color {
+    /// A color that resolves to a different hex value in light and dark mode.
+    /// Follows the resolved trait collection, so it respects the app's
+    /// `.preferredColorScheme()` override as well as the system setting.
+    init(light: String, dark: String) {
+        self.init(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(Color(hex: dark))
+                : UIColor(Color(hex: light))
+        })
+    }
+}
+
 // MARK: - App Colors
 extension Color {
     // Background colors
-    static let appBackground = Color(hex: "000000")
-    static let cardBackground = Color(hex: "2C2C2D")
-    static let appBackgroundLight = Color(hex: "1C1C1E")
-    static let appBackgroundSoft = Color(hex: "0D0D0D")
-    static let cardBackgroundLight = Color(hex: "383838")
-    static let cardBackgroundSoft = Color(hex: "2A2424")
-    static let cardBackgroundDark = Color(hex: "1A1A1A")
+    static let appBackground = Color(light: "F2F2F7", dark: "000000")
+    static let cardBackground = Color(light: "FFFFFF", dark: "2C2C2D")
+    static let appBackgroundLight = Color(light: "EBEBF0", dark: "1C1C1E")
+    static let appBackgroundSoft = Color(light: "F7F7FA", dark: "0D0D0D")
+    static let cardBackgroundLight = Color(light: "EFEFF4", dark: "383838")
+    static let cardBackgroundSoft = Color(light: "F6F0F0", dark: "2A2424")
+    static let cardBackgroundDark = Color(light: "E4E4E9", dark: "1A1A1A")
 
     // Accent colors
     static let accentYellow = Color(hex: "FFC93A")
@@ -87,13 +101,13 @@ extension Color {
     static let headerGradientEnd = Color(hex: "F25BA5")
 
     // Text colors
-    static let textPrimary = Color.white
-    static let textSecondary = Color(hex: "c1bfbf")
-    static let textMuted = Color(hex: "777777")
+    static let textPrimary = Color(light: "1C1C1E", dark: "FFFFFF")
+    static let textSecondary = Color(light: "5C5C60", dark: "c1bfbf")
+    static let textMuted = Color(light: "8E8E93", dark: "777777")
 
     // Status colors
     static let badgeGreen = Color(hex: "35C16C")
-    static let badgeGrey = Color(hex: "333333")
+    static let badgeGrey = Color(light: "D9D9DE", dark: "333333")
     static let badgeRed = Color(hex: "E74C3C")
 
     // Calendar colors
@@ -143,7 +157,7 @@ struct AppDimensions {
     static let headerContentSpacing: CGFloat = 248  // Space from top of screen to first content (below header)
 
     static let categoryCardWidth: CGFloat = 150
-    static let categoryCardHeight: CGFloat = 165
+    static let categoryCardHeight: CGFloat = 210
 
     static let buttonHeight: CGFloat = 50
     static let textFieldHeight: CGFloat = 50

@@ -24,7 +24,7 @@ struct AccentColorPicker: View {
                         .frame(width: 36, height: 36)
                         .overlay(
                             Circle()
-                                .strokeBorder(Color.white.opacity(0.3), lineWidth: 1)
+                                .strokeBorder(Color.textPrimary.opacity(0.3), lineWidth: 1)
                         )
 
                     Text("Tap to choose")

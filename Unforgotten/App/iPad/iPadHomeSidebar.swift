@@ -179,10 +179,10 @@ struct iPadHomeSidebar: View {
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        Color.black.opacity(0.0),
-                        Color.black.opacity(0.3),
-                        Color.black.opacity(0.5),
-                        Color.black
+                        Color.appBackgroundLight.opacity(0.0),
+                        Color.appBackgroundLight.opacity(0.3),
+                        Color.appBackgroundLight.opacity(0.5),
+                        Color.appBackgroundLight
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -519,7 +519,7 @@ struct iPadSidebarTodayCard: View {
             ForEach(visibleItems) { item in
                 VStack(spacing: 0) {
                     Divider()
-                        .background(Color.white.opacity(0.1))
+                        .background(Color.textPrimary.opacity(0.1))
 
                     switch item {
                     case .medication(let log):
@@ -539,7 +539,7 @@ struct iPadSidebarTodayCard: View {
             // See all button
             if hasMoreItems {
                 Divider()
-                    .background(Color.white.opacity(0.1))
+                    .background(Color.textPrimary.opacity(0.1))
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -561,7 +561,7 @@ struct iPadSidebarTodayCard: View {
                 }
             }
         }
-        .background(Color.cardBackgroundLight.opacity(0.8))
+        .background(Color.cardBackground)
         .cornerRadius(AppDimensions.cardCornerRadius)
     }
 }
@@ -866,28 +866,41 @@ struct iPadSidebarTaskSummaryRow: View {
 
 // MARK: - iPad Empty Content View
 struct iPadEmptyContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var logoScale: CGFloat = 0.8
     @State private var logoOpacity: Double = 0
 
     var body: some View {
         ZStack {
-            // Background image with 30% opacity
-            Image("splash-background")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .opacity(0.6)
+            if colorScheme == .dark {
+                // Background image with 30% opacity (dark-mode asset)
+                Image("splash-background")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .opacity(0.6)
 
-            // Dark overlay for better readability
-            Color.appBackground.opacity(0.3)
+                // Dark overlay for better readability
+                Color.appBackground.opacity(0.3)
+            }
 
             // Stacked logo with animation and tagline
             VStack(spacing: 20) {
-                Image("unforgotten-logo-stacked")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 250)
-                    .opacity(logoOpacity * 0.6)
-                    .scaleEffect(logoScale)
+                if colorScheme == .dark {
+                    Image("unforgotten-logo-stacked")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 250)
+                        .opacity(logoOpacity * 0.6)
+                        .scaleEffect(logoScale)
+                } else {
+                    // White wordmark is invisible on light backgrounds; use the gradient app icon instead
+                    Image("unforgotten-logo-black-stacked")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 250)
+                        .opacity(logoOpacity * 0.6)
+                        .scaleEffect(logoScale)
+                }
 
                 Text("Because the important things in life\nshould stay Unforgotten.")
                     .font(.appBody)

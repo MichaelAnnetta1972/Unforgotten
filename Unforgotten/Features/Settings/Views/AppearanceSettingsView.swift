@@ -60,11 +60,11 @@ struct AppearanceSettingsView: View {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.appBody.weight(.semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .padding(15)
                         .background(
                             Circle()
-                                .fill(.white.opacity(0.15))
+                                .fill(Color.textPrimary.opacity(0.15))
                         )
                         .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
@@ -88,6 +88,10 @@ struct AppearanceSettingsView: View {
                     .padding(.horizontal, AppDimensions.screenPadding)
                     .padding(.top, 12)
 
+                    // Light/Dark Mode Section
+                    ColorSchemePickerSection()
+                        .padding(.horizontal, AppDimensions.screenPadding)
+
                     // Header Style Section
                     HeaderStylePicker()
                         .padding(.horizontal, AppDimensions.screenPadding)
@@ -106,6 +110,61 @@ struct AppearanceSettingsView: View {
             }
         }
         .background(Color.appBackground)
+    }
+}
+
+// MARK: - Color Scheme Picker Section
+/// Lets the user choose between System, Light, and Dark appearance
+struct ColorSchemePickerSection: View {
+    @Environment(UserPreferences.self) private var userPreferences
+    @Environment(\.appAccentColor) private var appAccentColor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Light or Dark Mode")
+                .font(.appCardTitle)
+                .foregroundColor(.textPrimary)
+
+            Text("Choose a light or dark look, or follow your device setting")
+                .font(.appCaption)
+                .foregroundColor(.textSecondary)
+
+            HStack(spacing: 12) {
+                ForEach(AppColorSchemePreference.allCases) { option in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            userPreferences.colorSchemePreference = option
+                        }
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                    } label: {
+                        VStack(spacing: 8) {
+                            Image(systemName: option.iconName)
+                                .font(.system(size: 22))
+                            Text(option.displayName)
+                                .font(.appCaption)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 72)
+                        .foregroundColor(isSelected(option) ? .black : .textPrimary)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
+                                .fill(isSelected(option) ? appAccentColor : Color.cardBackgroundLight)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(option.displayName) appearance")
+                    .accessibilityAddTraits(isSelected(option) ? .isSelected : [])
+                }
+            }
+        }
+        .padding(AppDimensions.cardPadding)
+        .background(Color.cardBackground)
+        .cornerRadius(AppDimensions.cardCornerRadius)
+    }
+
+    private func isSelected(_ option: AppColorSchemePreference) -> Bool {
+        userPreferences.colorSchemePreference == option
     }
 }
 
@@ -154,7 +213,7 @@ struct AccentColorPickerWithReset: View {
                         .frame(width: 36, height: 36)
                         .overlay(
                             Circle()
-                                .strokeBorder(Color.white.opacity(0.3), lineWidth: 1)
+                                .strokeBorder(Color.textPrimary.opacity(0.3), lineWidth: 1)
                         )
 
                     Text("Tap to choose")
@@ -202,7 +261,7 @@ struct AccentColorPickerWithReset: View {
                                     .frame(width: 36, height: 36)
                                     .overlay(
                                         Circle()
-                                            .strokeBorder(Color.white.opacity(0.3), lineWidth: 1)
+                                            .strokeBorder(Color.textPrimary.opacity(0.3), lineWidth: 1)
                                     )
                                     .overlay(
                                         isSelected

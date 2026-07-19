@@ -214,16 +214,16 @@ struct iPadAppointmentListView: View {
             HStack {
                 Image(systemName: "calendar")
                     .font(.appCardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(.textPrimary)
 
                 Text("Calendar")
                     .font(.appCardTitle)
-                    .foregroundColor(.white)
+                    .foregroundColor(.textPrimary)
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(.textPrimary.opacity(0.7))
             }
             .padding(16)
             .background(Color.cardBackgroundLight.opacity(0.8))

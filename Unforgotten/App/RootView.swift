@@ -48,6 +48,10 @@ struct LoadingScreen: View {
 
     var body: some View {
         ZStack {
+            // Splash stays dark regardless of the user's light/dark setting
+            Color.black
+                .ignoresSafeArea()
+
             // Background image with reduced opacity
             Image("splash-background")
                 .resizable()
@@ -87,6 +91,7 @@ struct LoadingScreen: View {
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .ignoresSafeArea()
+        .colorScheme(.dark)
         .onAppear {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
                 logoScale = 1.0
@@ -105,6 +110,10 @@ struct ConnectionErrorScreen: View {
 
     var body: some View {
         ZStack {
+            // Matches the splash screen: always dark regardless of light/dark setting
+            Color.black
+                .ignoresSafeArea()
+
             Image("splash-background")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -159,6 +168,7 @@ struct ConnectionErrorScreen: View {
                 .padding(.top, 8)
             }
         }
+        .colorScheme(.dark)
     }
 }
 

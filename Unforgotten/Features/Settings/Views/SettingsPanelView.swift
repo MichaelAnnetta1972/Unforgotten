@@ -325,6 +325,9 @@ struct SettingsPanelView: View {
                                 if newValue {
                                     Task {
                                         await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
+                                        // Upload tomorrow's briefing right away so the
+                                        // morning push works from the first night
+                                        await DailySummaryLiveActivityService.shared.uploadBriefingCache(appState: appState)
                                     }
                                 }
                             }

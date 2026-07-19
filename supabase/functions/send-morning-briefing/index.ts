@@ -65,11 +65,14 @@ async function sendPushToStartNotification(
   const host = hostForEnvironment(environment);
   const url = `https://${host}/3/device/${pushToStartToken}`;
 
-  // Ensure lastUpdated is set for the content state
-  const now = new Date().toISOString();
+  // Always stamp lastUpdated with a fractional-second-free ISO8601 timestamp.
+  // ActivityKit's push payload decoder rejects date strings with fractional
+  // seconds (which both JS toISOString() and the cached value from the Supabase
+  // Swift encoder contain), silently dropping the entire start event.
+  const now = new Date().toISOString().replace(/\.\d+Z$/, "Z");
   const stateWithTimestamp: ContentState = {
     ...contentState,
-    lastUpdated: contentState.lastUpdated || now,
+    lastUpdated: now,
   };
 
   // Push-to-start payload format for Live Activities

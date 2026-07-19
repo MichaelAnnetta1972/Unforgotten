@@ -829,7 +829,7 @@ struct NavBarButton: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 20, weight: .medium))
-                .foregroundColor(isActive ? appAccentColor : .white)
+                .foregroundColor(isActive ? appAccentColor : .textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
                 .background {
@@ -940,7 +940,7 @@ struct FloatingNavBar: View {
             Button(action: onSettings) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(.textPrimary)
                     .frame(width: 44, height: 44)
             }
 
@@ -950,7 +950,7 @@ struct FloatingNavBar: View {
             Button(action: onHome) {
                 Image(systemName: "house")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(.textPrimary)
                     .frame(width: 44, height: 44)
             }
         }
@@ -1526,10 +1526,10 @@ struct SecondaryButton: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: AppDimensions.buttonHeight)
                 .background(Color.clear)
-                .foregroundColor(.white)
+                .foregroundColor(.textPrimary)
                 .overlay(
                     RoundedRectangle(cornerRadius: AppDimensions.buttonCornerRadius)
-                        .stroke(Color.white, lineWidth: 0)
+                        .stroke(Color.textPrimary, lineWidth: 0)
                 )
         }
     }

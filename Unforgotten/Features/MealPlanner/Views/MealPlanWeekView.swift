@@ -336,7 +336,7 @@ private struct MealActionSheet: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.textPrimary)
                         .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color.white.opacity(0.15)))
+                        .background(Circle().fill(Color.textPrimary.opacity(0.15)))
                 }
 
                 Spacer()

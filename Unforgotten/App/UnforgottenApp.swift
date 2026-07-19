@@ -164,7 +164,7 @@ enum DailySummaryBackgroundTask {
                 birthdays: [],
                 countdowns: [],
                 taskCount: 0,
-                lastUpdated: Date()
+                lastUpdated: DailySummaryAttributes.ContentState.timestampNow()
             )
         }
 
@@ -202,7 +202,7 @@ enum DailySummaryBackgroundTask {
             birthdays: birthdays,
             countdowns: countdowns,
             taskCount: 0, // To-do count not stored in widget data
-            lastUpdated: Date()
+            lastUpdated: DailySummaryAttributes.ContentState.timestampNow()
         )
     }
 }
@@ -347,6 +347,7 @@ struct UnforgottenApp: App {
                         Task {
                             await WidgetBriefingService.shared.updateWidgetData(appState: appState)
                             await DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: appState)
+                            await MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: appState)
                         }
                     }
                     hasCompletedInitialLaunch = true
@@ -487,7 +488,7 @@ struct AppRootView: View {
             .environment(featureVisibility)
             .environment(\.appAccentColor, effectiveAccentColor)
             .tint(effectiveAccentColor)
-            .preferredColorScheme(.dark)
+            .preferredColorScheme(userPreferences.colorSchemePreference.colorScheme)
     }
 }
 
@@ -743,8 +744,9 @@ final class AppState: ObservableObject {
             async let notificationReschedule: Void = rescheduleNotifications()
             async let widgetUpdate: Void = WidgetBriefingService.shared.updateWidgetData(appState: self)
             async let liveActivityUpdate: Void = DailySummaryLiveActivityService.shared.startOrUpdateDailySummary(appState: self)
+            async let doseActivityUpdate: Void = MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: self)
 
-            _ = await (subscriptionRefresh, notificationPermission, notificationReschedule, widgetUpdate, liveActivityUpdate)
+            _ = await (subscriptionRefresh, notificationPermission, notificationReschedule, widgetUpdate, liveActivityUpdate, doseActivityUpdate)
 
             // Process any pending notifications after app is fully loaded
             await MainActor.run {
@@ -1329,6 +1331,10 @@ final class AppState: ObservableObject {
             print("📱 Cancelled all pending notifications on sign out")
             #endif
 
+            // Remove the Lock Screen dose card for the previous account
+            await MedicationDoseLiveActivityService.shared.endAllDoseActivities()
+            MedicationDoseLiveActivityState.clearAll()
+
             try await authRepository.signOut()
             isAuthenticated = false
             currentAccount = nil
@@ -1356,6 +1362,8 @@ final class AppState: ObservableObject {
         // Stop realtime and cancel pending notifications before we nuke the user.
         await RealtimeSyncService.shared.stopListening()
         NotificationService.shared.removeAllPendingNotifications()
+        await MedicationDoseLiveActivityService.shared.endAllDoseActivities()
+        MedicationDoseLiveActivityState.clearAll()
 
         try await authRepository.deleteAccount()
 
@@ -1506,6 +1514,9 @@ final class AppState: ObservableObject {
             print("Error generating medication logs: \(error)")
             #endif
         }
+
+        // Keep the Lock Screen dose card in sync with the freshly generated logs
+        await MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: self)
     }
 
     // MARK: - Re-schedule Notifications
@@ -1819,9 +1830,10 @@ extension AppState: NotificationHandlerDelegate {
                 #if DEBUG
                 print("📱 Marked medication as taken: \(medicationId)")
                 #endif
-                // Update widget and Live Activity with latest data
+                // Update widget and Live Activities with latest data
                 await WidgetBriefingService.shared.updateWidgetData(appState: self)
                 await DailySummaryLiveActivityService.shared.updateDailySummary(appState: self)
+                await MedicationDoseLiveActivityService.shared.startOrUpdateDoseActivity(appState: self)
             } else {
                 #if DEBUG
                 print("📱 Could not find medication log to mark as taken")

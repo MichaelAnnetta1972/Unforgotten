@@ -91,8 +91,8 @@ struct NotificationContentView: View {
             }
         }
         .frame(maxWidth: 500)
+        //.background(NotificationTheme.panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .background(NotificationTheme.headerGradient)
     }
 
     // MARK: - Hidden Preview Content
@@ -143,21 +143,21 @@ struct NotificationContentView: View {
     // MARK: - Branding Header
 
     private var brandingHeader: some View {
-        HStack(spacing: 8) {
-            Image("unforgotten-icon")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+        HStack(spacing: 0) {
+            // Image("unforgotten-icon")
+            //     .resizable()
+            //     .aspectRatio(contentMode: .fit)
+            //     .frame(width: 100, height: 40)
+            //     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            Text("Unforgotten")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundColor(NotificationTheme.textPrimary)
+            // Text("Unforgotten")
+            //     .font(.system(size: 24, weight: .semibold))
+            //     .foregroundColor(NotificationTheme.textPrimary)
 
-            Spacer()
+            // Spacer()
         }
-        .padding(.horizontal, NotificationTheme.cardPadding)
-        .padding(.vertical, NotificationTheme.cardPadding)
+        // .padding(.horizontal, NotificationTheme.cardPadding)
+        // .padding(.vertical, NotificationTheme.cardPadding)
         //.background(NotificationTheme.cardBackground)
     }
 

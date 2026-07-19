@@ -88,7 +88,7 @@ struct MedicationScheduleModal: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
 

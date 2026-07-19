@@ -250,7 +250,7 @@ final class DailySummaryLiveActivityService {
                 birthdays: [],
                 countdowns: [],
                 taskCount: 0,
-                lastUpdated: Date()
+                lastUpdated: DailySummaryAttributes.ContentState.timestampNow()
             )
         }
 
@@ -274,7 +274,7 @@ final class DailySummaryLiveActivityService {
             let startOfDay = calendar.startOfDay(for: Date())
             guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
                 return DailySummaryAttributes.ContentState(
-                    medicationCount: 0, appointments: [], birthdays: [], countdowns: [], taskCount: 0, lastUpdated: Date()
+                    medicationCount: 0, appointments: [], birthdays: [], countdowns: [], taskCount: 0, lastUpdated: DailySummaryAttributes.ContentState.timestampNow()
                 )
             }
 
@@ -314,7 +314,7 @@ final class DailySummaryLiveActivityService {
             let todoTodayStart = todoCalendar.startOfDay(for: Date())
             guard let todoTodayEnd = todoCalendar.date(byAdding: .day, value: 1, to: todoTodayStart) else {
                 return DailySummaryAttributes.ContentState(
-                    medicationCount: medicationCount, appointments: appointmentItems, birthdays: birthdayNames, countdowns: countdownItems, taskCount: taskCount, lastUpdated: Date()
+                    medicationCount: medicationCount, appointments: appointmentItems, birthdays: birthdayNames, countdowns: countdownItems, taskCount: taskCount, lastUpdated: DailySummaryAttributes.ContentState.timestampNow()
                 )
             }
             let allLists = try await appState.toDoRepository.getLists(accountId: accountId)
@@ -336,8 +336,33 @@ final class DailySummaryLiveActivityService {
             birthdays: birthdayNames,
             countdowns: countdownItems,
             taskCount: taskCount,
-            lastUpdated: Date()
+            lastUpdated: DailySummaryAttributes.ContentState.timestampNow()
         )
+    }
+
+    // MARK: - Delete Briefing Cache
+
+    /// Remove this user's briefing cache row so the server stops sending
+    /// morning push-to-start notifications. Called when the user turns the
+    /// Morning Briefing off.
+    func deleteBriefingCache() async {
+        guard let userId = await SupabaseManager.shared.currentUserId else { return }
+
+        do {
+            try await SupabaseManager.shared.client
+                .from(TableName.morningBriefingCache)
+                .delete()
+                .eq("user_id", value: userId)
+                .execute()
+
+            #if DEBUG
+            print("📋 Deleted briefing cache — server morning pushes stopped")
+            #endif
+        } catch {
+            #if DEBUG
+            print("❌ Failed to delete briefing cache: \(error)")
+            #endif
+        }
     }
 
     // MARK: - Upload Briefing Cache
@@ -346,6 +371,9 @@ final class DailySummaryLiveActivityService {
     /// cron job can send it as a Live Activity push notification in the morning.
     /// Builds data directly from repositories to avoid stale widget cache.
     func uploadBriefingCache(appState: AppState) async {
+        // Users who haven't opted in to the Morning Briefing must not have a
+        // cache row — the server push query treats any fresh row as a recipient.
+        guard NotificationService.shared.dailySummaryEnabled else { return }
         guard let userId = await SupabaseManager.shared.currentUserId else { return }
         guard let accountId = appState.currentAccount?.id else { return }
 
@@ -434,7 +462,7 @@ final class DailySummaryLiveActivityService {
             birthdays: birthdayNames,
             countdowns: countdownItems,
             taskCount: taskCount,
-            lastUpdated: Date()
+            lastUpdated: DailySummaryAttributes.ContentState.timestampNow()
         )
 
         // Calculate tomorrow's date string

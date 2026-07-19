@@ -1,9 +1,46 @@
 import SwiftUI
 
+// MARK: - Color Scheme Preference
+/// The user's chosen appearance for the app.
+/// Defaults to `.dark` so existing users keep the appearance they know.
+enum AppColorSchemePreference: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .system: return "circle.lefthalf.filled"
+        case .light: return "sun.max.fill"
+        case .dark: return "moon.fill"
+        }
+    }
+
+    /// The value passed to `.preferredColorScheme()`. `nil` follows the device setting.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 // MARK: - User Preferences Manager
 @Observable
 class UserPreferences {
     private let accentColorHexKey = "user_accent_color_hex"
+    private let colorSchemePreferenceKey = "user_color_scheme_preference"
     private let hasCustomAccentColorKey = "has_custom_accent_color"
     private let legacyAccentColorIndexKey = "user_accent_color_index"
     private let recentColorHexesKeyPrefix = "recent_accent_color_hexes"
@@ -42,6 +79,13 @@ class UserPreferences {
         didSet {
             UserDefaults.standard.set(hasCustomAccentColor, forKey: hasCustomAccentColorKey)
             triggerSync()
+        }
+    }
+
+    /// The user's chosen light/dark appearance. Stored locally per device.
+    var colorSchemePreference: AppColorSchemePreference {
+        didSet {
+            UserDefaults.standard.set(colorSchemePreference.rawValue, forKey: colorSchemePreferenceKey)
         }
     }
 
@@ -85,6 +129,8 @@ class UserPreferences {
         }
 
         self.hasCustomAccentColor = defaults.bool(forKey: hasCustomAccentColorKey)
+        self.colorSchemePreference = defaults.string(forKey: colorSchemePreferenceKey)
+            .flatMap(AppColorSchemePreference.init(rawValue:)) ?? .dark
         // Recent colours are loaded when currentUserId is set (user-scoped)
         self.recentColorHexes = []
     }

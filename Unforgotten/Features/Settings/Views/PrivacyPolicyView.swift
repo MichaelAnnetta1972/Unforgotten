@@ -60,11 +60,11 @@ struct PrivacyPolicyView: View {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.appBody.weight(.semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .padding(15)
                         .background(
                             Circle()
-                                .fill(.white.opacity(0.15))
+                                .fill(Color.textPrimary.opacity(0.15))
                         )
                         .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }
@@ -373,7 +373,7 @@ struct PrivacyPolicyPanelContent: View {
                     Text("If you have questions about this Privacy Policy, please contact us at:")
 
                     Link("support@unforgottenapp.com", destination: URL(string: "mailto:support@unforgottenapp.com")!)
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
 
                     Link("View full policy online", destination: URL(string: "https://unforgottenapp.com/privacy")!)
                         .font(.appCaption)

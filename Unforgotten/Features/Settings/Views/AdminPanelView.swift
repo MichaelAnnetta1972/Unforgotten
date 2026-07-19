@@ -62,11 +62,11 @@ struct AdminPanelView: View {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.appBody.weight(.semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .padding(15)
                         .background(
                             Circle()
-                                .fill(.white.opacity(0.15))
+                                .fill(Color.textPrimary.opacity(0.15))
                         )
                         .scaleEffect(isCheckmarkPressed ? 0.85 : 1.1)
                 }

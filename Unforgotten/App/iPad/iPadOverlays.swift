@@ -24,10 +24,10 @@ struct iPadFloatingAddButtonOverlay: View {
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        Color.black.opacity(0.0),
-                        Color.black.opacity(0.3),
-                        Color.black.opacity(0.5),
-                        Color.black
+                        Color.appBackground.opacity(0.0),
+                        Color.appBackground.opacity(0.3),
+                        Color.appBackground.opacity(0.5),
+                        Color.appBackground
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -92,12 +92,25 @@ struct iPadAddMenuOverlay: View {
     var onAddCountdown: () -> Void
 
     @Environment(\.appAccentColor) private var appAccentColor
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isVisible = false
+
+    /// Dimming scrim opacity: heavy on dark, lighter on light backgrounds
+    private var scrimOpacity: Double {
+        colorScheme == .dark ? 0.7 : 0.35
+    }
+
+    /// Bottom fade gradient stops: full black on dark, softer on light
+    private var bottomGradientColors: [Color] {
+        colorScheme == .dark
+            ? [Color.clear, Color.black.opacity(0.0), Color.black.opacity(0.3), Color.black.opacity(0.5), Color.black]
+            : [Color.clear, Color.black.opacity(0.0), Color.black.opacity(0.12), Color.black.opacity(0.2), Color.black.opacity(0.4)]
+    }
 
     var body: some View {
         ZStack {
             // Dark overlay - tap to dismiss (full screen)
-            Color.black.opacity(isVisible ? 0.7 : 0)
+            Color.black.opacity(isVisible ? scrimOpacity : 0)
                 .ignoresSafeArea()
                 .onTapGesture {
                     dismissMenu()
@@ -108,13 +121,7 @@ struct iPadAddMenuOverlay: View {
             VStack {
                 Spacer()
                 LinearGradient(
-                    colors: [
-                        Color.clear,
-                        Color.black.opacity(0.0),
-                        Color.black.opacity(0.3),
-                        Color.black.opacity(0.5),
-                        Color.black
-                    ],
+                    colors: bottomGradientColors,
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -139,7 +146,7 @@ struct iPadAddMenuOverlay: View {
                                 .padding(.bottom, 16)
 
                             Divider()
-                                .background(Color.white.opacity(0.1))
+                                .background(Color.textPrimary.opacity(0.1))
 
                             // Menu items - limited for Helper/Viewer roles
                             if !isLimitedAccess {
@@ -257,7 +264,7 @@ struct iPadAddMenuRow: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
-            .background(isHovered ? Color.white.opacity(0.05) : Color.clear)
+            .background(isHovered ? Color.textPrimary.opacity(0.05) : Color.clear)
         }
         .buttonStyle(.plain)
         .onHover { hovering in

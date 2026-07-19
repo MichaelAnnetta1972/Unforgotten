@@ -65,7 +65,7 @@ struct CalendarFilterView: View {
 
                         Image(systemName: "checkmark")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.textPrimary)
                             .frame(width: 36, height: 36)
                             .background(
                                 Circle()
@@ -105,7 +105,7 @@ struct CalendarFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.white.opacity(0.2))
+                                        .background(Color.textPrimary.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
 
@@ -118,7 +118,7 @@ struct CalendarFilterView: View {
                                         .foregroundColor(.textPrimary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(Color.white.opacity(0.2))
+                                        .background(Color.textPrimary.opacity(0.2))
                                         .cornerRadius(AppDimensions.cardCornerRadius)
                                 }
                             }
@@ -168,7 +168,7 @@ struct CalendarFilterView: View {
                                             .foregroundColor(.textPrimary)
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
-                                            .background(Color.white.opacity(0.2))
+                                            .background(Color.textPrimary.opacity(0.2))
                                             .cornerRadius(AppDimensions.cardCornerRadius)
                                     }
 
@@ -180,7 +180,7 @@ struct CalendarFilterView: View {
                                             .foregroundColor(.textPrimary)
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
-                                            .background(Color.white.opacity(0.2))
+                                            .background(Color.textPrimary.opacity(0.2))
                                             .cornerRadius(AppDimensions.cardCornerRadius)
                                     }
                                 }
@@ -364,7 +364,7 @@ struct FilterOptionRow: View {
         .background(style == .filled ? Color.cardBackground.opacity(0.4) : Color.clear)
         .overlay(
             RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                .stroke(style == .outlined ? Color.white.opacity(0.4) : Color.clear, lineWidth: 1)
+                .stroke(style == .outlined ? Color.textPrimary.opacity(0.4) : Color.clear, lineWidth: 1)
         )
         .cornerRadius(AppDimensions.cardCornerRadius)
     }

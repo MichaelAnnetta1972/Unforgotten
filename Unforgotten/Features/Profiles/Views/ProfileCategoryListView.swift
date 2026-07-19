@@ -742,11 +742,11 @@ struct AddProfileDetailView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
 
@@ -767,7 +767,7 @@ struct AddProfileDetailView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(label.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
+                                .fill(label.isBlank || isLoading ? Color.textPrimary.opacity(0.5) : appAccentColor)
                         )
                 }
                 .disabled(label.isBlank || isLoading)
@@ -1139,11 +1139,11 @@ struct EditClothingDetailView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
 
@@ -1164,7 +1164,7 @@ struct EditClothingDetailView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(label.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
+                                .fill(label.isBlank || isLoading ? Color.textPrimary.opacity(0.5) : appAccentColor)
                         )
                 }
                 .disabled(label.isBlank || isLoading)
@@ -1368,11 +1368,11 @@ struct EditMedicalConditionView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
 
@@ -1393,7 +1393,7 @@ struct EditMedicalConditionView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(label.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
+                                .fill(label.isBlank || isLoading ? Color.textPrimary.opacity(0.5) : appAccentColor)
                         )
                 }
                 .disabled(label.isBlank || isLoading)
@@ -1614,11 +1614,11 @@ struct EditGiftDetailView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
 
@@ -1639,7 +1639,7 @@ struct EditGiftDetailView: View {
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(label.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
+                                .fill(label.isBlank || isLoading ? Color.textPrimary.opacity(0.5) : appAccentColor)
                         )
                 }
                 .disabled(label.isBlank || isLoading)
@@ -2136,11 +2136,11 @@ struct AddProfileView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
             }
@@ -2159,11 +2159,11 @@ struct AddProfileView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.textPrimary)
                     .frame(width: 48, height: 48)
                     .background(
                         Circle()
-                            .fill(Color.white.opacity(0.5))
+                            .fill(Color.textPrimary.opacity(0.5))
                     )
             }
         }
@@ -2675,11 +2675,11 @@ struct EditProfileView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 48, height: 48)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.5))
+                                .fill(Color.textPrimary.opacity(0.5))
                         )
                 }
             }
@@ -2698,11 +2698,11 @@ struct EditProfileView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.textPrimary)
                     .frame(width: 48, height: 48)
                     .background(
                         Circle()
-                            .fill(Color.white.opacity(0.5))
+                            .fill(Color.textPrimary.opacity(0.5))
                     )
             }
         }
@@ -3200,11 +3200,11 @@ struct AddCustomFieldView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.textPrimary)
                             .frame(width: 48, height: 48)
                             .background(
                                 Circle()
-                                    .fill(Color.white.opacity(0.5))
+                                    .fill(Color.textPrimary.opacity(0.5))
                             )
                     }
 
@@ -3225,7 +3225,7 @@ struct AddCustomFieldView: View {
                             .frame(width: 48, height: 48)
                             .background(
                                 Circle()
-                                    .fill(label.isBlank || value.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
+                                    .fill(label.isBlank || value.isBlank || isLoading ? Color.textPrimary.opacity(0.5) : appAccentColor)
                             )
                     }
                     .disabled(label.isBlank || value.isBlank || isLoading)
@@ -3345,11 +3345,11 @@ struct EditCustomFieldView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.textPrimary)
                             .frame(width: 48, height: 48)
                             .background(
                                 Circle()
-                                    .fill(Color.white.opacity(0.5))
+                                    .fill(Color.textPrimary.opacity(0.5))
                             )
                     }
 
@@ -3370,7 +3370,7 @@ struct EditCustomFieldView: View {
                             .frame(width: 48, height: 48)
                             .background(
                                 Circle()
-                                    .fill(label.isBlank || value.isBlank || isLoading ? Color.white.opacity(0.5) : appAccentColor)
+                                    .fill(label.isBlank || value.isBlank || isLoading ? Color.textPrimary.opacity(0.5) : appAccentColor)
                             )
                     }
                     .disabled(label.isBlank || value.isBlank || isLoading)

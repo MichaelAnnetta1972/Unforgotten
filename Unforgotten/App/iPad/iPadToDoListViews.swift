@@ -455,7 +455,6 @@ struct iPadToDoListDetailView: View {
                                         }
                                     ), displayedComponents: .date)
                                     .datePickerStyle(.wheel)
-                                    .colorScheme(.dark)
                                     .tint(appAccentColor)
                                 }
                                 .padding(AppDimensions.cardPadding)

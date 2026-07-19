@@ -274,11 +274,11 @@ struct MoodSummaryCard: View {
                 VStack(spacing: 8) {
                     Text("\(viewModel.entries.count)")
                         .font(.appLargeTitle)
-                        .foregroundColor(Color.white)
+                        .foregroundColor(Color.textPrimary)
 
                     Text("Entries")
                         .font(.appCaption)
-                        .foregroundColor(Color.white)
+                        .foregroundColor(Color.textPrimary)
                 }
                 .frame(maxWidth: .infinity)
 

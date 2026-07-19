@@ -1270,7 +1270,7 @@ struct ProfileDetailView: View {
                             )) {
                                 CategoryCardView(
                                     title: "Medical\nConditions",
-                                    iconName: "icon-medical",
+                                    imageName: "category-medical",
                                     hasContent: !(viewModel.medicalConditions + viewModel.allergies).isEmpty
                                 )
                             }
@@ -1286,7 +1286,7 @@ struct ProfileDetailView: View {
                             )) {
                                 CategoryCardView(
                                     title: "Gift\nIdeas",
-                                    iconName: "icon-gifts",
+                                    imageName: "category-gifts",
                                     hasContent: !viewModel.giftIdeas.isEmpty
                                 )
                             }
@@ -1302,7 +1302,7 @@ struct ProfileDetailView: View {
                             )) {
                                 CategoryCardView(
                                     title: "Clothing\nSizes",
-                                    iconName: "icon-clothing",
+                                    imageName: "category-clothing",
                                     hasContent: !viewModel.clothingSizes.isEmpty
                                 )
                             }
@@ -1317,7 +1317,7 @@ struct ProfileDetailView: View {
                             )) {
                                 CategoryCardView(
                                     title: "Hobbies &\nInterests",
-                                    iconName: "icon-hobbies",
+                                    imageName: "category-hobbies",
                                     hasContent: !viewModel.hobbies.isEmpty
                                 )
                             }
@@ -1332,7 +1332,7 @@ struct ProfileDetailView: View {
                             )) {
                                 CategoryCardView(
                                     title: "Activity\nIdeas",
-                                    iconName: "icon-activities",
+                                    imageName: "category-activities",
                                     hasContent: !viewModel.activityIdeas.isEmpty
                                 )
                             }
@@ -1343,7 +1343,7 @@ struct ProfileDetailView: View {
                             NavigationLink(destination: ImportantAccountsListView(profile: profile)) {
                                 CategoryCardView(
                                     title: "Important\nAccounts",
-                                    iconName: "icon-accounts",
+                                    imageName: "category-important",
                                     hasContent: viewModel.hasImportantAccounts
                                 )
                             }
@@ -1354,7 +1354,7 @@ struct ProfileDetailView: View {
                             NavigationLink(destination: FamilyTreeView()) {
                                 CategoryCardView(
                                     title: "Family\nTree",
-                                    iconName: "icon-connections",
+                                    imageName: "category-family-tree",
                                     hasContent: true
                                 )
                             }
@@ -1363,6 +1363,7 @@ struct ProfileDetailView: View {
                     }
                     .padding(.horizontal, AppDimensions.screenPadding)
                 }
+                .scrollClipDisabled()
 
                 // Sharing Preferences card (only for synced/connected profiles)
                 if profile.isSyncedProfile {
@@ -1664,116 +1665,39 @@ struct ProfileBirthdayCard: View {
     }
 }
 
-// MARK: - Category Card View (Liquid Glass Effect)
+// MARK: - Category Card View (Image Background)
 struct CategoryCardView: View {
     let title: String
-    let iconName: String
-    var systemIcon: Bool = false
+    let imageName: String
     var hasContent: Bool = false
     @Environment(\.appAccentColor) private var appAccentColor
 
     var body: some View {
-        VStack(spacing: 12) {
-            Spacer()
+        ZStack(alignment: .bottomLeading) {
+            Image(imageName)
+                .resizable()
+                .scaledToFill()
+                .frame(width: AppDimensions.categoryCardWidth, height: AppDimensions.categoryCardHeight)
+                .clipped()
 
-            // Center icon with subtle glow
-            Group {
-                if systemIcon {
-                    Image(systemName: iconName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.white)
-                } else {
-                    Image(iconName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 50, height: 50)
-                }
+            // Accent tint when the category has data
+            if hasContent {
+                appAccentColor.opacity(0.7)
             }
-            .shadow(color: .white.opacity(0.3), radius: 8, x: 0, y: 0)
 
-            // Title - allows up to 2 lines
             Text(title)
-                .font(.appBody)
+                .font(.appTitle2.weight(.bold))
                 .foregroundColor(.white)
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
+                .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+                .padding(14)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 16)
         .frame(width: AppDimensions.categoryCardWidth, height: AppDimensions.categoryCardHeight)
-        // Liquid glass background layers
-        .background {
-            ZStack {
-                // Base frosted glass material
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                   .fill(hasContent ? appAccentColor.opacity(0.6) : Color.cardBackgroundLight.opacity(0.8))
-
-                // Subtle color tint overlay
-                RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-                 .fill(hasContent ? appAccentColor.opacity(0.3) : Color.cardBackgroundLight.opacity(0.8))
-
-
-                // Top-left light refraction highlight
-         //       RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-         //           .fill(
-         //               LinearGradient(
-         //                   colors: [
-         //                       Color.white.opacity(0.15),
-         //                       Color.white.opacity(0.08),
-         //                       Color.clear,
-         //                       Color.clear
-         //                   ],
-         //                   startPoint: .topLeading,
-         //                   endPoint: .bottomTrailing
-         //               )
-         //           )
-
-                // Bottom-right subtle glow
-        //      RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-        //        .fill(
-        //                RadialGradient(
-        //                    colors: [
-        //                        .white.opacity(0.1),
-        //                        Color.clear
-        //                    ],
-        //                    center: .bottomTrailing,
-        //                    startRadius: 0,
-        //                    endRadius: 120
-        //                )
-        //            )
-            }
-        }
-        // Multi-layer border for liquid glass depth
-    //    .overlay(
-    //        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius)
-    //            .stroke(
-    //                LinearGradient(
-    //                    colors: [
-    //                        Color.white.opacity(0.5),
-    //                        Color.white.opacity(0.2),
-    //                        Color.white.opacity(0.05),
-    //                        Color.white.opacity(0.15)
-    //                    ],
-    //                    startPoint: .topLeading,
-    //                    endPoint: .bottomTrailing
-    //                ),
-    //                lineWidth: 1
-    //            )
-    //    )
-        // Inner glow effect
-    //    .overlay(
-    //        RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius - 1)
-    //            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-    //            .padding(1)
-    //    )
-        // Soft outer shadow for depth
-        .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
-        .shadow(color: appAccentColor.opacity(0.1), radius: 15, x: 0, y: 0)
+        .clipShape(RoundedRectangle(cornerRadius: AppDimensions.cardCornerRadius))
+        // Soft outer shadow for depth (lighter in light mode)
+        .shadow(color: Color(light: "1F000000", dark: "4D000000"), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -1918,7 +1842,7 @@ struct AddEmailSheetView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.textPrimary)
                             .frame(width: 48, height: 48)
-                            .background(Circle().fill(Color.white.opacity(0.15)))
+                            .background(Circle().fill(Color.textPrimary.opacity(0.15)))
                     }
 
                     Spacer()

@@ -73,6 +73,9 @@ final class NotificationService: NSObject {
                 // When disabled, remove all pending notifications
                 removeAllPendingNotifications()
                 notificationCenter.removeAllDeliveredNotifications()
+                Task { @MainActor in
+                    await MedicationDoseLiveActivityService.shared.endAllDoseActivities()
+                }
             }
         }
     }
@@ -96,8 +99,11 @@ final class NotificationService: NSObject {
             UserDefaults.standard.set(newValue, forKey: NotificationPreferenceKey.dailySummaryEnabled)
             if !newValue {
                 cancelDailySummary()
-                Task {
+                Task { @MainActor in
                     await DailySummaryLiveActivityService.shared.endAllDailySummaryActivities()
+                    // Also remove the server cache row, otherwise the morning
+                    // push-to-start keeps being sent to this user
+                    await DailySummaryLiveActivityService.shared.deleteBriefingCache()
                 }
             }
         }
@@ -197,6 +203,8 @@ final class NotificationService: NSObject {
         }
         applyHidePreviewIfNeeded(content, fallbackBody: "You have things to do today. Open the Unforgotten app to get started.")
         content.sound = .default
+        // Break through Focus modes and stay prominent on the Lock Screen
+        content.interruptionLevel = .timeSensitive
         content.categoryIdentifier = NotificationCategory.medicationReminder.rawValue
         content.userInfo = [
             "medicationId": medicationId.uuidString,
@@ -259,6 +267,8 @@ final class NotificationService: NSObject {
         content.title = "Upcoming Appointment"
         content.subtitle = "Press and hold for more details"
         content.sound = .default
+        // Break through Focus modes and stay prominent on the Lock Screen
+        content.interruptionLevel = .timeSensitive
         content.categoryIdentifier = NotificationCategory.appointmentReminder.rawValue
         // Build body text
         var bodyParts: [String] = [title]
@@ -944,6 +954,8 @@ final class NotificationService: NSObject {
             content.body = medicationName
         }
         content.sound = .default
+        // Break through Focus modes and stay prominent on the Lock Screen
+        content.interruptionLevel = .timeSensitive
         content.categoryIdentifier = NotificationCategory.medicationReminder.rawValue
         content.userInfo = [
             "medicationId": medicationId.uuidString,
